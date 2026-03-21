@@ -1,4 +1,6 @@
-﻿function Rename-PDFDynamic {
+﻿# Rename.ps1 - Fonction de renommage dynamique
+
+function Rename-PDFDynamic {
     param(
         [string]$TemplateId,
         [string]$FichierPDF,
@@ -6,9 +8,10 @@
         [datetime]$DateSelectionnee
     )
     
-    $templatesPath = Join-Path $PSScriptRoot "..\Data\templates.json"
-    $templatesData = Get-Content $templatesPath -Raw | ConvertFrom-Json
-    $template = $templatesData.templates | Where-Object { $_.id -eq $TemplateId }
+    . "$PSScriptRoot\TemplateManager.ps1"
+    
+    $templates = Get-Templates
+    $template = $templates | Where-Object { $_.id -eq $TemplateId }
     
     if (-not $template) {
         throw "Template non trouvé : $TemplateId"
@@ -17,6 +20,11 @@
     $cleanText = $UserText -replace '[\\/:*?"<>|]', '_'
     $formattedDate = $DateSelectionnee.ToString($template.dateFormat)
     $nouveauNom = $template.format -replace '{text}', $cleanText -replace '{date}', $formattedDate
+    
+    if ($template.includeTime -and $template.timeFormat) {
+        $formattedTime = Get-Date -Format $template.timeFormat
+        $nouveauNom = $nouveauNom -replace '{time}', $formattedTime
+    }
     
     if (-not $nouveauNom.EndsWith(".pdf")) {
         $nouveauNom = $nouveauNom + ".pdf"
@@ -27,6 +35,7 @@
         $nouveauChemin = Join-Path $dossier $nouveauNom
 
         if (Test-Path $nouveauChemin) {
+            Add-Type -AssemblyName System.Windows.Forms
             $result = [System.Windows.Forms.MessageBox]::Show(
                 "Le fichier '$nouveauNom' existe déjà. Voulez-vous le remplacer ?",
                 "Fichier existant",
@@ -42,6 +51,7 @@
         return $true
     }
     catch {
+        Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.MessageBox]::Show(
             "Erreur lors du renommage : $($_.Exception.Message)", 
             "Erreur", 
@@ -51,5 +61,3 @@
         return $false
     }
 }
-
-Export-ModuleMember -Function Rename-PDFDynamic
