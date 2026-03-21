@@ -1,0 +1,10 @@
+﻿# Fichiers temporaires
+*.tmp
+*.log
+
+# Output de l'installateur
+Output/
+
+# Dossiers système
+.DS_Store
+Thumbs.db
