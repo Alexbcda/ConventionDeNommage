@@ -3,25 +3,40 @@
     {
       "id": "certificat",
       "name": "CERTIFICAT",
+      "description": "Certificat de destruction pour déchets",
       "format": "Certificat de Destruction-{text}-du {date}",
       "dateFormat": "dd.MM.yy",
-      "color": "#E26E2A",
+      "timeFormat": "",
+      "includeTime": false,
+      "placeholder": "Renseigner le point de collecte",
+      "buttonColor": "#E26E2A",
+      "borderColor": "#E26E2A",
       "enabled": true
     },
     {
       "id": "planner",
       "name": "PLANNER",
+      "description": "Planning de collecte",
       "format": "{date}-{text}",
       "dateFormat": "yyyyMMdd",
-      "color": "#50ABF2",
+      "timeFormat": "",
+      "includeTime": false,
+      "placeholder": "Nom du planning",
+      "buttonColor": "#50ABF2",
+      "borderColor": "#50ABF2",
       "enabled": true
     },
     {
       "id": "francetravail",
       "name": "FRANCE TRAVAIL",
+      "description": "Documents France Travail",
       "format": "{date}-{text}",
       "dateFormat": "yyyyMMdd",
-      "color": "#1B5B4A",
+      "timeFormat": "",
+      "includeTime": false,
+      "placeholder": "Renseigner l'intitulé",
+      "buttonColor": "#1B5B4A",
+      "borderColor": "#1B5B4A",
       "enabled": true
     }
   ]
