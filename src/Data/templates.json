@@ -1,0 +1,28 @@
+﻿{
+  "templates": [
+    {
+      "id": "certificat",
+      "name": "CERTIFICAT",
+      "format": "Certificat de Destruction-{text}-du {date}",
+      "dateFormat": "dd.MM.yy",
+      "color": "#E26E2A",
+      "enabled": true
+    },
+    {
+      "id": "planner",
+      "name": "PLANNER",
+      "format": "{date}-{text}",
+      "dateFormat": "yyyyMMdd",
+      "color": "#50ABF2",
+      "enabled": true
+    },
+    {
+      "id": "francetravail",
+      "name": "FRANCE TRAVAIL",
+      "format": "{date}-{text}",
+      "dateFormat": "yyyyMMdd",
+      "color": "#1B5B4A",
+      "enabled": true
+    }
+  ]
+}
