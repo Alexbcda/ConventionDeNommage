@@ -3,7 +3,9 @@
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 . "$scriptPath\Config.ps1"
-. "$scriptPath\Functions\Rename.ps1"
+. "$scriptPath\Core\Rename.ps1"
+. "$scriptPath\Core\TemplateManager.ps1"
+. "$scriptPath\Core\TemplateEditor.ps1"
 . "$scriptPath\GUI.ps1"
 
 function Find-PDFFile {
@@ -31,6 +33,7 @@ if ($args.Count -gt 0) {
     if ($fichierTrouve) {
         Start-GUI -FichierPDF $fichierTrouve
     } else {
+        Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.MessageBox]::Show(
             "Aucun fichier PDF trouvé dans le dossier courant.`n`nVeuillez sélectionner un fichier PDF.", 
             "Erreur", 
@@ -39,6 +42,7 @@ if ($args.Count -gt 0) {
         )
     }
 } else {
+    Add-Type -AssemblyName System.Windows.Forms
     $openFileDialog = New-Object System.Windows.Forms.OpenFileDialog
     $openFileDialog.Filter = "Fichiers PDF (*.pdf)|*.pdf"
     $openFileDialog.Title = "Sélectionner un fichier PDF à renommer"
