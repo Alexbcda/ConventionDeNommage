@@ -1,4 +1,4 @@
-﻿# GUI.ps1 - Interface graphique avec gestion des règles
+# GUI.ps1 - Interface graphique avec onglets Convention de nommage et Planning
 
 function Start-GUI {
     param([string]$FichierPDF)
@@ -10,6 +10,7 @@ function Start-GUI {
     . "$PSScriptRoot\Core\TemplateManager.ps1"
     . "$PSScriptRoot\Core\Rename.ps1"
     . "$PSScriptRoot\Core\TemplateEditor.ps1"
+    . "$PSScriptRoot\ODM\ODMViewer.ps1"
     
     if (-not $FichierPDF -or -not (Test-Path $FichierPDF)) { 
         Write-Host "Fichier PDF invalide: $FichierPDF"
@@ -18,28 +19,22 @@ function Start-GUI {
     
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "Convention de nommage - v2.0"
-    $form.Size = New-Object System.Drawing.Size(700, 500)
+    $form.Size = New-Object System.Drawing.Size(1200, 800)
     $form.StartPosition = "CenterScreen"
     $form.FormBorderStyle = "FixedDialog"
     $form.BackColor = $formBackColor
     $form.Font = $font
     $form.Topmost = $true
     
-    # Onglets
+    # Onglets principaux
     $tabControl = New-Object System.Windows.Forms.TabControl
     $tabControl.Dock = "Fill"
     $tabControl.Padding = New-Object System.Drawing.Point(10, 5)
     
+    # ========== ONGLET 1 : CONVENTION DE NOMMAGE ==========
     $tabRename = New-Object System.Windows.Forms.TabPage
-    $tabRename.Text = "🏷️ Renommage"
+    $tabRename.Text = "🏷️ Convention de nommage"
     
-    $tabManage = New-Object System.Windows.Forms.TabPage
-    $tabManage.Text = "⚙️ Gestion des règles"
-    
-    $tabControl.TabPages.Add($tabRename)
-    $tabControl.TabPages.Add($tabManage)
-    
-    # ========== ONGLET RENOMMAGE ==========
     $panelRename = New-Object System.Windows.Forms.Panel
     $panelRename.Dock = "Fill"
     $panelRename.Padding = New-Object System.Windows.Forms.Padding(20, 10, 20, 10)
@@ -104,49 +99,22 @@ function Start-GUI {
     
     $tabRename.Controls.Add($panelRename)
     
-    # ========== ONGLET GESTION DES RÈGLES ==========
-    $panelManage = New-Object System.Windows.Forms.Panel
-    $panelManage.Dock = "Fill"
-    $panelManage.Padding = New-Object System.Windows.Forms.Padding(20)
+    # ========== ONGLET 2 : PLANNING (ODM) ==========
+    $tabPlanning = New-Object System.Windows.Forms.TabPage
+    $tabPlanning.Text = "📋 Planning (ODM)"
     
-    $lblManageTitle = New-Object System.Windows.Forms.Label
-    $lblManageTitle.Text = "Gestion des règles de nommage"
-    $lblManageTitle.Location = New-Object System.Drawing.Point(20, 20)
-    $lblManageTitle.Size = New-Object System.Drawing.Size(400, 30)
-    $lblManageTitle.Font = New-Object System.Drawing.Font("Arial", 14, [System.Drawing.FontStyle]::Bold)
+    # Appeler Show-ODMViewer qui retourne le panel
+    $planningPanel = Show-ODMViewer
+    $planningPanel.Dock = "Fill"
+    $tabPlanning.Controls.Add($planningPanel)
     
-    $rulesListBox = New-Object System.Windows.Forms.ListBox
-    $rulesListBox.Location = New-Object System.Drawing.Point(20, 60)
-    $rulesListBox.Size = New-Object System.Drawing.Size(400, 300)
-    $rulesListBox.Font = New-Object System.Drawing.Font("Arial", 10)
-    
-    $btnOpenEditor = New-Object System.Windows.Forms.Button
-    $btnOpenEditor.Text = "📝 Ouvrir l'éditeur"
-    $btnOpenEditor.Location = New-Object System.Drawing.Point(440, 60)
-    $btnOpenEditor.Size = New-Object System.Drawing.Size(200, 50)
-    $btnOpenEditor.BackColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
-    $btnOpenEditor.ForeColor = [System.Drawing.Color]::White
-    $btnOpenEditor.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
-    $btnOpenEditor.FlatStyle = "Flat"
-    
-    $btnRefreshRules = New-Object System.Windows.Forms.Button
-    $btnRefreshRules.Text = "🔄 Rafraîchir"
-    $btnRefreshRules.Location = New-Object System.Drawing.Point(440, 120)
-    $btnRefreshRules.Size = New-Object System.Drawing.Size(200, 40)
-    $btnRefreshRules.BackColor = [System.Drawing.Color]::FromArgb(80, 171, 242)
-    $btnRefreshRules.ForeColor = [System.Drawing.Color]::White
-    $btnRefreshRules.FlatStyle = "Flat"
-    
-    $panelManage.Controls.Add($lblManageTitle)
-    $panelManage.Controls.Add($rulesListBox)
-    $panelManage.Controls.Add($btnOpenEditor)
-    $panelManage.Controls.Add($btnRefreshRules)
-    
-    $tabManage.Controls.Add($panelManage)
+    # Ajouter les onglets
+    $tabControl.TabPages.Add($tabRename)
+    $tabControl.TabPages.Add($tabPlanning)
     
     $form.Controls.Add($tabControl)
     
-    # Variables
+    # Variables pour l'onglet Convention de nommage
     $script:estEnModePlaceholder = $true
     $script:texteUtilisateur = ""
     $script:formulaireCharge = $false
@@ -155,7 +123,7 @@ function Start-GUI {
     $script:currentPlaceholder = ""
     $script:templates = @()
     
-    # Fonctions
+    # Fonctions pour l'onglet Convention de nommage
     function Load-TemplatesAndButtons {
         try {
             $script:templates = Get-Templates | Where-Object { $_.enabled -eq $true }
@@ -184,7 +152,6 @@ function Start-GUI {
                 $btn.TextAlign = "MiddleCenter"
                 $btn.Tag = $template.id
                 
-                # Couleurs de survol
                 $btn.Add_MouseEnter({
                     $currentBtn = $this
                     $templateId = $currentBtn.Tag
@@ -246,12 +213,8 @@ function Start-GUI {
     }
     
     function Update-RulesList {
-        $rulesListBox.Items.Clear()
-        $allTemplates = Get-Templates
-        foreach ($t in $allTemplates) {
-            $status = if ($t.enabled) { "✓" } else { "✗" }
-            $rulesListBox.Items.Add("$status $($t.name) - $($t.description)")
-        }
+        # Cette fonction est pour l'onglet gestion des règles
+        # Elle sera appelée depuis TemplateEditor
     }
     
     function Set-PlaceholderMode {
@@ -293,7 +256,7 @@ function Start-GUI {
         }
     }
     
-    # Événements
+    # Événements pour l'onglet Convention de nommage
     $textBox.Add_Enter({
         if (-not $script:formulaireCharge) { return }
         if ($script:estEnModePlaceholder) {
@@ -336,19 +299,8 @@ function Start-GUI {
         Update-RulesList
     })
     
-    $btnOpenEditor.Add_Click({
-        Show-TemplateEditor
-        Load-TemplatesAndButtons
-        Update-RulesList
-    })
-    
-    $btnRefreshRules.Add_Click({
-        Update-RulesList
-    })
-    
     $form.Add_Shown({
         Load-TemplatesAndButtons
-        Update-RulesList
         Set-PlaceholderMode -textBox $textBox -activer $true
         $form.BeginInvoke([Action]{
             Start-Sleep -Milliseconds 500

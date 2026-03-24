@@ -1,17 +1,20 @@
-﻿# GUI.ps1 - Interface graphique avec gestion des règles
+# GUI.ps1 - Interface graphique avec gestion des règles
 
 function Start-GUI {
     param([string]$FichierPDF)
     
-    . "$PSScriptRoot\Config.ps1"
-    . "$PSScriptRoot\Core\Rename.ps1"
-    . "$PSScriptRoot\Core\TemplateManager.ps1"
-    . "$PSScriptRoot\Core\TemplateEditor.ps1"
-    
-    if (-not $FichierPDF -or -not (Test-Path $FichierPDF)) { exit }
-    
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
+    
+    . "$PSScriptRoot\Config.ps1"
+    . "$PSScriptRoot\Core\TemplateManager.ps1"
+    . "$PSScriptRoot\Core\Rename.ps1"
+    . "$PSScriptRoot\Core\TemplateEditor.ps1"
+    
+    if (-not $FichierPDF -or -not (Test-Path $FichierPDF)) { 
+        Write-Host "Fichier PDF invalide: $FichierPDF"
+        exit 
+    }
     
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "Convention de nommage - v2.0"
@@ -22,16 +25,14 @@ function Start-GUI {
     $form.Font = $font
     $form.Topmost = $true
     
-    # Onglets principaux
+    # Onglets
     $tabControl = New-Object System.Windows.Forms.TabControl
     $tabControl.Dock = "Fill"
     $tabControl.Padding = New-Object System.Drawing.Point(10, 5)
     
-    # Onglet 1 : Renommage
     $tabRename = New-Object System.Windows.Forms.TabPage
     $tabRename.Text = "🏷️ Renommage"
     
-    # Onglet 2 : Gestion des règles
     $tabManage = New-Object System.Windows.Forms.TabPage
     $tabManage.Text = "⚙️ Gestion des règles"
     
@@ -46,24 +47,12 @@ function Start-GUI {
     $margeGauche = 35
     $largeurPlaceholder = 470
     
-    # Champ texte avec placeholder dynamique
     $textBox = New-Object System.Windows.Forms.TextBox
     $textBox.Location = New-Object System.Drawing.Point($margeGauche, 40)
     $textBox.Size = New-Object System.Drawing.Size($largeurPlaceholder, 35)
     $textBox.Font = $font
-    
-    $placeholderLabel = New-Object System.Windows.Forms.Label
-    $placeholderLabel.Text = "Chargement..."
-    $placeholderLabel.Location = New-Object System.Drawing.Point($margeGauche + 5, 48)
-    $placeholderLabel.Size = New-Object System.Drawing.Size($largeurPlaceholder - 10, 20)
-    $placeholderLabel.ForeColor = [System.Drawing.Color]::Gray
-    $placeholderLabel.Font = New-Object System.Drawing.Font("Arial", 9)
-    $placeholderLabel.Visible = $false
-    
     $panelRename.Controls.Add($textBox)
-    $panelRename.Controls.Add($placeholderLabel)
     
-    # Panel pour les boutons dynamiques
     $buttonsPanel = New-Object System.Windows.Forms.Panel
     $buttonsPanel.Location = New-Object System.Drawing.Point($margeGauche, 95)
     $buttonsPanel.Size = New-Object System.Drawing.Size(610, 120)
@@ -126,20 +115,14 @@ function Start-GUI {
     $lblManageTitle.Size = New-Object System.Drawing.Size(400, 30)
     $lblManageTitle.Font = New-Object System.Drawing.Font("Arial", 14, [System.Drawing.FontStyle]::Bold)
     
-    $lblManageDesc = New-Object System.Windows.Forms.Label
-    $lblManageDesc.Text = "Créez, modifiez ou supprimez vos règles personnalisées"
-    $lblManageDesc.Location = New-Object System.Drawing.Point(20, 55)
-    $lblManageDesc.Size = New-Object System.Drawing.Size(400, 20)
-    $lblManageDesc.ForeColor = [System.Drawing.Color]::Gray
-    
     $rulesListBox = New-Object System.Windows.Forms.ListBox
-    $rulesListBox.Location = New-Object System.Drawing.Point(20, 90)
+    $rulesListBox.Location = New-Object System.Drawing.Point(20, 60)
     $rulesListBox.Size = New-Object System.Drawing.Size(400, 300)
     $rulesListBox.Font = New-Object System.Drawing.Font("Arial", 10)
     
     $btnOpenEditor = New-Object System.Windows.Forms.Button
-    $btnOpenEditor.Text = "📝 Ouvrir l'éditeur de règles"
-    $btnOpenEditor.Location = New-Object System.Drawing.Point(440, 90)
+    $btnOpenEditor.Text = "📝 Ouvrir l'éditeur"
+    $btnOpenEditor.Location = New-Object System.Drawing.Point(440, 60)
     $btnOpenEditor.Size = New-Object System.Drawing.Size(200, 50)
     $btnOpenEditor.BackColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
     $btnOpenEditor.ForeColor = [System.Drawing.Color]::White
@@ -148,14 +131,13 @@ function Start-GUI {
     
     $btnRefreshRules = New-Object System.Windows.Forms.Button
     $btnRefreshRules.Text = "🔄 Rafraîchir"
-    $btnRefreshRules.Location = New-Object System.Drawing.Point(440, 150)
+    $btnRefreshRules.Location = New-Object System.Drawing.Point(440, 120)
     $btnRefreshRules.Size = New-Object System.Drawing.Size(200, 40)
     $btnRefreshRules.BackColor = [System.Drawing.Color]::FromArgb(80, 171, 242)
     $btnRefreshRules.ForeColor = [System.Drawing.Color]::White
     $btnRefreshRules.FlatStyle = "Flat"
     
     $panelManage.Controls.Add($lblManageTitle)
-    $panelManage.Controls.Add($lblManageDesc)
     $panelManage.Controls.Add($rulesListBox)
     $panelManage.Controls.Add($btnOpenEditor)
     $panelManage.Controls.Add($btnRefreshRules)
@@ -202,21 +184,36 @@ function Start-GUI {
                 $btn.TextAlign = "MiddleCenter"
                 $btn.Tag = $template.id
                 
+                # Couleurs de survol
                 $btn.Add_MouseEnter({
-                    $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(200, 80, 80)
-                    $this.BackColor = [System.Drawing.ColorTranslator]::FromHtml($($this.Tag | ForEach-Object { ($script:templates | Where-Object { $_.id -eq $_ }).buttonColor }))
-                    $this.ForeColor = [System.Drawing.Color]::White
+                    $currentBtn = $this
+                    $templateId = $currentBtn.Tag
+                    $foundTemplate = $script:templates | Where-Object { $_.id -eq $templateId }
+                    if ($foundTemplate) {
+                        $borderHover = $foundTemplate.borderColor
+                        if ($foundTemplate.name -eq "CERTIFICAT") { $borderHover = "#AF470B" }
+                        elseif ($foundTemplate.name -eq "PLANNER") { $borderHover = "#1A6AA8" }
+                        elseif ($foundTemplate.name -eq "FRANCE TRAVAIL") { $borderHover = "#1A9F7B" }
+                        $currentBtn.FlatAppearance.BorderColor = [System.Drawing.ColorTranslator]::FromHtml($borderHover)
+                        $currentBtn.BackColor = [System.Drawing.ColorTranslator]::FromHtml($foundTemplate.buttonColor)
+                        $currentBtn.ForeColor = [System.Drawing.Color]::White
+                    }
                 })
                 
                 $btn.Add_MouseLeave({
-                    $templateData = $script:templates | Where-Object { $_.id -eq $this.Tag }
-                    $this.FlatAppearance.BorderColor = [System.Drawing.ColorTranslator]::FromHtml($templateData.borderColor)
-                    $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
-                    $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+                    $currentBtn = $this
+                    $templateId = $currentBtn.Tag
+                    $foundTemplate = $script:templates | Where-Object { $_.id -eq $templateId }
+                    if ($foundTemplate) {
+                        $currentBtn.FlatAppearance.BorderColor = [System.Drawing.ColorTranslator]::FromHtml($foundTemplate.borderColor)
+                        $currentBtn.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+                        $currentBtn.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+                    }
                 })
                 
                 $btn.Add_Click({
-                    $templateId = $this.Tag
+                    $clickedBtn = $this
+                    $templateId = $clickedBtn.Tag
                     $template = $script:templates | Where-Object { $_.id -eq $templateId }
                     if ($template) {
                         Invoke-RenameAction -TemplateId $templateId -Template $template
@@ -232,10 +229,8 @@ function Start-GUI {
                 }
             }
             
-            # Ajuster la hauteur du panel
             $buttonsPanel.Height = [Math]::Max(120, $y + $btnHeight + 20)
             
-            # Mettre à jour le placeholder
             if ($script:templates.Count -gt 0) {
                 $script:currentPlaceholder = $script:templates[0].placeholder
                 $textBox.Tag = $script:currentPlaceholder
@@ -246,7 +241,7 @@ function Start-GUI {
             }
         }
         catch {
-            [System.Windows.Forms.MessageBox]::Show("Erreur chargement templates : $_", "Erreur")
+            [System.Windows.Forms.MessageBox]::Show("Erreur chargement: $_", "Erreur")
         }
     }
     
@@ -256,7 +251,6 @@ function Start-GUI {
         foreach ($t in $allTemplates) {
             $status = if ($t.enabled) { "✓" } else { "✗" }
             $rulesListBox.Items.Add("$status $($t.name) - $($t.description)")
-            $rulesListBox.Items[$rulesListBox.Items.Count-1].Tag = $t.id
         }
     }
     
@@ -369,4 +363,3 @@ function Start-GUI {
     [System.Windows.Forms.Application]::Run($form)
 }
 
-Export-ModuleMember -Function Start-GUI
