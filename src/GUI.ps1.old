@@ -1,4 +1,4 @@
-# GUI.ps1 - Interface graphique avec onglets Convention de nommage et Planning
+# GUI.ps1 - Interface graphique avec onglets
 
 function Start-GUI {
     param([string]$FichierPDF)
@@ -86,19 +86,38 @@ function Start-GUI {
     
     $tabRename.Controls.Add($panelRename)
     
-    # ========== ONGLET 2 : PLANNING (ODM) ==========
+        # ========== ONGLET 2 : PLANNING (ODM) ==========
     $tabPlanning = New-Object System.Windows.Forms.TabPage
     $tabPlanning.Text = "📋 Planning (ODM)"
     
+    # Appeler Show-ODMViewer
     $planningResult = Show-ODMViewer
-    # Prendre le dernier élément (le panel) car la fonction retourne un tableau
+    
+    # Si le résultat est un tableau, prendre le dernier élément (le panel)
     if ($planningResult -is [array]) {
         $planningPanel = $planningResult[-1]
     } else {
         $planningPanel = $planningResult
     }
-    $planningPanel.Dock = "Fill"
-    $tabPlanning.Controls.Add($planningPanel)
+    
+    # Vérifier que c'est bien un panel avant de l'ajouter
+    if ($planningPanel -is [System.Windows.Forms.Panel]) {
+        $planningPanel.Dock = "Fill"
+        $tabPlanning.Controls.Add($planningPanel)
+    } else {
+        # Fallback: créer un panel simple
+        $fallbackPanel = New-Object System.Windows.Forms.Panel
+        $fallbackPanel.BackColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
+        $fallbackPanel.Dock = "Fill"
+        $label = New-Object System.Windows.Forms.Label
+        $label.Text = "Planning ODM - En cours de chargement..."
+        $label.ForeColor = [System.Drawing.Color]::White
+        $label.Font = New-Object System.Drawing.Font("Arial", 14)
+        $label.Dock = "Fill"
+        $label.TextAlign = "MiddleCenter"
+        $fallbackPanel.Controls.Add($label)
+        $tabPlanning.Controls.Add($fallbackPanel)
+    }
     
     # Ajouter les onglets
     $tabControl.TabPages.Add($tabRename)
@@ -114,7 +133,7 @@ function Start-GUI {
     $script:currentPlaceholder = ""
     $script:templates = @()
     
-    # Fonctions pour l'onglet Convention de nommage
+    # Fonctions
     function Load-TemplatesAndButtons {
         try {
             $script:templates = Get-Templates | Where-Object { $_.enabled -eq $true }
@@ -242,7 +261,7 @@ function Start-GUI {
         }
     }
     
-    # Événements pour l'onglet Convention de nommage
+    # Événements
     $textBox.Add_Enter({
         if (-not $script:formulaireCharge) { return }
         if ($script:estEnModePlaceholder) {
@@ -294,3 +313,4 @@ function Start-GUI {
     [System.Windows.Forms.Application]::EnableVisualStyles()
     [System.Windows.Forms.Application]::Run($form)
 }
+

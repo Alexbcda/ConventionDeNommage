@@ -2,18 +2,21 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$scriptPath = "C:\Users\alexa\Documents\ConventionDeNommage\src"
-. "$scriptPath\ODM\ODMViewer.ps1"
+. "C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Components\DataManager.ps1"
+. "C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Components\PlanningPanel.ps1"
 
-$resultat = Show-ODMViewer
+$collecteurs = Get-Collecteurs
+$vehicules = Get-Vehicules
+$planningData = $null
 
-Write-Host "Type de l'objet retourné: $($resultat.GetType())" -ForegroundColor Yellow
+$resultat = Show-PlanningPanel -Collecteurs $collecteurs -Vehicules $vehicules -PlanningData ([ref]$planningData)
+
+Write-Host "Type du résultat: $($resultat.GetType())" -ForegroundColor Yellow
 Write-Host "Est-ce un Panel? $($resultat -is [System.Windows.Forms.Panel])" -ForegroundColor Yellow
-Write-Host "Propriétés disponibles:" -ForegroundColor Cyan
-$resultat | Get-Member -MemberType Property | Select-Object -First 10 Name
 
-if ($resultat -is [System.Windows.Forms.Panel]) {
-    Write-Host "`n✅ C'est bien un Panel, on peut l'ajouter" -ForegroundColor Green
-} else {
-    Write-Host "`n❌ Ce n'est PAS un Panel" -ForegroundColor Red
+if ($resultat -is [array]) {
+    Write-Host "C'est un tableau avec $($resultat.Count) éléments" -ForegroundColor Red
+    for ($i = 0; $i -lt $resultat.Count; $i++) {
+        Write-Host "  [$i] Type: $($resultat[$i].GetType())" -ForegroundColor Gray
+    }
 }
