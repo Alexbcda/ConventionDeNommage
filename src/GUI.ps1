@@ -1,4 +1,4 @@
-# GUI.ps1 - Interface graphique avec onglets Convention de nommage et Planning
+# GUI.ps1 - Interface graphique avec onglets
 
 function Start-GUI {
     param([string]$FichierPDF)
@@ -11,11 +11,6 @@ function Start-GUI {
     . "$PSScriptRoot\Core\Rename.ps1"
     . "$PSScriptRoot\Core\TemplateEditor.ps1"
     . "$PSScriptRoot\ODM\ODMViewer.ps1"
-    
-    if (-not $FichierPDF -or -not (Test-Path $FichierPDF)) { 
-        Write-Host "Fichier PDF invalide: $FichierPDF"
-        exit 
-    }
     
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "Convention de nommage - v2.0"
@@ -42,12 +37,14 @@ function Start-GUI {
     $margeGauche = 35
     $largeurPlaceholder = 470
     
+    # Champ texte
     $textBox = New-Object System.Windows.Forms.TextBox
     $textBox.Location = New-Object System.Drawing.Point($margeGauche, 40)
     $textBox.Size = New-Object System.Drawing.Size($largeurPlaceholder, 35)
     $textBox.Font = $font
     $panelRename.Controls.Add($textBox)
     
+    # Panel pour les boutons dynamiques
     $buttonsPanel = New-Object System.Windows.Forms.Panel
     $buttonsPanel.Location = New-Object System.Drawing.Point($margeGauche, 95)
     $buttonsPanel.Size = New-Object System.Drawing.Size(610, 120)
@@ -87,23 +84,13 @@ function Start-GUI {
     $forceLabel.Text = ""
     $panelRename.Controls.Add($forceLabel)
     
-    $btnManageRules = New-Object System.Windows.Forms.Button
-    $btnManageRules.Text = "⚙️ Gérer les règles"
-    $btnManageRules.Location = New-Object System.Drawing.Point($margeGauche, 300)
-    $btnManageRules.Size = New-Object System.Drawing.Size(200, 40)
-    $btnManageRules.BackColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
-    $btnManageRules.ForeColor = [System.Drawing.Color]::White
-    $btnManageRules.FlatStyle = "Flat"
-    $btnManageRules.Font = New-Object System.Drawing.Font("Arial", 10)
-    $panelRename.Controls.Add($btnManageRules)
-    
     $tabRename.Controls.Add($panelRename)
     
     # ========== ONGLET 2 : PLANNING (ODM) ==========
     $tabPlanning = New-Object System.Windows.Forms.TabPage
     $tabPlanning.Text = "📋 Planning (ODM)"
     
-    # Appeler Show-ODMViewer qui retourne le panel
+    # Appeler Show-ODMViewer
     $planningPanel = Show-ODMViewer
     $planningPanel.Dock = "Fill"
     $tabPlanning.Controls.Add($planningPanel)
@@ -111,10 +98,9 @@ function Start-GUI {
     # Ajouter les onglets
     $tabControl.TabPages.Add($tabRename)
     $tabControl.TabPages.Add($tabPlanning)
-    
     $form.Controls.Add($tabControl)
     
-    # Variables pour l'onglet Convention de nommage
+    # Variables
     $script:estEnModePlaceholder = $true
     $script:texteUtilisateur = ""
     $script:formulaireCharge = $false
@@ -123,7 +109,7 @@ function Start-GUI {
     $script:currentPlaceholder = ""
     $script:templates = @()
     
-    # Fonctions pour l'onglet Convention de nommage
+    # Fonctions
     function Load-TemplatesAndButtons {
         try {
             $script:templates = Get-Templates | Where-Object { $_.enabled -eq $true }
@@ -212,11 +198,6 @@ function Start-GUI {
         }
     }
     
-    function Update-RulesList {
-        # Cette fonction est pour l'onglet gestion des règles
-        # Elle sera appelée depuis TemplateEditor
-    }
-    
     function Set-PlaceholderMode {
         param($textBox, $activer)
         if ($activer) {
@@ -256,7 +237,7 @@ function Start-GUI {
         }
     }
     
-    # Événements pour l'onglet Convention de nommage
+    # Événements
     $textBox.Add_Enter({
         if (-not $script:formulaireCharge) { return }
         if ($script:estEnModePlaceholder) {
@@ -291,12 +272,6 @@ function Start-GUI {
             $script:dateForcee = $false
             $forceLabel.Text = ""
         }
-    })
-    
-    $btnManageRules.Add_Click({
-        Show-TemplateEditor
-        Load-TemplatesAndButtons
-        Update-RulesList
     })
     
     $form.Add_Shown({

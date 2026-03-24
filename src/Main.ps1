@@ -1,11 +1,12 @@
-﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 . "$scriptPath\Config.ps1"
-. "$scriptPath\Core\Rename.ps1"
 . "$scriptPath\Core\TemplateManager.ps1"
+. "$scriptPath\Core\Rename.ps1"
 . "$scriptPath\Core\TemplateEditor.ps1"
+. "$scriptPath\ODM\ODMViewer.ps1"
 . "$scriptPath\GUI.ps1"
 
 function Find-PDFFile {
@@ -27,6 +28,8 @@ function Find-PDFFile {
     return $null
 }
 
+# Lancer l'interface avec onglets
+# Si un fichier est passé en paramètre, on l'utilise pour l'onglet Convention de nommage
 if ($args.Count -gt 0) {
     $fichierPDF = $args[0] -replace '^"|"$', '' -replace "'", ''
     $fichierTrouve = Find-PDFFile $fichierPDF
@@ -35,19 +38,14 @@ if ($args.Count -gt 0) {
     } else {
         Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.MessageBox]::Show(
-            "Aucun fichier PDF trouvé dans le dossier courant.`n`nVeuillez sélectionner un fichier PDF.", 
-            "Erreur", 
+            "Aucun fichier PDF trouvé dans le dossier courant.`n`nL'interface va s'ouvrir sans fichier sélectionné.", 
+            "Information", 
             [System.Windows.Forms.MessageBoxButtons]::OK, 
-            [System.Windows.Forms.MessageBoxIcon]::Error
+            [System.Windows.Forms.MessageBoxIcon]::Information
         )
+        Start-GUI -FichierPDF $null
     }
 } else {
-    Add-Type -AssemblyName System.Windows.Forms
-    $openFileDialog = New-Object System.Windows.Forms.OpenFileDialog
-    $openFileDialog.Filter = "Fichiers PDF (*.pdf)|*.pdf"
-    $openFileDialog.Title = "Sélectionner un fichier PDF à renommer"
-    
-    if ($openFileDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        Start-GUI -FichierPDF $openFileDialog.FileName
-    }
+    # Si pas de fichier en paramètre, on lance quand même l'interface
+    Start-GUI -FichierPDF $null
 }
