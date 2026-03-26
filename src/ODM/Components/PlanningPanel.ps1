@@ -24,7 +24,7 @@ function Show-PlanningPanel {
     $script:screen1.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     
     $lblDate = New-Object System.Windows.Forms.Label
-    $lblDate.Text = "Choisir une date"
+    $lblDate.Text = "CHOISIR UNE DATE"
     $lblDate.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
     $lblDate.ForeColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
     $lblDate.Location = New-Object System.Drawing.Point(20, 25)
@@ -39,17 +39,18 @@ function Show-PlanningPanel {
     $script:screen1.Controls.Add($script:datePicker)
     
     $btnValiderDate = New-Object System.Windows.Forms.Button
-    $btnValiderDate.Text = "Valider"
-    $btnValiderDate.Size = New-Object System.Drawing.Size(100, 30)
-    $btnValiderDate.Location = New-Object System.Drawing.Point(280, 20)
+    $btnValiderDate.Text = "VALIDER"
+    $btnValiderDate.Size = New-Object System.Drawing.Size(100, 40)
+    $btnValiderDate.Location = New-Object System.Drawing.Point(280, 18)
     $btnValiderDate.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
-    $btnValiderDate.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
-    $btnValiderDate.Font = New-Object System.Drawing.Font("Arial", 10)
     $btnValiderDate.FlatStyle = "Flat"
     $btnValiderDate.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
     $btnValiderDate.FlatAppearance.BorderSize = 2
+    $btnValiderDate.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnValiderDate.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
     $btnValiderDate.Cursor = [System.Windows.Forms.Cursors]::Hand
     
+    # Effet survol (identique CERTIFICAT)
     $btnValiderDate.Add_MouseEnter({
         $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
         $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
@@ -117,7 +118,7 @@ function Show-PlanningPanel {
         Write-Host "=== BOUTON VALIDER CLIQUÉ ===" -ForegroundColor Cyan
         $selectedDate = $script:datePicker.Value
         Write-Host "Date: $selectedDate" -ForegroundColor Yellow
-        $script:btnImportPDF.Text = "Importer les ODM du " + $selectedDate.ToString("dd/MM/yyyy")
+        $script:btnImportPDF.Text = "IMPORTER LES ODM DU " + $selectedDate.ToString("dd/MM/yyyy")
         Write-Host "Texte: $($script:btnImportPDF.Text)" -ForegroundColor Green
         $script:screen1.Visible = $false
         $script:screen2.Visible = $true
@@ -135,3 +136,10 @@ function Show-PlanningPanel {
     
     return ,$panel
 }
+
+
+
+
+
+
+
