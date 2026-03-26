@@ -1,4 +1,4 @@
-# PlanningPanel.ps1 - Version avec variables de script
+# PlanningPanel.ps1 - Version avec panel personnalisé
 
 function Show-PlanningPanel {
     param(
@@ -24,24 +24,24 @@ function Show-PlanningPanel {
     $script:screen1.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     
     $lblDate = New-Object System.Windows.Forms.Label
-    $lblDate.Text = "CHOISIR UNE DATE"
-    $lblDate.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+    $lblDate.Text = "Choisir une date"
+    $lblDate.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
     $lblDate.ForeColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
-    $lblDate.Location = New-Object System.Drawing.Point(20, 25)
-    $lblDate.Size = New-Object System.Drawing.Size(120, 25)
+    $lblDate.Location = New-Object System.Drawing.Point(20, 22)
+    $lblDate.Size = New-Object System.Drawing.Size(130, 25)
     $script:screen1.Controls.Add($lblDate)
     
     $script:datePicker = New-Object System.Windows.Forms.DateTimePicker
     $script:datePicker.Format = "Short"
     $script:datePicker.Value = (Get-Date)
     $script:datePicker.Size = New-Object System.Drawing.Size(120, 25)
-    $script:datePicker.Location = New-Object System.Drawing.Point(150, 23)
+    $script:datePicker.Location = New-Object System.Drawing.Point(155, 20)
     $script:screen1.Controls.Add($script:datePicker)
     
     $btnValiderDate = New-Object System.Windows.Forms.Button
     $btnValiderDate.Text = "VALIDER"
-    $btnValiderDate.Size = New-Object System.Drawing.Size(100, 40)
-    $btnValiderDate.Location = New-Object System.Drawing.Point(280, 18)
+    $btnValiderDate.Size = New-Object System.Drawing.Size(120, 45)
+    $btnValiderDate.Location = New-Object System.Drawing.Point(290, 15)
     $btnValiderDate.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
     $btnValiderDate.FlatStyle = "Flat"
     $btnValiderDate.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
@@ -50,7 +50,6 @@ function Show-PlanningPanel {
     $btnValiderDate.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
     $btnValiderDate.Cursor = [System.Windows.Forms.Cursors]::Hand
     
-    # Effet survol (identique CERTIFICAT)
     $btnValiderDate.Add_MouseEnter({
         $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
         $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
@@ -68,33 +67,50 @@ function Show-PlanningPanel {
     # ========== ÉCRAN 2 : IMPORTER PDF ==========
     $script:screen2 = New-Object System.Windows.Forms.Panel
     $script:screen2.Dock = "Top"
-    $script:screen2.Height = 70
+    $script:screen2.Height = 85
     $script:screen2.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     $script:screen2.Visible = $false
     
-    $script:btnImportPDF = New-Object System.Windows.Forms.Button
-    $script:btnImportPDF.Size = New-Object System.Drawing.Size(280, 40)
-    $script:btnImportPDF.Location = New-Object System.Drawing.Point(20, 15)
-    $script:btnImportPDF.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
-    $script:btnImportPDF.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
-    $script:btnImportPDF.Font = New-Object System.Drawing.Font("Arial", 10)
-    $script:btnImportPDF.FlatStyle = "Flat"
-    $script:btnImportPDF.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
-    $script:btnImportPDF.FlatAppearance.BorderSize = 2
-    $script:btnImportPDF.Cursor = [System.Windows.Forms.Cursors]::Hand
+    # Panel personnalisé pour l'import
+    $btnImport = New-Object System.Windows.Forms.Button
+    $btnImport.Size = New-Object System.Drawing.Size(400, 70)
+    $btnImport.Location = New-Object System.Drawing.Point(20, 8)
+    $btnImport.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnImport.FlatStyle = "Flat"
+    $btnImport.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnImport.FlatAppearance.BorderSize = 2
+    $btnImport.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnImport.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
+    $btnImport.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnImport.TextAlign = "MiddleCenter"
+    $btnImport.Text = "IMPORTER LES ODM DU`n`n"
     
-    $script:btnImportPDF.Add_MouseEnter({
+    $btnImport.Add_MouseEnter({
         $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
         $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
         $this.ForeColor = [System.Drawing.Color]::White
     })
-    $script:btnImportPDF.Add_MouseLeave({
+    $btnImport.Add_MouseLeave({
         $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
         $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
         $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
     })
     
-    $script:screen2.Controls.Add($script:btnImportPDF)
+    $btnImport.Add_Click({
+        $openDialog = New-Object System.Windows.Forms.OpenFileDialog
+        $openDialog.Filter = "Fichiers PDF (*.pdf)|*.pdf"
+        if ($openDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+            $script:screen2.Visible = $false
+            $script:screen3.Visible = $true
+            $lblMessage.Text = "PDF chargé : $(Split-Path $openDialog.FileName -Leaf)"
+        }
+    })
+    
+    $script:screen2.Controls.Add($btnImport)
+    $script:btnImport = $btnImport
+    $script:importLblDate = $lblDate
+    $script:importPanel = $importPanel
+    $script:importLblDate = $lblDate
     $panel.Controls.Add($script:screen2)
     
     # ========== ÉCRAN 3 : ZONE VIDE ==========
@@ -115,27 +131,15 @@ function Show-PlanningPanel {
     
     # ========== LOGIQUE ==========
     $btnValiderDate.Add_Click({
-        Write-Host "=== BOUTON VALIDER CLIQUÉ ===" -ForegroundColor Cyan
         $selectedDate = $script:datePicker.Value
-        Write-Host "Date: $selectedDate" -ForegroundColor Yellow
-        $script:btnImportPDF.Text = "IMPORTER LES ODM DU " + $selectedDate.ToString("dd/MM/yyyy")
-        Write-Host "Texte: $($script:btnImportPDF.Text)" -ForegroundColor Green
+        $script:lblDateDisplay.Text = $selectedDate.ToString("dd/MM/yyyy")
         $script:screen1.Visible = $false
         $script:screen2.Visible = $true
     })
     
-    $script:btnImportPDF.Add_Click({
-        $openDialog = New-Object System.Windows.Forms.OpenFileDialog
-        $openDialog.Filter = "Fichiers PDF (*.pdf)|*.pdf"
-        if ($openDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-            $script:screen2.Visible = $false
-            $script:screen3.Visible = $true
-            $lblMessage.Text = "PDF chargé : $(Split-Path $openDialog.FileName -Leaf)"
-        }
-    })
-    
     return ,$panel
 }
+
 
 
 
