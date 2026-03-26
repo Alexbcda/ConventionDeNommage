@@ -1,4 +1,4 @@
-# GUI.ps1 - Interface graphique avec 4 onglets
+# GUI.ps1 - Interface graphique avec onglets Convention de nommage et Planning
 
 function Start-GUI {
     param([string]$FichierPDF)
@@ -13,27 +13,26 @@ function Start-GUI {
     . "$PSScriptRoot\ODM\ODMViewer.ps1"
     
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = "Convention de nommage"
-    $form.Size = New-Object System.Drawing.Size(1400, 700)
+    $form.Text = "Convention de nommage - v2.0"
+    $form.Size = New-Object System.Drawing.Size(1200, 800)
     $form.StartPosition = "CenterScreen"
-    $form.FormBorderStyle = "Sizable"
-    $form.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
-    $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-    $form.MinimumSize = New-Object System.Drawing.Size(1000, 550)
+    $form.FormBorderStyle = "FixedDialog"
+    $form.BackColor = $formBackColor
+    $form.Font = $font
+    $form.Topmost = $true
     
     # Onglets principaux
     $tabControl = New-Object System.Windows.Forms.TabControl
     $tabControl.Dock = "Fill"
-    $tabControl.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $tabControl.Padding = New-Object System.Drawing.Point(10, 5)
     
     # ========== ONGLET 1 : CONVENTION DE NOMMAGE ==========
     $tabRename = New-Object System.Windows.Forms.TabPage
-    $tabRename.Text = "Convention de nommage"
-    $tabRename.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $tabRename.Text = "🏷️ Convention de nommage"
     
     $panelRename = New-Object System.Windows.Forms.Panel
     $panelRename.Dock = "Fill"
-    $panelRename.Padding = New-Object System.Windows.Forms.Padding(20)
+    $panelRename.Padding = New-Object System.Windows.Forms.Padding(20, 10, 20, 10)
     
     $margeGauche = 35
     $largeurPlaceholder = 470
@@ -42,7 +41,7 @@ function Start-GUI {
     $textBox = New-Object System.Windows.Forms.TextBox
     $textBox.Location = New-Object System.Drawing.Point($margeGauche, 40)
     $textBox.Size = New-Object System.Drawing.Size($largeurPlaceholder, 35)
-    $textBox.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $textBox.Font = $font
     $panelRename.Controls.Add($textBox)
     
     # Panel pour les boutons dynamiques
@@ -57,14 +56,14 @@ function Start-GUI {
     $calLabel.Text = "Forcer la date :"
     $calLabel.Location = New-Object System.Drawing.Point($margeGauche, 225)
     $calLabel.Size = New-Object System.Drawing.Size(120, 20)
-    $calLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+    $calLabel.Font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Bold)
     $panelRename.Controls.Add($calLabel)
     
     $datePicker = New-Object System.Windows.Forms.DateTimePicker
     $datePicker.Location = New-Object System.Drawing.Point($margeGauche, 250)
     $datePicker.Size = New-Object System.Drawing.Size(220, 25)
     $datePicker.Format = "Short"
-    $datePicker.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $datePicker.Font = New-Object System.Drawing.Font("Arial", 9)
     
     function Get-DateParDefaut {
         $aujourdhui = Get-Date
@@ -80,20 +79,19 @@ function Start-GUI {
     $forceLabel = New-Object System.Windows.Forms.Label
     $forceLabel.Location = New-Object System.Drawing.Point(($margeGauche + 230), 252)
     $forceLabel.Size = New-Object System.Drawing.Size(220, 20)
-    $forceLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+    $forceLabel.Font = New-Object System.Drawing.Font("Arial", 8, [System.Drawing.FontStyle]::Bold)
     $forceLabel.ForeColor = [System.Drawing.Color]::Red
     $forceLabel.Text = ""
     $panelRename.Controls.Add($forceLabel)
     
     $tabRename.Controls.Add($panelRename)
     
-    # ========== ONGLET 2 : PLANNING ==========
+    # ========== ONGLET 2 : PLANNING (ODM) ==========
     $tabPlanning = New-Object System.Windows.Forms.TabPage
-    $tabPlanning.Text = "Planning"
-    $tabPlanning.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $tabPlanning.Text = "📋 Planning (ODM)"
     
-    # Appeler Show-ODMViewer pour le planning
-    $planningResult = Show-ODMViewer -PanelType "Planning"
+    $planningResult = Show-ODMViewer
+    # Prendre le dernier élément (le panel) car la fonction retourne un tableau
     if ($planningResult -is [array]) {
         $planningPanel = $planningResult[-1]
     } else {
@@ -102,43 +100,12 @@ function Start-GUI {
     $planningPanel.Dock = "Fill"
     $tabPlanning.Controls.Add($planningPanel)
     
-    # ========== ONGLET 3 : COLLECTEURS ==========
-    $tabCollecteurs = New-Object System.Windows.Forms.TabPage
-    $tabCollecteurs.Text = "Données collecteurs"
-    $tabCollecteurs.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
-    
-    $collecteursResult = Show-ODMViewer -PanelType "Collecteurs"
-    if ($collecteursResult -is [array]) {
-        $collecteursPanel = $collecteursResult[-1]
-    } else {
-        $collecteursPanel = $collecteursResult
-    }
-    $collecteursPanel.Dock = "Fill"
-    $tabCollecteurs.Controls.Add($collecteursPanel)
-    
-    # ========== ONGLET 4 : VÉHICULES ==========
-    $tabVehicules = New-Object System.Windows.Forms.TabPage
-    $tabVehicules.Text = "Données véhicules"
-    $tabVehicules.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
-    
-    $vehiculesResult = Show-ODMViewer -PanelType "Vehicules"
-    if ($vehiculesResult -is [array]) {
-        $vehiculesPanel = $vehiculesResult[-1]
-    } else {
-        $vehiculesPanel = $vehiculesResult
-    }
-    $vehiculesPanel.Dock = "Fill"
-    $tabVehicules.Controls.Add($vehiculesPanel)
-    
     # Ajouter les onglets
     $tabControl.TabPages.Add($tabRename)
     $tabControl.TabPages.Add($tabPlanning)
-    $tabControl.TabPages.Add($tabCollecteurs)
-    $tabControl.TabPages.Add($tabVehicules)
-    
     $form.Controls.Add($tabControl)
     
-    # ========== FONCTIONS POUR L'ONGLET CONVENTION DE NOMMAGE ==========
+    # Variables
     $script:estEnModePlaceholder = $true
     $script:texteUtilisateur = ""
     $script:formulaireCharge = $false
@@ -147,6 +114,7 @@ function Start-GUI {
     $script:currentPlaceholder = ""
     $script:templates = @()
     
+    # Fonctions pour l'onglet Convention de nommage
     function Load-TemplatesAndButtons {
         try {
             $script:templates = Get-Templates | Where-Object { $_.enabled -eq $true }
@@ -171,7 +139,7 @@ function Start-GUI {
                 $btn.FlatAppearance.BorderColor = [System.Drawing.ColorTranslator]::FromHtml($template.borderColor)
                 $btn.FlatAppearance.BorderSize = 2
                 $btn.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
-                $btn.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+                $btn.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
                 $btn.TextAlign = "MiddleCenter"
                 $btn.Tag = $template.id
                 
@@ -274,7 +242,7 @@ function Start-GUI {
         }
     }
     
-    # Événements
+    # Événements pour l'onglet Convention de nommage
     $textBox.Add_Enter({
         if (-not $script:formulaireCharge) { return }
         if ($script:estEnModePlaceholder) {

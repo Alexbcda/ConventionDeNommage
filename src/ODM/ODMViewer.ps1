@@ -1,6 +1,10 @@
-# ODMViewer.ps1 - Orchestrateur
+# ODMViewer.ps1 - Version simplifiée
 
 function Show-ODMViewer {
+    param(
+        [string]$PanelType = "Planning"
+    )
+    
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     
@@ -14,66 +18,37 @@ function Show-ODMViewer {
     $collecteurs = Get-Collecteurs
     $vehicules = Get-Vehicules
     
-    # Si pas de données, initialiser
     if ($collecteurs.Count -eq 0) {
         $collecteurs, $vehicules = Initialize-DefaultData
     }
     
-    # Variables pour stocker les modifications
+    $planningData = $null
     $updatedCollecteurs = $collecteurs
     $updatedVehicules = $vehicules
-    $planningData = $null
     
-    # Créer le panel principal
-    $mainPanel = New-Object System.Windows.Forms.Panel
-    $mainPanel.Dock = "Fill"
-    $mainPanel.BackColor = [System.Drawing.Color]::White
+    # Créer le panel
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = "Fill"
+    $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     
-    # TabControl
-    $tabControl = New-Object System.Windows.Forms.TabControl
-    $tabControl.Dock = "Fill"
-    $tabControl.Font = New-Object System.Drawing.Font("Arial", 10)
-    
-    # Onglet PLANNING
-    $tabPlanning = New-Object System.Windows.Forms.TabPage
-    $tabPlanning.Text = "📋 PLANNING"
-    $planningResult = Show-PlanningPanel -Collecteurs $collecteurs -Vehicules $vehicules -PlanningData ([ref]$planningData)
-    if ($planningResult -is [array]) {
-        $planningPanel = $planningResult[-1]
-    } else {
-        $planningPanel = $planningResult
+    if ($PanelType -eq "Planning") {
+        $result = Show-PlanningPanel -Collecteurs $collecteurs -Vehicules $vehicules -PlanningData ([ref]$planningData)
+        if ($result -is [array]) { $result = $result[-1] }
+        $result.Dock = "Fill"
+        $panel.Controls.Add($result)
     }
-    $planningPanel.Dock = "Fill"
-    $tabPlanning.Controls.Add($planningPanel)
-    $tabControl.TabPages.Add($tabPlanning)
-    
-    # Onglet COLLECTEURS
-    $tabCollecteurs = New-Object System.Windows.Forms.TabPage
-    $tabCollecteurs.Text = "👨‍✈️ COLLECTEURS"
-    $collecteursResult = Show-CollecteursPanel -Collecteurs $collecteurs -UpdatedCollecteurs ([ref]$updatedCollecteurs)
-    if ($collecteursResult -is [array]) {
-        $collecteursPanel = $collecteursResult[-1]
-    } else {
-        $collecteursPanel = $collecteursResult
+    elseif ($PanelType -eq "Collecteurs") {
+        $result = Show-CollecteursPanel -Collecteurs $collecteurs -UpdatedCollecteurs ([ref]$updatedCollecteurs)
+        if ($result -is [array]) { $result = $result[-1] }
+        $result.Dock = "Fill"
+        $panel.Controls.Add($result)
     }
-    $collecteursPanel.Dock = "Fill"
-    $tabCollecteurs.Controls.Add($collecteursPanel)
-    $tabControl.TabPages.Add($tabCollecteurs)
-    
-    # Onglet VÉHICULES
-    $tabVehicules = New-Object System.Windows.Forms.TabPage
-    $tabVehicules.Text = "🚛 VÉHICULES"
-    $vehiculesResult = Show-VehiculesPanel -Vehicules $vehicules -UpdatedVehicules ([ref]$updatedVehicules)
-    if ($vehiculesResult -is [array]) {
-        $vehiculesPanel = $vehiculesResult[-1]
-    } else {
-        $vehiculesPanel = $vehiculesResult
+    elseif ($PanelType -eq "Vehicules") {
+        $result = Show-VehiculesPanel -Vehicules $vehicules -UpdatedVehicules ([ref]$updatedVehicules)
+        if ($result -is [array]) { $result = $result[-1] }
+        $result.Dock = "Fill"
+        $panel.Controls.Add($result)
     }
-    $vehiculesPanel.Dock = "Fill"
-    $tabVehicules.Controls.Add($vehiculesPanel)
-    $tabControl.TabPages.Add($tabVehicules)
     
-    $mainPanel.Controls.Add($tabControl)
-    
-    return $mainPanel
+    return $panel
 }
