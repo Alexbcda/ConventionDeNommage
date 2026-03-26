@@ -1,4 +1,4 @@
-﻿# Fonction pour renommer les PDF selon le type
+# Fonction pour renommer les PDF selon le type
 function Rename-PDF {
     param(
         [string]$Type,
@@ -36,7 +36,7 @@ function Rename-PDF {
     
     switch ($Type) {
         "certificat" {
-            $dateFormatee = $DateSelectionnee.ToString("dd.MM.yy")
+            $dateFormatee = $DateSelectionnee.ToString("dd.MM.yyyy")
             $nouveauNom = "Certificat de Destruction-$nomSaisi-du $dateFormatee.pdf"
         }
         "planner" {
