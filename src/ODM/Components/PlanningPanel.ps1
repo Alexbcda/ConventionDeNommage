@@ -1,4 +1,4 @@
-# PlanningPanel.ps1 - Version avec panel personnalisé
+# PlanningPanel.ps1 - Version finale avec variables de script
 
 function Show-PlanningPanel {
     param(
@@ -67,36 +67,35 @@ function Show-PlanningPanel {
     # ========== ÉCRAN 2 : IMPORTER PDF ==========
     $script:screen2 = New-Object System.Windows.Forms.Panel
     $script:screen2.Dock = "Top"
-    $script:screen2.Height = 85
+    $script:screen2.Height = 110
     $script:screen2.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     $script:screen2.Visible = $false
     
-    # Panel personnalisé pour l'import
-    $btnImport = New-Object System.Windows.Forms.Button
-    $btnImport.Size = New-Object System.Drawing.Size(400, 70)
-    $btnImport.Location = New-Object System.Drawing.Point(20, 8)
-    $btnImport.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
-    $btnImport.FlatStyle = "Flat"
-    $btnImport.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
-    $btnImport.FlatAppearance.BorderSize = 2
-    $btnImport.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
-    $btnImport.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
-    $btnImport.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $btnImport.TextAlign = "MiddleCenter"
-    $btnImport.Text = "IMPORTER LES ODM DU`n`n"
+    $script:btnImport = New-Object System.Windows.Forms.Button
+    $script:btnImport.Size = New-Object System.Drawing.Size(420, 95)
+    $script:btnImport.Location = New-Object System.Drawing.Point(20, 5)
+    $script:btnImport.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $script:btnImport.FlatStyle = "Flat"
+    $script:btnImport.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $script:btnImport.FlatAppearance.BorderSize = 2
+    $script:btnImport.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $script:btnImport.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
+    $script:btnImport.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $script:btnImport.TextAlign = "MiddleCenter"
+    $script:btnImport.Text = "IMPORTER LES ODM DU"
     
-    $btnImport.Add_MouseEnter({
+    $script:btnImport.Add_MouseEnter({
         $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
         $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
         $this.ForeColor = [System.Drawing.Color]::White
     })
-    $btnImport.Add_MouseLeave({
+    $script:btnImport.Add_MouseLeave({
         $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
         $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
         $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
     })
     
-    $btnImport.Add_Click({
+    $script:btnImport.Add_Click({
         $openDialog = New-Object System.Windows.Forms.OpenFileDialog
         $openDialog.Filter = "Fichiers PDF (*.pdf)|*.pdf"
         if ($openDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
@@ -106,14 +105,10 @@ function Show-PlanningPanel {
         }
     })
     
-    $script:screen2.Controls.Add($btnImport)
-    $script:btnImport = $btnImport
-    $script:importLblDate = $lblDate
-    $script:importPanel = $importPanel
-    $script:importLblDate = $lblDate
+    $script:screen2.Controls.Add($script:btnImport)
     $panel.Controls.Add($script:screen2)
     
-    # ========== ÉCRAN 3 : ZONE VIDE ==========
+    # ========== ÉCRAN 3 : CONFIRMATION ==========
     $script:screen3 = New-Object System.Windows.Forms.Panel
     $script:screen3.Dock = "Fill"
     $script:screen3.BackColor = [System.Drawing.Color]::White
@@ -132,18 +127,11 @@ function Show-PlanningPanel {
     # ========== LOGIQUE ==========
     $btnValiderDate.Add_Click({
         $selectedDate = $script:datePicker.Value
-        $script:lblDateDisplay.Text = $selectedDate.ToString("dd/MM/yyyy")
+        $script:btnImport.Text = "IMPORTER LES ODM DU" + "`n`n" + $selectedDate.ToString("dd/MM/yyyy")
         $script:screen1.Visible = $false
         $script:screen2.Visible = $true
     })
     
     return ,$panel
 }
-
-
-
-
-
-
-
 
