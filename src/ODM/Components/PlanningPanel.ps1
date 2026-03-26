@@ -1,4 +1,4 @@
-# PlanningPanel.ps1 - Version finale
+# PlanningPanel.ps1 - Calendrier sur une ligne
 
 function Show-PlanningPanel {
     param(
@@ -12,268 +12,135 @@ function Show-PlanningPanel {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     
-    Write-Host "=== Show-PlanningPanel démarré ===" -ForegroundColor Cyan
-    
-    # Créer le panel principal
     $panel = New-Object System.Windows.Forms.Panel
     $panel.Dock = "Fill"
-    $panel.BackColor = [System.Drawing.Color]::White
+    $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     $panel.Padding = New-Object System.Windows.Forms.Padding(20)
-    $panel.AutoScroll = $true
     
-    # En-tête
-    $headerPanel = New-Object System.Windows.Forms.Panel
-    $headerPanel.Dock = "Top"
-    $headerPanel.Height = 80
-    $headerPanel.BackColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
-    
-    $title = New-Object System.Windows.Forms.Label
-    $title.Text = "📋 PLANNING DES TOURNÉES"
-    $title.Font = New-Object System.Drawing.Font("Arial", 14, [System.Drawing.FontStyle]::Bold)
-    $title.ForeColor = [System.Drawing.Color]::White
-    $title.Location = New-Object System.Drawing.Point(20, 15)
-    $title.Size = New-Object System.Drawing.Size(300, 30)
-    $headerPanel.Controls.Add($title)
+    # ========== ÉCRAN 1 : CHOISIR LA DATE ==========
+    $screen1 = New-Object System.Windows.Forms.Panel
+    $screen1.Dock = "Top"
+    $screen1.Height = 70
+    $screen1.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     
     $lblDate = New-Object System.Windows.Forms.Label
-    $lblDate.Text = "📅 Date :"
-    $lblDate.ForeColor = [System.Drawing.Color]::White
-    $lblDate.Font = New-Object System.Drawing.Font("Arial", 10)
-    $lblDate.Location = New-Object System.Drawing.Point(20, 50)
-    $lblDate.Size = New-Object System.Drawing.Size(60, 25)
-    $headerPanel.Controls.Add($lblDate)
+    $lblDate.Text = "Choisir une date"
+    $lblDate.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+    $lblDate.ForeColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $lblDate.Location = New-Object System.Drawing.Point(20, 25)
+    $lblDate.Size = New-Object System.Drawing.Size(120, 25)
+    $screen1.Controls.Add($lblDate)
     
     $datePicker = New-Object System.Windows.Forms.DateTimePicker
     $datePicker.Format = "Short"
     $datePicker.Value = (Get-Date)
-    $datePicker.Location = New-Object System.Drawing.Point(90, 47)
-    $datePicker.Size = New-Object System.Drawing.Size(140, 25)
-    $headerPanel.Controls.Add($datePicker)
+    $datePicker.Size = New-Object System.Drawing.Size(120, 25)
+    $datePicker.Location = New-Object System.Drawing.Point(150, 23)
+    $screen1.Controls.Add($datePicker)
     
-    $panel.Controls.Add($headerPanel)
+    $btnValiderDate = New-Object System.Windows.Forms.Button
+    $btnValiderDate.Text = "Valider"
+    $btnValiderDate.Size = New-Object System.Drawing.Size(100, 30)
+    $btnValiderDate.Location = New-Object System.Drawing.Point(280, 20)
+    $btnValiderDate.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnValiderDate.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnValiderDate.Font = New-Object System.Drawing.Font("Arial", 10)
+    $btnValiderDate.FlatStyle = "Flat"
+    $btnValiderDate.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnValiderDate.FlatAppearance.BorderSize = 2
+    $btnValiderDate.Cursor = [System.Windows.Forms.Cursors]::Hand
     
-    # Zone des tournées
-    $lblTournees = New-Object System.Windows.Forms.Label
-    $lblTournees.Text = "🚌 TOURNÉES DU JOUR"
-    $lblTournees.Font = New-Object System.Drawing.Font("Arial", 11, [System.Drawing.FontStyle]::Bold)
-    $lblTournees.Location = New-Object System.Drawing.Point(20, 100)
-    $lblTournees.Size = New-Object System.Drawing.Size(300, 25)
-    $panel.Controls.Add($lblTournees)
-    
-    # Conteneur des lignes
-    $rowsContainer = New-Object System.Windows.Forms.Panel
-    $rowsContainer.Location = New-Object System.Drawing.Point(20, 130)
-    $rowsContainer.Size = New-Object System.Drawing.Size(900, 400)
-    $rowsContainer.AutoScroll = $true
-    $rowsContainer.BackColor = [System.Drawing.Color]::White
-    $rowsContainer.BorderStyle = "FixedSingle"
-    
-    # Créer les listes
-    $collecteursList = New-Object System.Collections.ArrayList
-    $collecteursList.Add("-- Sélectionner --") | Out-Null
-    foreach ($c in $Collecteurs) {
-        $null = $collecteursList.Add("$($c.nom) $($c.prenom)")
-    }
-    
-    $vehiculesList = New-Object System.Collections.ArrayList
-    $vehiculesList.Add("-- Sélectionner --") | Out-Null
-    foreach ($v in $Vehicules) {
-        $null = $vehiculesList.Add("$($v.immatriculation) - $($v.marque) $($v.modele)")
-    }
-    
-    # Stocker les lignes
-    $script:tourneeRows = @()
-    $yPos = 10
-    $testCount = 10
-    
-    # Créer la fonction comme scriptblock global
-    $script:VerifierDoublons = {
-        Write-Host "=== Vérification des doublons ===" -ForegroundColor Cyan
-        
-        $collecteurCount = @{}
-        $vehiculeCount = @{}
-        
-        foreach ($row in $script:tourneeRows) {
-            $c = $row.cbCollecteur.SelectedItem
-            $v = $row.cbVehicule.SelectedItem
-            
-            if ($c -and $c -ne "-- Sélectionner --") {
-                $collecteurCount[$c] = ($collecteurCount[$c] + 1)
-            }
-            if ($v -and $v -ne "-- Sélectionner --") {
-                $vehiculeCount[$v] = ($vehiculeCount[$v] + 1)
-            }
-        }
-        
-        foreach ($row in $script:tourneeRows) {
-            $c = $row.cbCollecteur.SelectedItem
-            $v = $row.cbVehicule.SelectedItem
-            
-            $cCount = if ($c -and $c -ne "-- Sélectionner --") { $collecteurCount[$c] } else { 0 }
-            $vCount = if ($v -and $v -ne "-- Sélectionner --") { $vehiculeCount[$v] } else { 0 }
-            
-            if ($cCount -gt 1) {
-                $row.lblStatus.Text = "⚠️ Doublon collecteur!"
-                $row.lblStatus.ForeColor = [System.Drawing.Color]::Red
-                $row.panel.BackColor = [System.Drawing.Color]::FromArgb(255, 200, 200)
-            } elseif ($vCount -gt 1) {
-                $row.lblStatus.Text = "⚠️ Doublon véhicule!"
-                $row.lblStatus.ForeColor = [System.Drawing.Color]::Red
-                $row.panel.BackColor = [System.Drawing.Color]::FromArgb(255, 200, 200)
-            } elseif ($c -and $c -ne "-- Sélectionner --" -and $v -and $v -ne "-- Sélectionner --") {
-                $row.lblStatus.Text = "✓"
-                $row.lblStatus.ForeColor = [System.Drawing.Color]::Green
-                $row.panel.BackColor = [System.Drawing.Color]::FromArgb(220, 255, 220)
-            } elseif ($c -and $c -ne "-- Sélectionner --" -or $v -and $v -ne "-- Sélectionner --") {
-                $row.lblStatus.Text = "⚠️ Incomplet"
-                $row.lblStatus.ForeColor = [System.Drawing.Color]::Orange
-                $row.panel.BackColor = [System.Drawing.Color]::FromArgb(255, 255, 200)
-            } else {
-                $row.lblStatus.Text = ""
-                $row.panel.BackColor = [System.Drawing.Color]::FromArgb(250, 250, 250)
-            }
-        }
-        
-        Write-Host "Vérification terminée" -ForegroundColor Green
-    }
-    
-    # Créer les lignes
-    for ($i = 1; $i -le $testCount; $i++) {
-        Write-Host "Création ligne $i" -ForegroundColor Gray
-        
-        $rowPanel = New-Object System.Windows.Forms.Panel
-        $rowPanel.Location = New-Object System.Drawing.Point(5, $yPos)
-        $rowPanel.Size = New-Object System.Drawing.Size(880, 55)
-        $rowPanel.BackColor = [System.Drawing.Color]::FromArgb(250, 250, 250)
-        $rowPanel.BorderStyle = "FixedSingle"
-        
-        # Numéro
-        $lblNum = New-Object System.Windows.Forms.Label
-        $lblNum.Text = "Tournée $i"
-        $lblNum.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
-        $lblNum.Location = New-Object System.Drawing.Point(10, 17)
-        $lblNum.Size = New-Object System.Drawing.Size(80, 25)
-        $rowPanel.Controls.Add($lblNum)
-        
-        # ComboBox Collecteur
-        $cbCollecteur = New-Object System.Windows.Forms.ComboBox
-        $cbCollecteur.Location = New-Object System.Drawing.Point(100, 14)
-        $cbCollecteur.Size = New-Object System.Drawing.Size(250, 25)
-        $cbCollecteur.DropDownStyle = "DropDownList"
-        foreach ($item in $collecteursList) {
-            $cbCollecteur.Items.Add($item)
-        }
-        $cbCollecteur.SelectedIndex = 0
-        $rowPanel.Controls.Add($cbCollecteur)
-        
-        # ComboBox Véhicule
-        $cbVehicule = New-Object System.Windows.Forms.ComboBox
-        $cbVehicule.Location = New-Object System.Drawing.Point(370, 14)
-        $cbVehicule.Size = New-Object System.Drawing.Size(350, 25)
-        $cbVehicule.DropDownStyle = "DropDownList"
-        foreach ($item in $vehiculesList) {
-            $cbVehicule.Items.Add($item)
-        }
-        $cbVehicule.SelectedIndex = 0
-        $rowPanel.Controls.Add($cbVehicule)
-        
-        # Label de statut
-        $lblStatus = New-Object System.Windows.Forms.Label
-        $lblStatus.Location = New-Object System.Drawing.Point(740, 12)
-        $lblStatus.Size = New-Object System.Drawing.Size(130, 30)
-        $lblStatus.Font = New-Object System.Drawing.Font("Arial", 8)
-        $lblStatus.TextAlign = "MiddleLeft"
-        $rowPanel.Controls.Add($lblStatus)
-        
-        $rowsContainer.Controls.Add($rowPanel)
-        
-        $rowData = @{
-            num = $i
-            cbCollecteur = $cbCollecteur
-            cbVehicule = $cbVehicule
-            panel = $rowPanel
-            lblStatus = $lblStatus
-        }
-        
-        $cbCollecteur.Tag = $rowData
-        $cbVehicule.Tag = $rowData
-        
-        $cbCollecteur.Add_SelectedIndexChanged({
-            $row = $this.Tag
-            Write-Host "Collecteur ligne $($row.num) -> '$($this.SelectedItem)'" -ForegroundColor Magenta
-            & $script:VerifierDoublons
-        })
-        
-        $cbVehicule.Add_SelectedIndexChanged({
-            $row = $this.Tag
-            Write-Host "Véhicule ligne $($row.num) -> '$($this.SelectedItem)'" -ForegroundColor Magenta
-            & $script:VerifierDoublons
-        })
-        
-        $script:tourneeRows += $rowData
-        $yPos += 60
-    }
-    
-    $rowsContainer.Height = $yPos + 10
-    $panel.Controls.Add($rowsContainer)
-    
-    # Panel du bas
-    $bottomPanel = New-Object System.Windows.Forms.Panel
-    $bottomPanel.Dock = "Bottom"
-    $bottomPanel.Height = 60
-    $bottomPanel.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
-    
-    $btnValider = New-Object System.Windows.Forms.Button
-    $btnValider.Text = "✓ VALIDER"
-    $btnValider.Size = New-Object System.Drawing.Size(180, 40)
-    $btnValider.Location = New-Object System.Drawing.Point(20, 10)
-    $btnValider.BackColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
-    $btnValider.ForeColor = [System.Drawing.Color]::White
-    $btnValider.FlatStyle = "Flat"
-    $bottomPanel.Controls.Add($btnValider)
-    
-    $panel.Controls.Add($bottomPanel)
-    
-    # Initialiser
-    & $script:VerifierDoublons
-    
-    # Événement du bouton Valider
-    $btnValider.Add_Click({
-        & $script:VerifierDoublons
-        
-        $hasError = $false
-        foreach ($row in $script:tourneeRows) {
-            if ($row.lblStatus.Text -like "*doublon*") {
-                $hasError = $true
-            }
-        }
-        
-        if ($hasError) {
-            [System.Windows.Forms.MessageBox]::Show("Erreur: Des doublons détectés !", "Erreur")
-            return
-        }
-        
-        $data = @{
-            date = $datePicker.Value.ToString("dd/MM/yyyy")
-            tournees = @()
-        }
-        
-        foreach ($row in $script:tourneeRows) {
-            $c = $row.cbCollecteur.SelectedItem
-            $v = $row.cbVehicule.SelectedItem
-            if ($c -and $c -ne "-- Sélectionner --" -and $v -and $v -ne "-- Sélectionner --") {
-                $data.tournees += @{
-                    numero = $row.num
-                    collecteur = $c
-                    vehicule = $v
-                }
-            }
-        }
-        
-        $PlanningData.Value = $data
-        [System.Windows.Forms.MessageBox]::Show("Planning validé !", "Succès")
+    $btnValiderDate.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnValiderDate.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
     })
     
-    Write-Host "=== Show-PlanningPanel terminé ===" -ForegroundColor Green
+    $screen1.Controls.Add($btnValiderDate)
+    $panel.Controls.Add($screen1)
+    
+    # ========== ÉCRAN 2 : IMPORTER PDF ==========
+    $screen2 = New-Object System.Windows.Forms.Panel
+    $screen2.Dock = "Top"
+    $screen2.Height = 70
+    $screen2.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $screen2.Visible = $false
+    
+    $lblImport = New-Object System.Windows.Forms.Label
+    $lblImport.Text = "Importer le PDF des ODM"
+    $lblImport.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+    $lblImport.ForeColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $lblImport.Location = New-Object System.Drawing.Point(20, 25)
+    $lblImport.Size = New-Object System.Drawing.Size(180, 25)
+    $screen2.Controls.Add($lblImport)
+    
+    $btnImportPDF = New-Object System.Windows.Forms.Button
+    $btnImportPDF.Text = "Importer PDF"
+    $btnImportPDF.Size = New-Object System.Drawing.Size(100, 30)
+    $btnImportPDF.Location = New-Object System.Drawing.Point(210, 20)
+    $btnImportPDF.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnImportPDF.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnImportPDF.Font = New-Object System.Drawing.Font("Arial", 10)
+    $btnImportPDF.FlatStyle = "Flat"
+    $btnImportPDF.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnImportPDF.FlatAppearance.BorderSize = 2
+    $btnImportPDF.Cursor = [System.Windows.Forms.Cursors]::Hand
+    
+    $btnImportPDF.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnImportPDF.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    
+    $screen2.Controls.Add($btnImportPDF)
+    $panel.Controls.Add($screen2)
+    
+    # ========== ÉCRAN 3 : ZONE VIDE POUR L'INSTANT ==========
+    $screen3 = New-Object System.Windows.Forms.Panel
+    $screen3.Dock = "Fill"
+    $screen3.BackColor = [System.Drawing.Color]::White
+    $screen3.Visible = $false
+    
+    $lblMessage = New-Object System.Windows.Forms.Label
+    $lblMessage.Text = "PDF chargé, en attente de développement..."
+    $lblMessage.Font = New-Object System.Drawing.Font("Arial", 11)
+    $lblMessage.ForeColor = [System.Drawing.Color]::Gray
+    $lblMessage.Dock = "Fill"
+    $lblMessage.TextAlign = "MiddleCenter"
+    $screen3.Controls.Add($lblMessage)
+    
+    $panel.Controls.Add($screen3)
+    
+    # ========== LOGIQUE ==========
+    $script:pdfFile = $null
+    
+    $btnValiderDate.Add_Click({
+        $screen1.Visible = $false
+        $screen2.Visible = $true
+        [System.Windows.Forms.MessageBox]::Show("Date validée : $($datePicker.Value.ToString('dd/MM/yyyy'))", "Succès")
+    })
+    
+    $btnImportPDF.Add_Click({
+        $openDialog = New-Object System.Windows.Forms.OpenFileDialog
+        $openDialog.Filter = "Fichiers PDF (*.pdf)|*.pdf"
+        if ($openDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+            $script:pdfFile = $openDialog.FileName
+            $screen2.Visible = $false
+            $screen3.Visible = $true
+            $lblMessage.Text = "PDF chargé : $(Split-Path $script:pdfFile -Leaf)"
+            [System.Windows.Forms.MessageBox]::Show("PDF chargé avec succès !", "Succès")
+        }
+    })
+    
     return ,$panel
 }
