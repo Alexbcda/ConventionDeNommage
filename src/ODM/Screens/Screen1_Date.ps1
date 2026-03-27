@@ -1,4 +1,4 @@
-# Screen1_Date.ps1 - Écran de choix de la date
+# Screen1_Date.ps1 - Écran de choix de la date avec logs
 
 function Show-Screen1_Date {
     param(
@@ -6,14 +6,8 @@ function Show-Screen1_Date {
         $NextScreen
     )
     
-    Write-Host "[DEBUG] Show-Screen1_Date appelée" -ForegroundColor Cyan
+    Write-Host "[DEBUG] ========== SCREEN1_DATE DÉMARRAGE ==========" -ForegroundColor Cyan
     Write-Host "[DEBUG] NextScreen reçu = $($NextScreen)" -ForegroundColor Yellow
-    
-    if ($NextScreen) {
-        Write-Host "[DEBUG] NextScreen existe, type: $($NextScreen.GetType())" -ForegroundColor Green
-    } else {
-        Write-Host "[DEBUG] NextScreen est NULL !!!" -ForegroundColor Red
-    }
     
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
@@ -23,12 +17,12 @@ function Show-Screen1_Date {
     $panel.Height = 70
     $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     
-    # Sauvegarder dans des variables de script
-    $script:currentPanel = $panel
-    $script:nextScreen = $NextScreen
+    # Sauvegarder dans des variables
+    $script:currentPanelDate = $panel
+    $script:nextScreenDate = $NextScreen
     $script:datePickerRef = $null
     
-    Write-Host "[DEBUG] script:nextScreen après affectation = $($script:nextScreen)" -ForegroundColor Yellow
+    Write-Host "[DEBUG] script:nextScreenDate = $($script:nextScreenDate)" -ForegroundColor Yellow
     
     $lbl = New-Object System.Windows.Forms.Label
     $lbl.Text = "Choisir une date"
@@ -57,7 +51,6 @@ function Show-Screen1_Date {
     $btnValider.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
     $btnValider.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
     $btnValider.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $btnValider.TabStop = $false
     
     $btnValider.Add_MouseEnter({
         $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
@@ -71,32 +64,24 @@ function Show-Screen1_Date {
     })
     
     $btnValider.Add_Click({
-        Write-Host "`n=== BOUTON VALIDER CLIQUÉ ===" -ForegroundColor Green
-        Write-Host "Date: $($script:datePickerRef.Value)" -ForegroundColor Yellow
-        Write-Host "[DEBUG] Au moment du clic - script:nextScreen = $($script:nextScreen)" -ForegroundColor Red
-        
-        if ($script:nextScreen) {
-            Write-Host "[DEBUG] script:nextScreen existe, type: $($script:nextScreen.GetType())" -ForegroundColor Green
-        } else {
-            Write-Host "[DEBUG] script:nextScreen est NULL - problème détecté !" -ForegroundColor Red
-            Write-Host "[DEBUG] script:currentPanel = $($script:currentPanel)" -ForegroundColor Gray
-            Write-Host "[DEBUG] script:currentPanel.Tag = $($script:currentPanel.Tag)" -ForegroundColor Gray
-        }
+        Write-Host "[DEBUG] ========== BOUTON VALIDER (SCREEN1) ==========" -ForegroundColor Green
+        Write-Host "[DEBUG] Date: $($script:datePickerRef.Value)" -ForegroundColor Yellow
+        Write-Host "[DEBUG] script:nextScreenDate = $($script:nextScreenDate)" -ForegroundColor Yellow
         
         # Cacher le panel courant
-        $script:currentPanel.Visible = $false
-        Write-Host "[DEBUG] Panel courant caché" -ForegroundColor Gray
+        $script:currentPanelDate.Visible = $false
+        Write-Host "[DEBUG] Panel date caché" -ForegroundColor Gray
         
         # Afficher l'écran suivant
-        if ($script:nextScreen) {
-            $script:nextScreen.Visible = $true
-            Write-Host "✅ Écran suivant affiché" -ForegroundColor Green
+        if ($script:nextScreenDate) {
+            $script:nextScreenDate.Visible = $true
+            Write-Host "[DEBUG] ✅ Écran suivant (Screen2) affiché" -ForegroundColor Green
         } else {
-            Write-Host "❌ ERREUR: nextScreen est null" -ForegroundColor Red
+            Write-Host "[DEBUG] ❌ ERREUR: nextScreenDate est null" -ForegroundColor Red
         }
     })
     $panel.Controls.Add($btnValider)
     
-    Write-Host "[DEBUG] Show-Screen1_Date retourne le panel" -ForegroundColor Cyan
+    Write-Host "[DEBUG] ========== SCREEN1_DATE TERMINÉ ==========" -ForegroundColor Cyan
     return $panel
 }

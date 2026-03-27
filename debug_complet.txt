@@ -1,7 +1,140 @@
-InvalidOperation: C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Screens\Screen2_NbTournees.ps1:134:9
-Line |
- 134 |          $Screen1.Visible = $true
-     |          ~~~~~~~~~~~~~~~~~~~~~~~~
-     | The property 'Visible' cannot be found on this object. Verify that the property exists and
-     | can be set.
 
+[DEBUG] ========== PLANNINGPANEL DÉMARRAGE ==========
+[DEBUG] Collecteurs: 2
+[DEBUG] Vehicules: 2
+[DEBUG] Création de screen3...
+[DEBUG] Création de screen2...
+[DEBUG] ========== SCREEN2 DÉMARRAGE ==========
+[DEBUG] Screen1 reçu: False
+[DEBUG] Screen3 reçu: True
+[DEBUG] Aucun fichier de sauvegarde
+[DEBUG] Champ vide
+[DEBUG] targetScreen1 = False
+[DEBUG] targetScreen3 = True
+[DEBUG] ========== SCREEN2 TERMINÉ ==========
+[DEBUG] Création de screen1 avec NextScreen = screen2...
+[DEBUG] ========== SCREEN1_DATE DÉMARRAGE ==========
+[DEBUG] NextScreen reçu = System.Windows.Forms.Panel, BorderStyle: System.Windows.Forms.BorderStyle.None
+[DEBUG] script:nextScreenDate = System.Windows.Forms.Panel, BorderStyle: System.Windows.Forms.BorderStyle.None
+[DEBUG] ========== SCREEN1_DATE TERMINÉ ==========
+[DEBUG] Mise à jour de screen2 avec Screen1 = screen1...
+[DEBUG] screen3.Tag = screen2
+[DEBUG] Vérification:
+[DEBUG] screen1.Visible = True
+[DEBUG] screen2.Visible = False
+[DEBUG] screen3.Visible = False
+[DEBUG] ========== PLANNINGPANEL TERMINÉ ==========
+[DEBUG] ========== BOUTON VALIDER (SCREEN1) ==========
+[DEBUG] Date: 03/28/2026 00:35:58
+[DEBUG] script:nextScreenDate = System.Windows.Forms.Panel, BorderStyle: System.Windows.Forms.BorderStyle.None
+[DEBUG] Panel date caché
+[DEBUG] ✅ Écran suivant (Screen2) affiché
+[DEBUG] ========== BOUTON VALIDER (SCREEN2) ==========
+[DEBUG] Valeur saisie: '3'
+[DEBUG] ✅ Nombre valide: 3
+[DEBUG] ⏳ Temporaire: 3
+[DEBUG] Transition vers Screen3 avec 3 tournée(s)
+[DEBUG] Screen3 affiché
+
+[DEBUG] ========== SCREEN3 AFFECTATION ==========
+[DEBUG] NbTournees: 3
+[DEBUG] Collecteurs reçus: 2
+[DEBUG] Vehicules reçus: 2
+[DEBUG] Global avant: SelectedCollecteurs=4
+[DEBUG] Global avant: SelectedVehicules=4
+[DEBUG] Nouveau planning (3 tournées) - réinitialisation des affectations
+[DEBUG] Création ligne 1
+[DEBUG] Création ligne 2
+[DEBUG] Création ligne 3
+[DEBUG] Remplissage initial des listes...
+[DEBUG] ========== Update-Dropdowns ==========
+[DEBUG] IDs utilisés: collecteurs=, vehicules=
+[DEBUG] Collecteurs disponibles: 2
+[DEBUG] Véhicules disponibles: 2
+[DEBUG] SCREEN3 OK - 3 lignes
+[DEBUG] Collecteur Tournée 1: 'DUPONT Jean'
+[DEBUG]   -> Affecté: DUPONT Jean (ID=1)
+[DEBUG] ========== Update-Dropdowns ==========
+[DEBUG] IDs utilisés: collecteurs=1, vehicules=
+[DEBUG] Collecteurs disponibles: 1
+[DEBUG]   -> Ajout élément sélectionné ligne 1: DUPONT Jean
+[DEBUG] Véhicules disponibles: 2
+[DEBUG] Save-Selections: 3 collecteurs, 3 vehicules
+[DEBUG] Collecteur Tournée 2: 'MARTIN Pierre'
+[DEBUG]   -> Affecté: MARTIN Pierre (ID=2)
+[DEBUG] ========== Update-Dropdowns ==========
+[DEBUG] IDs utilisés: collecteurs=1,2, vehicules=
+[DEBUG] Collecteurs disponibles: 0
+[DEBUG]   -> Ajout élément sélectionné ligne 1: DUPONT Jean
+[DEBUG]   -> Ajout élément sélectionné ligne 2: MARTIN Pierre
+[DEBUG] Véhicules disponibles: 2
+[DEBUG] Save-Selections: 3 collecteurs, 3 vehicules
+[DEBUG] Véhicule Tournée 1: 'AA-123-BB - Renault Master'
+[DEBUG]   -> Affecté: AA-123-BB (ID=1)
+[DEBUG] ========== Update-Dropdowns ==========
+[DEBUG] IDs utilisés: collecteurs=1,2, vehicules=1
+[DEBUG] Collecteurs disponibles: 0
+[DEBUG]   -> Ajout élément sélectionné ligne 1: DUPONT Jean
+[DEBUG]   -> Ajout élément sélectionné ligne 2: MARTIN Pierre
+[DEBUG] Véhicules disponibles: 1
+[DEBUG]   -> Ajout élément sélectionné ligne 1: AA-123-BB - Renault Master
+[DEBUG] Save-Selections: 3 collecteurs, 3 vehicules
+[DEBUG] Véhicule Tournée 2: 'CC-456-DD - Citroen Jumper'
+[DEBUG]   -> Affecté: CC-456-DD (ID=2)
+[DEBUG] ========== Update-Dropdowns ==========
+[DEBUG] IDs utilisés: collecteurs=1,2, vehicules=1,2
+[DEBUG] Collecteurs disponibles: 0
+[DEBUG]   -> Ajout élément sélectionné ligne 1: DUPONT Jean
+[DEBUG]   -> Ajout élément sélectionné ligne 2: MARTIN Pierre
+[DEBUG] Véhicules disponibles: 0
+[DEBUG]   -> Ajout élément sélectionné ligne 1: AA-123-BB - Renault Master
+[DEBUG]   -> Ajout élément sélectionné ligne 2: CC-456-DD - Citroen Jumper
+[DEBUG] Save-Selections: 3 collecteurs, 3 vehicules
+[DEBUG] RETOUR - cherche Screen2
+[DEBUG] Save-Selections: 3 collecteurs, 3 vehicules
+[DEBUG] RETOUR vers Screen2 (via Tag)
+[DEBUG] ========== RETOUR (SCREEN2 -> SCREEN1) ==========
+[DEBUG] targetScreen1 = True
+[DEBUG] Screen1 affiché
+[DEBUG] ========== BOUTON VALIDER (SCREEN1) ==========
+[DEBUG] Date: 03/28/2026 00:35:58
+[DEBUG] script:nextScreenDate = System.Windows.Forms.Panel, BorderStyle: System.Windows.Forms.BorderStyle.None
+[DEBUG] Panel date caché
+[DEBUG] ✅ Écran suivant (Screen2) affiché
+[DEBUG] ========== BOUTON VALIDER (SCREEN2) ==========
+[DEBUG] Valeur saisie: '3'
+[DEBUG] ✅ Nombre valide: 3
+[DEBUG] ⏳ Temporaire: 3
+[DEBUG] Transition vers Screen3 avec 3 tournée(s)
+[DEBUG] Screen3 affiché
+
+[DEBUG] ========== SCREEN3 AFFECTATION ==========
+[DEBUG] NbTournees: 3
+[DEBUG] Collecteurs reçus: 2
+[DEBUG] Vehicules reçus: 2
+[DEBUG] Global avant: SelectedCollecteurs=3
+[DEBUG] Global avant: SelectedVehicules=3
+[DEBUG] Planning existant - conservation des affectations
+[DEBUG] Création ligne 1
+[DEBUG] Création ligne 2
+[DEBUG] Création ligne 3
+[DEBUG] Remplissage initial des listes...
+[DEBUG] Restauration collecteur ligne 1: DUPONT Jean
+[DEBUG] Restauration collecteur ligne 2: MARTIN Pierre
+[DEBUG] Restauration véhicule ligne 1: AA-123-BB - Renault Master
+[DEBUG] Restauration véhicule ligne 2: CC-456-DD - Citroen Jumper
+[DEBUG] ========== Update-Dropdowns ==========
+[DEBUG] IDs utilisés: collecteurs=1,2, vehicules=1,2
+[DEBUG] Collecteurs disponibles: 0
+[DEBUG]   -> Ajout élément sélectionné ligne 1: DUPONT Jean
+[DEBUG]   -> Ajout élément sélectionné ligne 2: MARTIN Pierre
+[DEBUG] Véhicules disponibles: 0
+[DEBUG]   -> Ajout élément sélectionné ligne 1: AA-123-BB - Renault Master
+[DEBUG]   -> Ajout élément sélectionné ligne 2: CC-456-DD - Citroen Jumper
+[DEBUG] SCREEN3 OK - 3 lignes
+[DEBUG] ========== VALIDATION ==========
+[DEBUG] Tournée 1: COMPLÈTE
+[DEBUG] Tournée 2: COMPLÈTE
+[DEBUG] Tournée 3: INCOMPLÈTE
+[DEBUG] Affichage du résumé
+[DEBUG] Save-Selections: 3 collecteurs, 3 vehicules
