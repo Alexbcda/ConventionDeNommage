@@ -1,4 +1,4 @@
-﻿# ODMViewer.ps1 - Version simplifi?e
+# ODMViewer.ps1 - Point d'entrée du module ODM
 
 function Show-ODMViewer {
     param(
@@ -8,13 +8,14 @@ function Show-ODMViewer {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     
-    # Charger les composants
-    . "$PSScriptRoot\Components\DataManager.ps1"
-    . "$PSScriptRoot\Components\PlanningPanel.ps1"
-    . "$PSScriptRoot\Components\CollecteursPanel.ps1"
-    . "$PSScriptRoot\Components\VehiculesPanel.ps1"
+    . "$PSScriptRoot\..\Core\DataManager.ps1"
+    . "$PSScriptRoot\Screens\Screen1_Date.ps1"
+    . "$PSScriptRoot\Screens\Screen2_NbTournees.ps1"
+    . "$PSScriptRoot\Screens\Screen3_Affectation.ps1"
+    . "$PSScriptRoot\PlanningPanel.ps1"
+    . "$PSScriptRoot\CollecteursPanel.ps1"
+    . "$PSScriptRoot\VehiculesPanel.ps1"
     
-    # Charger les donn?es
     $collecteurs = Get-Collecteurs
     $vehicules = Get-Vehicules
     
@@ -22,29 +23,24 @@ function Show-ODMViewer {
         $collecteurs, $vehicules = Initialize-DefaultData
     }
     
-    $planningData = $null
-    $updatedCollecteurs = $collecteurs
-    $updatedVehicules = $vehicules
-    
-    # Cr?er le panel
     $panel = New-Object System.Windows.Forms.Panel
     $panel.Dock = "Fill"
     $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     
     if ($PanelType -eq "Planning") {
-        $result = Show-PlanningPanel -Collecteurs $collecteurs -Vehicules $vehicules -PlanningData ([ref]$planningData)
+        $result = Show-PlanningPanel -Collecteurs $collecteurs -Vehicules $vehicules -PlanningData ([ref]$null)
         if ($result -is [array]) { $result = $result[-1] }
         $result.Dock = "Fill"
         $panel.Controls.Add($result)
     }
     elseif ($PanelType -eq "Collecteurs") {
-        $result = Show-CollecteursPanel -Collecteurs $collecteurs -UpdatedCollecteurs ([ref]$updatedCollecteurs)
+        $result = Show-CollecteursPanel -Collecteurs $collecteurs -UpdatedCollecteurs ([ref]$null)
         if ($result -is [array]) { $result = $result[-1] }
         $result.Dock = "Fill"
         $panel.Controls.Add($result)
     }
     elseif ($PanelType -eq "Vehicules") {
-        $result = Show-VehiculesPanel -Vehicules $vehicules -UpdatedVehicules ([ref]$updatedVehicules)
+        $result = Show-VehiculesPanel -Vehicules $vehicules -UpdatedVehicules ([ref]$null)
         if ($result -is [array]) { $result = $result[-1] }
         $result.Dock = "Fill"
         $panel.Controls.Add($result)

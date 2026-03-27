@@ -1,0 +1,305 @@
+# Screen3_Affectation.ps1 - Écran d'affectation avec filtrage progressif
+
+function Show-Screen3_Affectation {
+    param(
+        [int]$NbTournees,
+        [System.Windows.Forms.Panel]$Panel,
+        [array]$Collecteurs,
+        [array]$Vehicules
+    )
+    
+    Write-Host "[DEBUG] ========== Show-Screen3_Affectation DÉMARRÉ ==========" -ForegroundColor Magenta
+    Write-Host "[DEBUG] NbTournees: $NbTournees" -ForegroundColor Magenta
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    # Vider le panel
+    $Panel.Controls.Clear()
+    
+    # Variables pour stocker les sélections
+    $script:collecteursDisponibles = @($Collecteurs | ForEach-Object { $_ })
+    $script:vehiculesDisponibles = @($Vehicules | ForEach-Object { $_ })
+    $script:affectations = @()
+    $script:comboBoxesCollecteurs = @()
+    $script:comboBoxesVehicules = @()
+    
+    # Titre
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = "AFFECTATION DES COLLECTEURS ET VÉHICULES"
+    $lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+    $lblTitle.ForeColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $lblTitle.Location = New-Object System.Drawing.Point(35, 20)
+    $lblTitle.Size = New-Object System.Drawing.Size(600, 35)
+    $Panel.Controls.Add($lblTitle)
+    
+    # Sous-titre
+    $lblSubTitle = New-Object System.Windows.Forms.Label
+    $lblSubTitle.Text = "$NbTournees tournée(s) à affecter"
+    $lblSubTitle.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $lblSubTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
+    $lblSubTitle.Location = New-Object System.Drawing.Point(35, 55)
+    $lblSubTitle.Size = New-Object System.Drawing.Size(300, 25)
+    $Panel.Controls.Add($lblSubTitle)
+    
+    # Calcul de la hauteur
+    $hauteurLigne = 60
+    $hauteurConteneur = [Math]::Min($NbTournees * $hauteurLigne + 20, 400)
+    if ($hauteurConteneur -lt 100) { $hauteurConteneur = 100 }
+    
+    # Conteneur des lignes
+    $rowsContainer = New-Object System.Windows.Forms.Panel
+    $rowsContainer.Location = New-Object System.Drawing.Point(35, 90)
+    $rowsContainer.Size = New-Object System.Drawing.Size(1100, $hauteurConteneur)
+    $rowsContainer.AutoScroll = $true
+    $rowsContainer.BackColor = [System.Drawing.Color]::White
+    $rowsContainer.BorderStyle = "FixedSingle"
+    
+    # Fonction pour mettre à jour les listes
+    function Update-ComboBoxes {
+        $collecteursRestants = $script:collecteursDisponibles | Where-Object { $_.id -notin ($script:affectations | Where-Object { $_.collecteur } | ForEach-Object { $_.collecteur.id }) }
+        $vehiculesRestants = $script:vehiculesDisponibles | Where-Object { $_.id -notin ($script:affectations | Where-Object { $_.vehicule } | ForEach-Object { $_.vehicule.id }) }
+        
+        Write-Host "[DEBUG] Collecteurs restants: $($collecteursRestants.Count), Véhicules restants: $($vehiculesRestants.Count)" -ForegroundColor Gray
+        
+        # Mettre à jour les ComboBox collecteurs
+        for ($i = 0; $i -lt $script:comboBoxesCollecteurs.Count; $i++) {
+            $cbCollecteur = $script:comboBoxesCollecteurs[$i]
+            $currentValue = $cbCollecteur.SelectedItem
+            
+            $selectedId = $null
+            if ($currentValue -and $currentValue -ne "-- Sélectionner --") {
+                $parts = $currentValue.Split(' ')
+                if ($parts.Count -ge 2) {
+                    $selectedNom = $parts[0]
+                    $selectedPrenom = $parts[1]
+                    $selectedCollecteur = $collecteursRestants | Where-Object { $_.nom -eq $selectedNom -and $_.prenom -eq $selectedPrenom }
+                    if ($selectedCollecteur) { $selectedId = $selectedCollecteur.id }
+                }
+            }
+            
+            $cbCollecteur.Items.Clear()
+            $cbCollecteur.Items.Add("-- Sélectionner --")
+            foreach ($c in $collecteursRestants) {
+                $cbCollecteur.Items.Add("$($c.nom) $($c.prenom)")
+            }
+            
+            if ($selectedId) {
+                $stillAvailable = $collecteursRestants | Where-Object { $_.id -eq $selectedId }
+                if ($stillAvailable) {
+                    $cbCollecteur.SelectedItem = "$($stillAvailable.nom) $($stillAvailable.prenom)"
+                } else {
+                    $cbCollecteur.SelectedIndex = 0
+                    if ($script:affectations[$i]) { $script:affectations[$i].collecteur = $null }
+                }
+            } else {
+                $cbCollecteur.SelectedIndex = 0
+            }
+        }
+        
+        # Mettre à jour les ComboBox véhicules
+        for ($i = 0; $i -lt $script:comboBoxesVehicules.Count; $i++) {
+            $cbVehicule = $script:comboBoxesVehicules[$i]
+            $currentValue = $cbVehicule.SelectedItem
+            
+            $selectedId = $null
+            if ($currentValue -and $currentValue -ne "-- Sélectionner --") {
+                $immat = $currentValue.Split(' ')[0]
+                $selectedVehicule = $vehiculesRestants | Where-Object { $_.immatriculation -eq $immat }
+                if ($selectedVehicule) { $selectedId = $selectedVehicule.id }
+            }
+            
+            $cbVehicule.Items.Clear()
+            $cbVehicule.Items.Add("-- Sélectionner --")
+            foreach ($v in $vehiculesRestants) {
+                $cbVehicule.Items.Add("$($v.immatriculation) - $($v.marque) $($v.modele)")
+            }
+            
+            if ($selectedId) {
+                $stillAvailable = $vehiculesRestants | Where-Object { $_.id -eq $selectedId }
+                if ($stillAvailable) {
+                    $cbVehicule.SelectedItem = "$($stillAvailable.immatriculation) - $($stillAvailable.marque) $($stillAvailable.modele)"
+                } else {
+                    $cbVehicule.SelectedIndex = 0
+                    if ($script:affectations[$i]) { $script:affectations[$i].vehicule = $null }
+                }
+            } else {
+                $cbVehicule.SelectedIndex = 0
+            }
+        }
+    }
+    
+    # Créer les lignes
+    $yPos = 10
+    
+    for ($i = 1; $i -le $NbTournees; $i++) {
+        $rowPanel = New-Object System.Windows.Forms.Panel
+        $rowPanel.Location = New-Object System.Drawing.Point(5, $yPos)
+        $rowPanel.Size = New-Object System.Drawing.Size(1080, 55)
+        $rowPanel.BackColor = [System.Drawing.Color]::FromArgb(250, 250, 250)
+        $rowPanel.BorderStyle = "FixedSingle"
+        
+        # Numéro de tournée
+        $lblNum = New-Object System.Windows.Forms.Label
+        $lblNum.Text = "Tournée $i"
+        $lblNum.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+        $lblNum.Location = New-Object System.Drawing.Point(10, 18)
+        $lblNum.Size = New-Object System.Drawing.Size(80, 25)
+        $rowPanel.Controls.Add($lblNum)
+        
+        # ComboBox Collecteur
+        $cbCollecteur = New-Object System.Windows.Forms.ComboBox
+        $cbCollecteur.Location = New-Object System.Drawing.Point(100, 15)
+        $cbCollecteur.Size = New-Object System.Drawing.Size(220, 28)
+        $cbCollecteur.DropDownStyle = "DropDownList"
+        $cbCollecteur.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+        $cbCollecteur.Tag = $i - 1
+        
+        # ComboBox Véhicule
+        $cbVehicule = New-Object System.Windows.Forms.ComboBox
+        $cbVehicule.Location = New-Object System.Drawing.Point(340, 15)
+        $cbVehicule.Size = New-Object System.Drawing.Size(250, 28)
+        $cbVehicule.DropDownStyle = "DropDownList"
+        $cbVehicule.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+        $cbVehicule.Tag = $i - 1
+        
+        # Événement collecteur
+        $cbCollecteur.Add_SelectedIndexChanged({
+            $idx = $this.Tag
+            $selected = $this.SelectedItem
+            Write-Host "[DEBUG] Collecteur ligne $($idx+1): $selected" -ForegroundColor Cyan
+            
+            if ($selected -and $selected -ne "-- Sélectionner --") {
+                $parts = $selected.Split(' ')
+                if ($parts.Count -ge 2) {
+                    $nom = $parts[0]
+                    $prenom = $parts[1]
+                    $collecteur = $script:collecteursDisponibles | Where-Object { $_.nom -eq $nom -and $_.prenom -eq $prenom }
+                    
+                    if ($collecteur) {
+                        $dejaAffecte = $false
+                        for ($j = 0; $j -lt $script:affectations.Count; $j++) {
+                            if ($j -ne $idx -and $script:affectations[$j].collecteur -and $script:affectations[$j].collecteur.id -eq $collecteur.id) {
+                                $dejaAffecte = $true
+                                break
+                            }
+                        }
+                        
+                        if ($dejaAffecte) {
+                            [System.Windows.Forms.MessageBox]::Show("Ce collecteur est déjà affecté !", "Erreur", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+                            $this.SelectedIndex = 0
+                        } else {
+                            $script:affectations[$idx] = @{
+                                tournee = $idx + 1
+                                collecteur = $collecteur
+                                vehicule = $script:affectations[$idx].vehicule
+                            }
+                            Update-ComboBoxes
+                        }
+                    }
+                }
+            } else {
+                if ($script:affectations[$idx]) { $script:affectations[$idx].collecteur = $null }
+                Update-ComboBoxes
+            }
+        })
+        
+        # Événement véhicule
+        $cbVehicule.Add_SelectedIndexChanged({
+            $idx = $this.Tag
+            $selected = $this.SelectedItem
+            Write-Host "[DEBUG] Véhicule ligne $($idx+1): $selected" -ForegroundColor Cyan
+            
+            if ($selected -and $selected -ne "-- Sélectionner --") {
+                $immat = $selected.Split(' ')[0]
+                $vehicule = $script:vehiculesDisponibles | Where-Object { $_.immatriculation -eq $immat }
+                
+                if ($vehicule) {
+                    $dejaAffecte = $false
+                    for ($j = 0; $j -lt $script:affectations.Count; $j++) {
+                        if ($j -ne $idx -and $script:affectations[$j].vehicule -and $script:affectations[$j].vehicule.id -eq $vehicule.id) {
+                            $dejaAffecte = $true
+                            break
+                        }
+                    }
+                    
+                    if ($dejaAffecte) {
+                        [System.Windows.Forms.MessageBox]::Show("Ce véhicule est déjà affecté !", "Erreur", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+                        $this.SelectedIndex = 0
+                    } else {
+                        if (-not $script:affectations[$idx]) {
+                            $script:affectations[$idx] = @{ tournee = $idx + 1; collecteur = $null; vehicule = $null }
+                        }
+                        $script:affectations[$idx].vehicule = $vehicule
+                        Update-ComboBoxes
+                    }
+                }
+            } else {
+                if ($script:affectations[$idx]) { $script:affectations[$idx].vehicule = $null }
+                Update-ComboBoxes
+            }
+        })
+        
+        $rowPanel.Controls.Add($cbCollecteur)
+        $rowPanel.Controls.Add($cbVehicule)
+        
+        $rowsContainer.Controls.Add($rowPanel)
+        
+        $script:comboBoxesCollecteurs += $cbCollecteur
+        $script:comboBoxesVehicules += $cbVehicule
+        $script:affectations += @{ tournee = $i; collecteur = $null; vehicule = $null }
+        
+        $yPos += $hauteurLigne
+    }
+    
+    $rowsContainer.Height = [Math]::Min($yPos + 10, 400)
+    $Panel.Controls.Add($rowsContainer)
+    
+    # Initialiser les listes
+    Update-ComboBoxes
+    
+    # Bouton Valider
+    $btnValider = New-Object System.Windows.Forms.Button
+    $btnValider.Text = "VALIDER LES AFFECTATIONS"
+    $btnValider.Size = New-Object System.Drawing.Size(250, 50)
+    $btnValider.Location = New-Object System.Drawing.Point(35, $rowsContainer.Location.Y + $rowsContainer.Height + 20)
+    $btnValider.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnValider.ForeColor = [System.Drawing.Color]::White
+    $btnValider.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
+    $btnValider.FlatStyle = "Flat"
+    $btnValider.Cursor = [System.Windows.Forms.Cursors]::Hand
+    
+    $btnValider.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(229, 90, 42) })
+    $btnValider.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53) })
+    
+    $btnValider.Add_Click({
+        $toutesAffectees = $true
+        $nonAffectees = @()
+        
+        for ($i = 0; $i -lt $script:affectations.Count; $i++) {
+            $a = $script:affectations[$i]
+            if (-not $a.collecteur -or -not $a.vehicule) {
+                $toutesAffectees = $false
+                $nonAffectees += ($i + 1)
+            }
+        }
+        
+        if (-not $toutesAffectees) {
+            $msg = "Tournées incomplètes : " + ($nonAffectees -join ", ")
+            [System.Windows.Forms.MessageBox]::Show($msg, "Affectation incomplète", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+            return
+        }
+        
+        $resume = "AFFECTATIONS VALIDÉES :`n`n"
+        foreach ($a in $script:affectations) {
+            $resume += "Tournée $($a.tournee) : $($a.collecteur.nom) $($a.collecteur.prenom) → $($a.vehicule.immatriculation) ($($a.vehicule.marque) $($a.vehicule.modele))`n"
+        }
+        
+        [System.Windows.Forms.MessageBox]::Show($resume, "Succès", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+    })
+    
+    $Panel.Controls.Add($btnValider)
+    
+    Write-Host "[DEBUG] ========== Show-Screen3_Affectation TERMINÉ ==========" -ForegroundColor Magenta
+    return $Panel
+}

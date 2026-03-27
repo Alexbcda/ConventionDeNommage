@@ -1,0 +1,121 @@
+# Screen3_Affectation.ps1 - Écran d'affectation
+
+function Show-Screen3_Affectation {
+    param(
+        [int]$NbTournees,
+        [System.Windows.Forms.Panel]$Panel,
+        [array]$Collecteurs,
+        [array]$Vehicules
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    # Vider le panel
+    $Panel.Controls.Clear()
+    
+    # Titre
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = "AFFECTATION DES COLLECTEURS ET VEHICULES"
+    $lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
+    $lblTitle.ForeColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $lblTitle.Location = New-Object System.Drawing.Point(35, 20)
+    $lblTitle.Size = New-Object System.Drawing.Size(500, 30)
+    $Panel.Controls.Add($lblTitle)
+    
+    # Listes pour les ComboBox
+    $collecteursList = New-Object System.Collections.ArrayList
+    $collecteursList.Add("-- Selectionner --") | Out-Null
+    foreach ($c in $Collecteurs) {
+        $collecteursList.Add("$($c.nom) $($c.prenom)") | Out-Null
+    }
+    
+    $vehiculesList = New-Object System.Collections.ArrayList
+    $vehiculesList.Add("-- Selectionner --") | Out-Null
+    foreach ($v in $Vehicules) {
+        $vehiculesList.Add("$($v.immatriculation) - $($v.marque) $($v.modele)") | Out-Null
+    }
+    
+    # Conteneur des lignes
+    $rowsContainer = New-Object System.Windows.Forms.Panel
+    $rowsContainer.Location = New-Object System.Drawing.Point(35, 60)
+    $rowsContainer.Size = New-Object System.Drawing.Size(800, $NbTournees * 55 + 20)
+    $rowsContainer.AutoScroll = $true
+    $rowsContainer.BackColor = [System.Drawing.Color]::White
+    $rowsContainer.BorderStyle = "FixedSingle"
+    
+    $yPos = 10
+    
+    for ($i = 1; $i -le $NbTournees; $i++) {
+        $rowPanel = New-Object System.Windows.Forms.Panel
+        $rowPanel.Location = New-Object System.Drawing.Point(5, $yPos)
+        $rowPanel.Size = New-Object System.Drawing.Size(780, 50)
+        $rowPanel.BackColor = [System.Drawing.Color]::FromArgb(250, 250, 250)
+        $rowPanel.BorderStyle = "FixedSingle"
+        
+        $lblNum = New-Object System.Windows.Forms.Label
+        $lblNum.Text = "Tournee $i"
+        $lblNum.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+        $lblNum.Location = New-Object System.Drawing.Point(10, 15)
+        $lblNum.Size = New-Object System.Drawing.Size(70, 25)
+        $rowPanel.Controls.Add($lblNum)
+        
+        $cbCollecteur = New-Object System.Windows.Forms.ComboBox
+        $cbCollecteur.Location = New-Object System.Drawing.Point(90, 12)
+        $cbCollecteur.Size = New-Object System.Drawing.Size(200, 25)
+        $cbCollecteur.DropDownStyle = "DropDownList"
+        foreach ($item in $collecteursList) {
+            $cbCollecteur.Items.Add($item)
+        }
+        $cbCollecteur.SelectedIndex = 0
+        $rowPanel.Controls.Add($cbCollecteur)
+        
+        $cbVehicule = New-Object System.Windows.Forms.ComboBox
+        $cbVehicule.Location = New-Object System.Drawing.Point(310, 12)
+        $cbVehicule.Size = New-Object System.Drawing.Size(200, 25)
+        $cbVehicule.DropDownStyle = "DropDownList"
+        foreach ($item in $vehiculesList) {
+            $cbVehicule.Items.Add($item)
+        }
+        $cbVehicule.SelectedIndex = 0
+        $rowPanel.Controls.Add($cbVehicule)
+        
+        $rowsContainer.Controls.Add($rowPanel)
+        $yPos += 55
+    }
+    
+    $rowsContainer.Height = $yPos + 10
+    $Panel.Controls.Add($rowsContainer)
+    
+    # Bouton Valider
+    $btnValider = New-Object System.Windows.Forms.Button
+    $btnValider.Text = "VALIDER"
+    $btnValider.Size = New-Object System.Drawing.Size(146, 45)
+    $btnValider.Location = New-Object System.Drawing.Point(250, $rowsContainer.Bottom + 10)
+    $btnValider.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnValider.FlatStyle = "Flat"
+    $btnValider.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnValider.FlatAppearance.BorderSize = 2
+    $btnValider.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnValider.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnValider.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnValider.TabStop = $false
+    
+    $btnValider.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnValider.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    
+    $btnValider.Add_Click({
+        [System.Windows.Forms.MessageBox]::Show("Affectation validée", "Succès")
+    })
+    $Panel.Controls.Add($btnValider)
+    
+    return $Panel
+}

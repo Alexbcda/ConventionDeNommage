@@ -1,4 +1,4 @@
-﻿# GUI.ps1 - Interface graphique avec 4 onglets
+# GUI.ps1 - Interface graphique avec 4 onglets
 
 function Start-GUI {
     param([string]$FichierPDF)
@@ -26,7 +26,7 @@ function Start-GUI {
     $tabControl.Dock = "Fill"
     $tabControl.Font = New-Object System.Drawing.Font("Segoe UI", 10)
     
-    # ========== ONGLET 1 : CONVENTION DE NOMMAGE ==========
+    # ========== ONGLET 1 : Convention de nommage ==========
     $tabRename = New-Object System.Windows.Forms.TabPage
     $tabRename.Text = "Convention de nommage"
     $tabRename.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
@@ -102,9 +102,9 @@ function Start-GUI {
     $planningPanel.Dock = "Fill"
     $tabPlanning.Controls.Add($planningPanel)
     
-    # ========== ONGLET 3 : DONNÉES COLLECTEURS ==========
+    # ========== ONGLET 3 : COLLECTEURS ==========
     $tabCollecteurs = New-Object System.Windows.Forms.TabPage
-    $tabCollecteurs.Text = "Données collecteurs"
+    $tabCollecteurs.Text = "Donn?es collecteurs"
     $tabCollecteurs.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     
     $collecteursResult = Show-ODMViewer -PanelType "Collecteurs"
@@ -116,9 +116,9 @@ function Start-GUI {
     $collecteursPanel.Dock = "Fill"
     $tabCollecteurs.Controls.Add($collecteursPanel)
     
-    # ========== ONGLET 4 : DONNÉES VÉHICULES ==========
+    # ========== ONGLET 4 : V?HICULES ==========
     $tabVehicules = New-Object System.Windows.Forms.TabPage
-    $tabVehicules.Text = "Données véhicules"
+    $tabVehicules.Text = "Donn?es v?hicules"
     $tabVehicules.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     
     $vehiculesResult = Show-ODMViewer -PanelType "Vehicules"
@@ -138,7 +138,7 @@ function Start-GUI {
     
     $form.Controls.Add($tabControl)
     
-    # ========== FONCTIONS POUR L'ONGLET CONVENTION DE NOMMAGE ==========
+    # ========== FONCTIONS POUR L'ONGLET Convention de nommage ==========
     $script:estEnModePlaceholder = $true
     $script:texteUtilisateur = ""
     $script:formulaireCharge = $false
@@ -274,7 +274,7 @@ function Start-GUI {
         }
     }
     
-    # Événements
+    # ?v?nements
     $textBox.Add_Enter({
         if (-not $script:formulaireCharge) { return }
         if ($script:estEnModePlaceholder) {
@@ -326,3 +326,4 @@ function Start-GUI {
     [System.Windows.Forms.Application]::EnableVisualStyles()
     [System.Windows.Forms.Application]::Run($form)
 }
+

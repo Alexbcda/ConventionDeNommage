@@ -1,0 +1,3381 @@
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\diagnostic.ps1 ==========
+
+# diagnostic.ps1
+Write-Host "=== DIAGNOSTIC COMPLET ===" -ForegroundColor Cyan
+
+$scriptPath = "C:\Users\alexa\Documents\ConventionDeNommage\src"
+
+# Test 1 : Vérifier les fichiers
+Write-Host "`n1. VÉRIFICATION DES FICHIERS" -ForegroundColor Yellow
+$files = @(
+    "Config.ps1",
+    "Core\TemplateManager.ps1",
+    "Core\Rename.ps1",
+    "Core\TemplateEditor.ps1",
+    "ODM\ODMViewer.ps1",
+    "GUI.ps1",
+    "Main.ps1"
+)
+
+foreach ($file in $files) {
+    $fullPath = Join-Path $scriptPath $file
+    if (Test-Path $fullPath) {
+        Write-Host "  ✅ $file" -ForegroundColor Green
+    } else {
+        Write-Host "  ❌ $file MANQUANT" -ForegroundColor Red
+    }
+}
+
+# Test 2 : Charger Config.ps1
+Write-Host "`n2. CHARGEMENT Config.ps1" -ForegroundColor Yellow
+try {
+    . "$scriptPath\Config.ps1"
+    Write-Host "  ✅ OK" -ForegroundColor Green
+    Write-Host "  formBackColor = $formBackColor" -ForegroundColor Gray
+    Write-Host "  font = $font" -ForegroundColor Gray
+} catch {
+    Write-Host "  ❌ Erreur: $_" -ForegroundColor Red
+    exit
+}
+
+# Test 3 : Charger TemplateManager.ps1
+Write-Host "`n3. CHARGEMENT TemplateManager.ps1" -ForegroundColor Yellow
+try {
+    . "$scriptPath\Core\TemplateManager.ps1"
+    Write-Host "  ✅ OK" -ForegroundColor Green
+    $templates = Get-Templates
+    Write-Host "  Templates chargés: $($templates.Count)" -ForegroundColor Gray
+} catch {
+    Write-Host "  ❌ Erreur: $_" -ForegroundColor Red
+    Write-Host "  Stack: $($_.ScriptStackTrace)" -ForegroundColor Gray
+}
+
+# Test 4 : Charger Rename.ps1
+Write-Host "`n4. CHARGEMENT Rename.ps1" -ForegroundColor Yellow
+try {
+    . "$scriptPath\Core\Rename.ps1"
+    Write-Host "  ✅ OK" -ForegroundColor Green
+} catch {
+    Write-Host "  ❌ Erreur: $_" -ForegroundColor Red
+}
+
+# Test 5 : Charger TemplateEditor.ps1
+Write-Host "`n5. CHARGEMENT TemplateEditor.ps1" -ForegroundColor Yellow
+try {
+    . "$scriptPath\Core\TemplateEditor.ps1"
+    Write-Host "  ✅ OK" -ForegroundColor Green
+} catch {
+    Write-Host "  ❌ Erreur: $_" -ForegroundColor Red
+}
+
+# Test 6 : Charger ODMViewer.ps1
+Write-Host "`n6. CHARGEMENT ODMViewer.ps1" -ForegroundColor Yellow
+try {
+    . "$scriptPath\ODM\ODMViewer.ps1"
+    Write-Host "  ✅ OK" -ForegroundColor Green
+    if (Get-Command Show-ODMViewer -ErrorAction SilentlyContinue) {
+        Write-Host "  ✅ Show-ODMViewer disponible" -ForegroundColor Green
+    } else {
+        Write-Host "  ❌ Show-ODMViewer non disponible" -ForegroundColor Red
+    }
+} catch {
+    Write-Host "  ❌ Erreur: $_" -ForegroundColor Red
+    Write-Host "  Stack: $($_.ScriptStackTrace)" -ForegroundColor Gray
+}
+
+# Test 7 : Charger GUI.ps1
+Write-Host "`n7. CHARGEMENT GUI.ps1" -ForegroundColor Yellow
+try {
+    . "$scriptPath\GUI.ps1"
+    Write-Host "  ✅ OK" -ForegroundColor Green
+    if (Get-Command Start-GUI -ErrorAction SilentlyContinue) {
+        Write-Host "  ✅ Start-GUI disponible" -ForegroundColor Green
+    } else {
+        Write-Host "  ❌ Start-GUI non disponible" -ForegroundColor Red
+    }
+} catch {
+    Write-Host "  ❌ Erreur: $_" -ForegroundColor Red
+    Write-Host "  Stack: $($_.ScriptStackTrace)" -ForegroundColor Gray
+}
+
+# Test 8 : Vérifier la syntaxe de GUI.ps1
+Write-Host "`n8. SYNTAXE GUI.ps1" -ForegroundColor Yellow
+$errors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile("$scriptPath\GUI.ps1", [ref]$null, [ref]$errors)
+if ($errors.Count -gt 0) {
+    Write-Host "  ❌ Erreurs de syntaxe:" -ForegroundColor Red
+    foreach ($err in $errors) {
+        Write-Host "     $err" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  ✅ Syntaxe OK" -ForegroundColor Green
+}
+
+# Test 9 : Vérifier la syntaxe de ODMViewer.ps1
+Write-Host "`n9. SYNTAXE ODMViewer.ps1" -ForegroundColor Yellow
+$errors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile("$scriptPath\ODM\ODMViewer.ps1", [ref]$null, [ref]$errors)
+if ($errors.Count -gt 0) {
+    Write-Host "  ❌ Erreurs de syntaxe:" -ForegroundColor Red
+    foreach ($err in $errors) {
+        Write-Host "     $err" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  ✅ Syntaxe OK" -ForegroundColor Green
+}
+
+Write-Host "`n=== FIN DIAGNOSTIC ===" -ForegroundColor Cyan
+Read-Host "Appuyez sur Entrée pour continuer"
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\test-compteur.ps1 ==========
+
+# test-compteur.ps1
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Test Compteur"
+$form.Size = New-Object System.Drawing.Size(400, 300)
+
+$lblCount = New-Object System.Windows.Forms.Label
+$lblCount.Text = "Compteur: 0"
+$lblCount.Font = New-Object System.Drawing.Font("Arial", 14)
+$lblCount.Location = New-Object System.Drawing.Point(50, 30)
+$lblCount.Size = New-Object System.Drawing.Size(200, 30)
+$form.Controls.Add($lblCount)
+
+$btnPlus = New-Object System.Windows.Forms.Button
+$btnPlus.Text = "+"
+$btnPlus.Location = New-Object System.Drawing.Point(50, 80)
+$btnPlus.Size = New-Object System.Drawing.Size(80, 50)
+$btnPlus.Font = New-Object System.Drawing.Font("Arial", 18)
+$form.Controls.Add($btnPlus)
+
+$btnMinus = New-Object System.Windows.Forms.Button
+$btnMinus.Text = "-"
+$btnMinus.Location = New-Object System.Drawing.Point(150, 80)
+$btnMinus.Size = New-Object System.Drawing.Size(80, 50)
+$btnMinus.Font = New-Object System.Drawing.Font("Arial", 18)
+$form.Controls.Add($btnMinus)
+
+$counter = 0
+
+$btnPlus.Add_Click({
+    $counter++
+    $lblCount.Text = "Compteur: $counter"
+    Write-Host "Plus: $counter"
+})
+
+$btnMinus.Add_Click({
+    if ($counter -gt 0) {
+        $counter--
+        $lblCount.Text = "Compteur: $counter"
+        Write-Host "Moins: $counter"
+    }
+})
+
+$form.ShowDialog()
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\test-direct.ps1 ==========
+
+# test-direct.ps1
+Write-Host "=== TEST DIRECT ===" -ForegroundColor Cyan
+
+# Créer un fichier test
+$testFile = "C:\Users\alexa\Documents\ConventionDeNommage\test.pdf"
+if (-not (Test-Path $testFile)) {
+    "" | Out-File $testFile -Encoding utf8
+    Write-Host "Fichier test créé" -ForegroundColor Green
+}
+
+Write-Host "1. Chargement des modules..." -ForegroundColor Yellow
+cd "C:\Users\alexa\Documents\ConventionDeNommage\src"
+
+. ".\Config.ps1"
+. ".\Core\TemplateManager.ps1"
+. ".\Core\Rename.ps1"
+. ".\Core\TemplateEditor.ps1"
+. ".\GUI.ps1"
+
+Write-Host "2. Appel de Start-GUI..." -ForegroundColor Yellow
+Start-GUI -FichierPDF $testFile
+
+Write-Host "3. Fin du test" -ForegroundColor Cyan
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\test-gui-context.ps1 ==========
+
+# test-gui-context.ps1
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+# Fonction simple qui retourne un panel
+function Get-MonPanel {
+    $p = New-Object System.Windows.Forms.Panel
+    $p.BackColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
+    $p.Dock = "Fill"
+    
+    $l = New-Object System.Windows.Forms.Label
+    $l.Text = "PLANNING ODM - Version test"
+    $l.Font = New-Object System.Drawing.Font("Arial", 16, [System.Drawing.FontStyle]::Bold)
+    $l.ForeColor = [System.Drawing.Color]::White
+    $l.TextAlign = "MiddleCenter"
+    $l.Dock = "Fill"
+    $p.Controls.Add($l)
+    
+    return $p
+}
+
+# Créer une fenêtre avec un TabControl (comme dans GUI.ps1)
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Test avec TabControl"
+$form.Size = New-Object System.Drawing.Size(800, 600)
+
+$tabControl = New-Object System.Windows.Forms.TabControl
+$tabControl.Dock = "Fill"
+
+# Onglet 1
+$tab1 = New-Object System.Windows.Forms.TabPage
+$tab1.Text = "Onglet 1"
+$label1 = New-Object System.Windows.Forms.Label
+$label1.Text = "Contenu de l'onglet 1"
+$label1.Dock = "Fill"
+$label1.TextAlign = "MiddleCenter"
+$tab1.Controls.Add($label1)
+$tabControl.TabPages.Add($tab1)
+
+# Onglet 2 avec le panel
+$tab2 = New-Object System.Windows.Forms.TabPage
+$tab2.Text = "Planning ODM"
+
+# Appeler la fonction qui retourne le panel
+$monPanel = Get-MonPanel
+
+Write-Host "Type de monPanel: $($monPanel.GetType())" -ForegroundColor Yellow
+Write-Host "Est-ce un Panel? $($monPanel -is [System.Windows.Forms.Panel])" -ForegroundColor Yellow
+
+# Ajouter le panel à l'onglet
+$tab2.Controls.Add($monPanel)
+$tabControl.TabPages.Add($tab2)
+
+$form.Controls.Add($tabControl)
+
+$form.ShowDialog()
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\test-gui.ps1 ==========
+
+# test-gui.ps1
+
+Write-Host "=== TEST DE L'INTERFACE ===" -ForegroundColor Cyan
+
+# Charger les assemblies
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Write-Host "✓ Assemblies chargées" -ForegroundColor Green
+
+# Charger les modules
+Write-Host "Chargement des modules..." -ForegroundColor Yellow
+
+$scriptPath = "C:\Users\alexa\Documents\ConventionDeNommage\src"
+
+try {
+    . "$scriptPath\Config.ps1"
+    Write-Host "✓ Config.ps1 chargé" -ForegroundColor Green
+} catch { Write-Host "✗ Erreur Config.ps1: $_" -ForegroundColor Red }
+
+try {
+    . "$scriptPath\Core\TemplateManager.ps1"
+    Write-Host "✓ TemplateManager.ps1 chargé" -ForegroundColor Green
+} catch { Write-Host "✗ Erreur TemplateManager.ps1: $_" -ForegroundColor Red }
+
+try {
+    . "$scriptPath\Core\Rename.ps1"
+    Write-Host "✓ Rename.ps1 chargé" -ForegroundColor Green
+} catch { Write-Host "✗ Erreur Rename.ps1: $_" -ForegroundColor Red }
+
+try {
+    . "$scriptPath\Core\TemplateEditor.ps1"
+    Write-Host "✓ TemplateEditor.ps1 chargé" -ForegroundColor Green
+} catch { Write-Host "✗ Erreur TemplateEditor.ps1: $_" -ForegroundColor Red }
+
+# Tester Get-Templates
+Write-Host "`nTest Get-Templates:" -ForegroundColor Yellow
+try {
+    $templates = Get-Templates
+    Write-Host "✓ Get-Templates réussi, $($templates.Count) templates" -ForegroundColor Green
+    foreach ($t in $templates) {
+        Write-Host "  - $($t.name) : $($t.format)" -ForegroundColor Gray
+    }
+} catch {
+    Write-Host "✗ Erreur Get-Templates: $_" -ForegroundColor Red
+}
+
+# Créer une fenêtre simple pour tester
+Write-Host "`nCréation d'une fenêtre de test..." -ForegroundColor Yellow
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Test Convention de nommage"
+$form.Size = New-Object System.Drawing.Size(500, 400)
+$form.StartPosition = "CenterScreen"
+
+$label = New-Object System.Windows.Forms.Label
+$label.Text = "Test de chargement réussi !"
+$label.Location = New-Object System.Drawing.Point(50, 50)
+$label.Size = New-Object System.Drawing.Size(400, 30)
+$label.Font = New-Object System.Drawing.Font("Arial", 12)
+$form.Controls.Add($label)
+
+$listBox = New-Object System.Windows.Forms.ListBox
+$listBox.Location = New-Object System.Drawing.Point(50, 100)
+$listBox.Size = New-Object System.Drawing.Size(400, 150)
+foreach ($t in $templates) {
+    $listBox.Items.Add("$($t.name) - $($t.format)")
+}
+$form.Controls.Add($listBox)
+
+$btn = New-Object System.Windows.Forms.Button
+$btn.Text = "Fermer"
+$btn.Location = New-Object System.Drawing.Point(200, 280)
+$btn.Size = New-Object System.Drawing.Size(100, 40)
+$btn.Add_Click({ $form.Close() })
+$form.Controls.Add($btn)
+
+Write-Host "✓ Fenêtre créée, affichage..." -ForegroundColor Green
+$form.ShowDialog() | Out-Null
+
+Write-Host "=== FIN DU TEST ===" -ForegroundColor Cyan
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\test-minimal.ps1 ==========
+
+# test-minimal.ps1
+Write-Host "=== TEST MINIMAL ===" -ForegroundColor Cyan
+
+# Charger les modules de base
+$scriptPath = "C:\Users\alexa\Documents\ConventionDeNommage\src"
+
+Write-Host "1. Chargement Config.ps1..." -ForegroundColor Yellow
+try {
+    . "$scriptPath\Config.ps1"
+    Write-Host "   ✅ OK" -ForegroundColor Green
+} catch {
+    Write-Host "   ❌ Erreur: $_" -ForegroundColor Red
+}
+
+Write-Host "2. Chargement TemplateManager.ps1..." -ForegroundColor Yellow
+try {
+    . "$scriptPath\Core\TemplateManager.ps1"
+    Write-Host "   ✅ OK" -ForegroundColor Green
+} catch {
+    Write-Host "   ❌ Erreur: $_" -ForegroundColor Red
+}
+
+Write-Host "3. Chargement Rename.ps1..." -ForegroundColor Yellow
+try {
+    . "$scriptPath\Core\Rename.ps1"
+    Write-Host "   ✅ OK" -ForegroundColor Green
+} catch {
+    Write-Host "   ❌ Erreur: $_" -ForegroundColor Red
+}
+
+Write-Host "4. Chargement TemplateEditor.ps1..." -ForegroundColor Yellow
+try {
+    . "$scriptPath\Core\TemplateEditor.ps1"
+    Write-Host "   ✅ OK" -ForegroundColor Green
+} catch {
+    Write-Host "   ❌ Erreur: $_" -ForegroundColor Red
+}
+
+Write-Host "5. Chargement ODMViewer.ps1..." -ForegroundColor Yellow
+try {
+    . "$scriptPath\ODM\ODMViewer.ps1"
+    Write-Host "   ✅ OK" -ForegroundColor Green
+} catch {
+    Write-Host "   ❌ Erreur: $_" -ForegroundColor Red
+}
+
+Write-Host "6. Chargement GUI.ps1..." -ForegroundColor Yellow
+try {
+    . "$scriptPath\GUI.ps1"
+    Write-Host "   ✅ OK" -ForegroundColor Green
+} catch {
+    Write-Host "   ❌ Erreur: $_" -ForegroundColor Red
+}
+
+Write-Host "7. Vérification fonction Start-GUI..." -ForegroundColor Yellow
+if (Get-Command Start-GUI -ErrorAction SilentlyContinue) {
+    Write-Host "   ✅ Start-GUI disponible" -ForegroundColor Green
+} else {
+    Write-Host "   ❌ Start-GUI non disponible" -ForegroundColor Red
+}
+
+Write-Host "`n=== FIN DU TEST ===" -ForegroundColor Cyan
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\test-odm-direct.ps1 ==========
+
+# test-odm-direct.ps1
+Write-Host "=== TEST DIRECT ODMViewer ===" -ForegroundColor Cyan
+
+# Charger les assemblies
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$scriptPath = "C:\Users\alexa\Documents\ConventionDeNommage\src"
+
+Write-Host "1. Chargement de ODMViewer.ps1..." -ForegroundColor Yellow
+try {
+    . "$scriptPath\ODM\ODMViewer.ps1"
+    Write-Host "   ✅ OK" -ForegroundColor Green
+} catch {
+    Write-Host "   ❌ Erreur: $_" -ForegroundColor Red
+    exit
+}
+
+Write-Host "2. Appel de Show-ODMViewer..." -ForegroundColor Yellow
+try {
+    $panel = Show-ODMViewer
+    Write-Host "   ✅ Panel créé" -ForegroundColor Green
+} catch {
+    Write-Host "   ❌ Erreur: $_" -ForegroundColor Red
+    Write-Host "   Stack: $($_.ScriptStackTrace)" -ForegroundColor Gray
+    exit
+}
+
+Write-Host "3. Création de la fenêtre..." -ForegroundColor Yellow
+try {
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Test ODMViewer - Nouvelle interface"
+    $form.Size = New-Object System.Drawing.Size(1200, 800)
+    $form.StartPosition = "CenterScreen"
+    
+    $panel.Dock = "Fill"
+    $form.Controls.Add($panel)
+    
+    Write-Host "   ✅ Fenêtre créée" -ForegroundColor Green
+    Write-Host "   📌 Fermez la fenêtre pour continuer..." -ForegroundColor Yellow
+    
+    $form.ShowDialog() | Out-Null
+    Write-Host "   ✅ Fenêtre fermée" -ForegroundColor Green
+} catch {
+    Write-Host "   ❌ Erreur: $_" -ForegroundColor Red
+    Write-Host "   Stack: $($_.ScriptStackTrace)" -ForegroundColor Gray
+}
+
+Write-Host "`n=== FIN DU TEST ===" -ForegroundColor Cyan
+Read-Host "Appuyez sur Entrée pour continuer"
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\test-odm-simple.ps1 ==========
+
+# test-odm-simple.ps1
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+# Fonction simple qui retourne un panel
+function Get-TestPanel {
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.BackColor = [System.Drawing.Color]::LightBlue
+    $panel.Dock = "Fill"
+    
+    $label = New-Object System.Windows.Forms.Label
+    $label.Text = "TEST - Interface ODM"
+    $label.Font = New-Object System.Drawing.Font("Arial", 20)
+    $label.ForeColor = [System.Drawing.Color]::White
+    $label.Dock = "Fill"
+    $label.TextAlign = "MiddleCenter"
+    $panel.Controls.Add($label)
+    
+    return $panel
+}
+
+# Créer une fenêtre
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Test ODM"
+$form.Size = New-Object System.Drawing.Size(800, 600)
+
+$testPanel = Get-TestPanel
+$form.Controls.Add($testPanel)
+
+$form.ShowDialog()
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\test-odm.ps1 ==========
+
+# test-odm.ps1
+Write-Host "=== TEST DIRECT ODMViewer ===" -ForegroundColor Cyan
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$scriptPath = "C:\Users\alexa\Documents\ConventionDeNommage\src"
+
+Write-Host "1. Chargement des modules..." -ForegroundColor Yellow
+try {
+    . "$scriptPath\Config.ps1"
+    . "$scriptPath\Core\TemplateManager.ps1"
+    . "$scriptPath\Core\Rename.ps1"
+    . "$scriptPath\Core\TemplateEditor.ps1"
+    . "$scriptPath\ODM\ODMViewer.ps1"
+    Write-Host "   ✅ Modules chargés" -ForegroundColor Green
+} catch {
+    Write-Host "   ❌ Erreur: $_" -ForegroundColor Red
+    exit
+}
+
+Write-Host "2. Appel de Show-ODMViewer..." -ForegroundColor Yellow
+try {
+    $panel = Show-ODMViewer
+    Write-Host "   ✅ Panel créé" -ForegroundColor Green
+} catch {
+    Write-Host "   ❌ Erreur: $_" -ForegroundColor Red
+    Write-Host "   Stack: $($_.ScriptStackTrace)" -ForegroundColor Gray
+    exit
+}
+
+Write-Host "3. Création d'une fenêtre de test..." -ForegroundColor Yellow
+try {
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Test ODMViewer"
+    $form.Size = New-Object System.Drawing.Size(1200, 800)
+    $form.StartPosition = "CenterScreen"
+    
+    $panel.Dock = "Fill"
+    $form.Controls.Add($panel)
+    
+    Write-Host "   ✅ Fenêtre créée" -ForegroundColor Green
+    Write-Host "   📌 Fermez la fenêtre pour continuer..." -ForegroundColor Yellow
+    
+    $form.ShowDialog() | Out-Null
+    Write-Host "   ✅ Fenêtre fermée" -ForegroundColor Green
+} catch {
+    Write-Host "   ❌ Erreur: $_" -ForegroundColor Red
+    Write-Host "   Stack: $($_.ScriptStackTrace)" -ForegroundColor Gray
+}
+
+Write-Host "`n=== FIN DU TEST ===" -ForegroundColor Cyan
+Read-Host "Appuyez sur Entrée pour continuer"
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\test-panel-simple.ps1 ==========
+
+# test-panel-simple.ps1
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+function Get-SimplePanel {
+    $p = New-Object System.Windows.Forms.Panel
+    $p.BackColor = [System.Drawing.Color]::Red
+    $p.Dock = "Fill"
+    
+    $l = New-Object System.Windows.Forms.Label
+    $l.Text = "TEST - Ceci est un panel simple"
+    $l.ForeColor = [System.Drawing.Color]::White
+    $l.Font = New-Object System.Drawing.Font("Arial", 14)
+    $l.Dock = "Fill"
+    $l.TextAlign = "MiddleCenter"
+    $p.Controls.Add($l)
+    
+    return $p
+}
+
+# Créer une fenêtre
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Test Panel Simple"
+$form.Size = New-Object System.Drawing.Size(600, 400)
+
+$panel = Get-SimplePanel
+$form.Controls.Add($panel)
+
+Write-Host "Type du panel: $($panel.GetType())" -ForegroundColor Cyan
+Write-Host "Est-ce un Panel? $($panel -is [System.Windows.Forms.Panel])" -ForegroundColor Cyan
+
+$form.ShowDialog()
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\test-retour.ps1 ==========
+
+# test-retour.ps1
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+. "C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Components\DataManager.ps1"
+. "C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Components\PlanningPanel.ps1"
+
+$collecteurs = Get-Collecteurs
+$vehicules = Get-Vehicules
+$planningData = $null
+
+$resultat = Show-PlanningPanel -Collecteurs $collecteurs -Vehicules $vehicules -PlanningData ([ref]$planningData)
+
+Write-Host "Type du résultat: $($resultat.GetType())" -ForegroundColor Yellow
+Write-Host "Est-ce un Panel? $($resultat -is [System.Windows.Forms.Panel])" -ForegroundColor Yellow
+
+if ($resultat -is [array]) {
+    Write-Host "C'est un tableau avec $($resultat.Count) éléments" -ForegroundColor Red
+    for ($i = 0; $i -lt $resultat.Count; $i++) {
+        Write-Host "  [$i] Type: $($resultat[$i].GetType())" -ForegroundColor Gray
+    }
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\test-show-odm.ps1 ==========
+
+# test-show-odm.ps1
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+# Charger le vrai module
+$scriptPath = "C:\Users\alexa\Documents\ConventionDeNommage\src"
+. "$scriptPath\ODM\ODMViewer.ps1"
+
+$panel = Show-ODMViewer
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Test Show-ODMViewer"
+$form.Size = New-Object System.Drawing.Size(1200, 800)
+
+$form.Controls.Add($panel)
+
+$form.ShowDialog()
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\test-start-gui.ps1 ==========
+
+# test-start-gui.ps1
+
+Write-Host "=== TEST DIRECT DE START-GUI ===" -ForegroundColor Cyan
+
+# Charger les modules nécessaires
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$scriptPath = "C:\Users\alexa\Documents\ConventionDeNommage\src"
+
+Write-Host "1. Chargement des modules..." -ForegroundColor Yellow
+try {
+    . "$scriptPath\Config.ps1"
+    Write-Host "   ✓ Config.ps1" -ForegroundColor Green
+} catch { Write-Host "   ✗ $_" -ForegroundColor Red }
+
+try {
+    . "$scriptPath\Core\TemplateManager.ps1"
+    Write-Host "   ✓ TemplateManager.ps1" -ForegroundColor Green
+} catch { Write-Host "   ✗ $_" -ForegroundColor Red }
+
+try {
+    . "$scriptPath\Core\Rename.ps1"
+    Write-Host "   ✓ Rename.ps1" -ForegroundColor Green
+} catch { Write-Host "   ✗ $_" -ForegroundColor Red }
+
+try {
+    . "$scriptPath\Core\TemplateEditor.ps1"
+    Write-Host "   ✓ TemplateEditor.ps1" -ForegroundColor Green
+} catch { Write-Host "   ✗ $_" -ForegroundColor Red }
+
+try {
+    . "$scriptPath\GUI.ps1"
+    Write-Host "   ✓ GUI.ps1" -ForegroundColor Green
+} catch { Write-Host "   ✗ $_" -ForegroundColor Red }
+
+Write-Host "`n2. Vérification de la fonction Start-GUI..." -ForegroundColor Yellow
+if (Get-Command Start-GUI -ErrorAction SilentlyContinue) {
+    Write-Host "   ✓ Start-GUI est disponible" -ForegroundColor Green
+} else {
+    Write-Host "   ✗ Start-GUI n'est pas disponible !" -ForegroundColor Red
+    Write-Host "   Vérification des fonctions disponibles dans GUI.ps1:" -ForegroundColor Yellow
+    Get-Command -Module (Get-Module -Name (Get-Content "$scriptPath\GUI.ps1")) -ErrorAction SilentlyContinue
+}
+
+Write-Host "`n3. Test avec un fichier PDF factice..." -ForegroundColor Yellow
+$testFile = "C:\Users\alexa\Documents\ConventionDeNommage\test.pdf"
+
+# Créer un fichier PDF factice pour le test
+if (-not (Test-Path $testFile)) {
+    "" | Out-File $testFile -Encoding utf8
+    Write-Host "   Fichier test créé: $testFile" -ForegroundColor Gray
+}
+
+try {
+    Write-Host "   Appel de Start-GUI avec fichier test..." -ForegroundColor Gray
+    Start-GUI -FichierPDF $testFile
+    Write-Host "   ✓ Start-GUI s'est exécuté sans erreur" -ForegroundColor Green
+} catch {
+    Write-Host "   ✗ Erreur: $_" -ForegroundColor Red
+    Write-Host "   StackTrace: $($_.ScriptStackTrace)" -ForegroundColor Gray
+}
+
+Write-Host "`n=== FIN DU TEST ===" -ForegroundColor Cyan
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\test-templates.ps1 ==========
+
+# test-templates.ps1
+
+Write-Host "=== TEST DE CHARGEMENT DES TEMPLATES ===" -ForegroundColor Cyan
+
+# Chemins
+$scriptPath = "C:\Users\alexa\Documents\ConventionDeNommage\src"
+$dataPath = "$scriptPath\Data\templates.json"
+
+Write-Host "1. Vérification du chemin des templates..." -ForegroundColor Yellow
+Write-Host "   Chemin: $dataPath" -ForegroundColor White
+
+# Vérifier si le fichier existe
+if (Test-Path $dataPath) {
+    Write-Host "   ✓ Fichier trouvé" -ForegroundColor Green
+} else {
+    Write-Host "   ✗ Fichier NON trouvé !" -ForegroundColor Red
+}
+
+# Lire et afficher le contenu du fichier
+Write-Host "`n2. Contenu du fichier templates.json:" -ForegroundColor Yellow
+try {
+    $content = Get-Content $dataPath -Raw -ErrorAction Stop
+    Write-Host "   Longueur: $($content.Length) caractères" -ForegroundColor White
+    Write-Host "   Contenu: " -ForegroundColor White
+    Write-Host $content -ForegroundColor Gray
+} catch {
+    Write-Host "   ✗ Erreur lecture: $_" -ForegroundColor Red
+}
+
+# Tenter de convertir en JSON
+Write-Host "`n3. Conversion JSON:" -ForegroundColor Yellow
+try {
+    if (Test-Path $dataPath) {
+        $templatesData = Get-Content $dataPath -Raw
+        $templates = $templatesData | ConvertFrom-Json -ErrorAction Stop
+        Write-Host "   ✓ Conversion réussie" -ForegroundColor Green
+        Write-Host "   Nombre de templates: $($templates.templates.Count)" -ForegroundColor Green
+    } else {
+        Write-Host "   ✗ Fichier inexistant" -ForegroundColor Red
+    }
+}
+catch {
+    Write-Host "   ✗ Erreur conversion JSON: $_" -ForegroundColor Red
+    Write-Host "   L'erreur indique que le fichier JSON est mal formé" -ForegroundColor Yellow
+}
+
+Write-Host "`n=== FIN DU TEST ===" -ForegroundColor Cyan
+Read-Host "Appuyez sur Entrée pour continuer"
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\Config.ps1 ==========
+
+# Configuration
+if ([System.Threading.Thread]::CurrentThread.ApartmentState -ne "STA") {
+    powershell -STA -File $PSCommandPath $args
+    exit
+}
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$baseOrange = [System.Drawing.ColorTranslator]::FromHtml("#E26E2A")
+$script:borderColor = $baseOrange
+$script:formBackColor = [System.Drawing.ColorTranslator]::FromHtml("#F5F5F5")
+$script:textBoxForeColor = [System.Drawing.ColorTranslator]::FromHtml("#272727")
+$script:placeholderColor = [System.Drawing.Color]::Gray
+
+try { 
+    $script:font = New-Object System.Drawing.Font("Arial", 10) 
+} catch { 
+    $script:font = New-Object System.Drawing.Font("Microsoft Sans Serif", 10) 
+}
+
+$script:placeholder = "Renseigner le point de collecte"
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\GUI.ps1 ==========
+
+# GUI.ps1 - Interface graphique avec 4 onglets
+
+function Start-GUI {
+    param([string]$FichierPDF)
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    . "$PSScriptRoot\Config.ps1"
+    . "$PSScriptRoot\Core\TemplateManager.ps1"
+    . "$PSScriptRoot\Core\Rename.ps1"
+    . "$PSScriptRoot\Core\TemplateEditor.ps1"
+    . "$PSScriptRoot\ODM\ODMViewer.ps1"
+    
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Convention de nommage"
+    $form.Size = New-Object System.Drawing.Size(1400, 700)
+    $form.StartPosition = "CenterScreen"
+    $form.FormBorderStyle = "Sizable"
+    $form.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $form.MinimumSize = New-Object System.Drawing.Size(1000, 550)
+    
+    # Onglets principaux
+    $tabControl = New-Object System.Windows.Forms.TabControl
+    $tabControl.Dock = "Fill"
+    $tabControl.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    
+    # ========== ONGLET 1 : CONVENTION DE NOMMAGE ==========
+    $tabRename = New-Object System.Windows.Forms.TabPage
+    $tabRename.Text = "Convention de nommage"
+    $tabRename.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    
+    $panelRename = New-Object System.Windows.Forms.Panel
+    $panelRename.Dock = "Fill"
+    $panelRename.Padding = New-Object System.Windows.Forms.Padding(20)
+    
+    $margeGauche = 35
+    $largeurPlaceholder = 470
+    
+    # Champ texte
+    $textBox = New-Object System.Windows.Forms.TextBox
+    $textBox.Location = New-Object System.Drawing.Point($margeGauche, 40)
+    $textBox.Size = New-Object System.Drawing.Size($largeurPlaceholder, 35)
+    $textBox.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $panelRename.Controls.Add($textBox)
+    
+    # Panel pour les boutons dynamiques
+    $buttonsPanel = New-Object System.Windows.Forms.Panel
+    $buttonsPanel.Location = New-Object System.Drawing.Point($margeGauche, 95)
+    $buttonsPanel.Size = New-Object System.Drawing.Size(610, 120)
+    $buttonsPanel.AutoScroll = $true
+    $panelRename.Controls.Add($buttonsPanel)
+    
+    # Calendrier
+    $calLabel = New-Object System.Windows.Forms.Label
+    $calLabel.Text = "Forcer la date :"
+    $calLabel.Location = New-Object System.Drawing.Point($margeGauche, 225)
+    $calLabel.Size = New-Object System.Drawing.Size(120, 20)
+    $calLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+    $panelRename.Controls.Add($calLabel)
+    
+    $datePicker = New-Object System.Windows.Forms.DateTimePicker
+    $datePicker.Location = New-Object System.Drawing.Point($margeGauche, 250)
+    $datePicker.Size = New-Object System.Drawing.Size(220, 25)
+    $datePicker.Format = "Short"
+    $datePicker.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    
+    function Get-DateParDefaut {
+        $aujourdhui = Get-Date
+        $jourSemaine = $aujourdhui.DayOfWeek
+        if ($jourSemaine -eq "Monday") { return $aujourdhui.AddDays(-3) }
+        else { return $aujourdhui.AddDays(-1) }
+    }
+    
+    $dateParDefaut = Get-DateParDefaut
+    $datePicker.Value = $dateParDefaut
+    $panelRename.Controls.Add($datePicker)
+    
+    $forceLabel = New-Object System.Windows.Forms.Label
+    $forceLabel.Location = New-Object System.Drawing.Point(($margeGauche + 230), 252)
+    $forceLabel.Size = New-Object System.Drawing.Size(220, 20)
+    $forceLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+    $forceLabel.ForeColor = [System.Drawing.Color]::Red
+    $forceLabel.Text = ""
+    $panelRename.Controls.Add($forceLabel)
+    
+    $tabRename.Controls.Add($panelRename)
+    
+    # ========== ONGLET 2 : PLANNING ==========
+    $tabPlanning = New-Object System.Windows.Forms.TabPage
+    $tabPlanning.Text = "Planning"
+    $tabPlanning.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    
+    # Appeler Show-ODMViewer pour le planning
+    $planningResult = Show-ODMViewer -PanelType "Planning"
+    if ($planningResult -is [array]) {
+        $planningPanel = $planningResult[-1]
+    } else {
+        $planningPanel = $planningResult
+    }
+    $planningPanel.Dock = "Fill"
+    $tabPlanning.Controls.Add($planningPanel)
+    
+    # ========== ONGLET 3 : DONNÉES COLLECTEURS ==========
+    $tabCollecteurs = New-Object System.Windows.Forms.TabPage
+    $tabCollecteurs.Text = "Données collecteurs"
+    $tabCollecteurs.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    
+    $collecteursResult = Show-ODMViewer -PanelType "Collecteurs"
+    if ($collecteursResult -is [array]) {
+        $collecteursPanel = $collecteursResult[-1]
+    } else {
+        $collecteursPanel = $collecteursResult
+    }
+    $collecteursPanel.Dock = "Fill"
+    $tabCollecteurs.Controls.Add($collecteursPanel)
+    
+    # ========== ONGLET 4 : DONNÉES VÉHICULES ==========
+    $tabVehicules = New-Object System.Windows.Forms.TabPage
+    $tabVehicules.Text = "Données véhicules"
+    $tabVehicules.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    
+    $vehiculesResult = Show-ODMViewer -PanelType "Vehicules"
+    if ($vehiculesResult -is [array]) {
+        $vehiculesPanel = $vehiculesResult[-1]
+    } else {
+        $vehiculesPanel = $vehiculesResult
+    }
+    $vehiculesPanel.Dock = "Fill"
+    $tabVehicules.Controls.Add($vehiculesPanel)
+    
+    # Ajouter les onglets
+    $tabControl.TabPages.Add($tabRename)
+    $tabControl.TabPages.Add($tabPlanning)
+    $tabControl.TabPages.Add($tabCollecteurs)
+    $tabControl.TabPages.Add($tabVehicules)
+    
+    $form.Controls.Add($tabControl)
+    
+    # ========== FONCTIONS POUR L'ONGLET CONVENTION DE NOMMAGE ==========
+    $script:estEnModePlaceholder = $true
+    $script:texteUtilisateur = ""
+    $script:formulaireCharge = $false
+    $script:dateForcee = $false
+    $script:dateSelectionnee = $datePicker.Value
+    $script:currentPlaceholder = ""
+    $script:templates = @()
+    
+    function Load-TemplatesAndButtons {
+        try {
+            $script:templates = Get-Templates | Where-Object { $_.enabled -eq $true }
+            $buttonsPanel.Controls.Clear()
+            
+            $x = 0
+            $y = 0
+            $btnWidth = 146
+            $btnHeight = 50
+            $spacing = 15
+            $maxPerRow = 4
+            
+            for ($i = 0; $i -lt $script:templates.Count; $i++) {
+                $template = $script:templates[$i]
+                
+                $btn = New-Object System.Windows.Forms.Button
+                $btn.Text = $template.name
+                $btn.Location = New-Object System.Drawing.Point($x, $y)
+                $btn.Size = New-Object System.Drawing.Size($btnWidth, $btnHeight)
+                $btn.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+                $btn.FlatStyle = "Flat"
+                $btn.FlatAppearance.BorderColor = [System.Drawing.ColorTranslator]::FromHtml($template.borderColor)
+                $btn.FlatAppearance.BorderSize = 2
+                $btn.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+                $btn.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+                $btn.TextAlign = "MiddleCenter"
+                $btn.Tag = $template.id
+                
+                $btn.Add_MouseEnter({
+                    $currentBtn = $this
+                    $templateId = $currentBtn.Tag
+                    $foundTemplate = $script:templates | Where-Object { $_.id -eq $templateId }
+                    if ($foundTemplate) {
+                        $borderHover = $foundTemplate.borderColor
+                        if ($foundTemplate.name -eq "CERTIFICAT") { $borderHover = "#AF470B" }
+                        elseif ($foundTemplate.name -eq "PLANNER") { $borderHover = "#1A6AA8" }
+                        elseif ($foundTemplate.name -eq "FRANCE TRAVAIL") { $borderHover = "#1A9F7B" }
+                        $currentBtn.FlatAppearance.BorderColor = [System.Drawing.ColorTranslator]::FromHtml($borderHover)
+                        $currentBtn.BackColor = [System.Drawing.ColorTranslator]::FromHtml($foundTemplate.buttonColor)
+                        $currentBtn.ForeColor = [System.Drawing.Color]::White
+                    }
+                })
+                
+                $btn.Add_MouseLeave({
+                    $currentBtn = $this
+                    $templateId = $currentBtn.Tag
+                    $foundTemplate = $script:templates | Where-Object { $_.id -eq $templateId }
+                    if ($foundTemplate) {
+                        $currentBtn.FlatAppearance.BorderColor = [System.Drawing.ColorTranslator]::FromHtml($foundTemplate.borderColor)
+                        $currentBtn.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+                        $currentBtn.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+                    }
+                })
+                
+                $btn.Add_Click({
+                    $clickedBtn = $this
+                    $templateId = $clickedBtn.Tag
+                    $template = $script:templates | Where-Object { $_.id -eq $templateId }
+                    if ($template) {
+                        Invoke-RenameAction -TemplateId $templateId -Template $template
+                    }
+                })
+                
+                $buttonsPanel.Controls.Add($btn)
+                
+                $x += $btnWidth + $spacing
+                if (($i + 1) % $maxPerRow -eq 0) {
+                    $x = 0
+                    $y += $btnHeight + $spacing
+                }
+            }
+            
+            $buttonsPanel.Height = [Math]::Max(120, $y + $btnHeight + 20)
+            
+            if ($script:templates.Count -gt 0) {
+                $script:currentPlaceholder = $script:templates[0].placeholder
+                $textBox.Tag = $script:currentPlaceholder
+                if ($script:estEnModePlaceholder) {
+                    $textBox.Text = $script:currentPlaceholder
+                    $textBox.ForeColor = $placeholderColor
+                }
+            }
+        }
+        catch {
+            [System.Windows.Forms.MessageBox]::Show("Erreur chargement: $_", "Erreur")
+        }
+    }
+    
+    function Set-PlaceholderMode {
+        param($textBox, $activer)
+        if ($activer) {
+            $textBox.Text = $textBox.Tag
+            $textBox.ForeColor = $placeholderColor
+            $script:estEnModePlaceholder = $true
+        } else {
+            if ($script:texteUtilisateur -ne "") { $textBox.Text = $script:texteUtilisateur }
+            else { $textBox.Text = "" }
+            $textBox.ForeColor = $textBoxForeColor
+            $script:estEnModePlaceholder = $false
+        }
+    }
+    
+    function Invoke-RenameAction {
+        param($TemplateId, $Template)
+        
+        $nom = $textBox.Text.Trim()
+        if ($nom -eq $script:currentPlaceholder) { $nom = "" }
+        
+        if ([string]::IsNullOrWhiteSpace($nom)) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "Veuillez renseigner " + $Template.placeholder,
+                "Champ obligatoire",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Warning
+            )
+            return
+        }
+        
+        $dateUtilisee = if ($script:dateForcee) { $script:dateSelectionnee } else { $dateParDefaut }
+        
+        $ok = Rename-PDFDynamic -TemplateId $TemplateId -FichierPDF $FichierPDF -UserText $nom -DateSelectionnee $dateUtilisee
+        
+        if ($ok -eq $true) {
+            $form.Close()
+        }
+    }
+    
+    # Événements
+    $textBox.Add_Enter({
+        if (-not $script:formulaireCharge) { return }
+        if ($script:estEnModePlaceholder) {
+            $this.Text = ""
+            $this.ForeColor = $textBoxForeColor
+            $script:estEnModePlaceholder = $false
+        } else { $this.SelectAll() }
+    })
+    
+    $textBox.Add_Leave({
+        if (-not $script:formulaireCharge) { return }
+        if (-not $script:estEnModePlaceholder) { $script:texteUtilisateur = $this.Text }
+        if ([string]::IsNullOrWhiteSpace($this.Text)) {
+            Set-PlaceholderMode -textBox $this -activer $true
+            $script:texteUtilisateur = ""
+        }
+    })
+    
+    $textBox.Add_KeyUp({
+        if ($_.KeyCode -eq "Enter" -and $script:formulaireCharge -and $script:templates.Count -gt 0) {
+            $firstTemplate = $script:templates[0]
+            Invoke-RenameAction -TemplateId $firstTemplate.id -Template $firstTemplate
+        }
+    })
+    
+    $datePicker.Add_ValueChanged({
+        $script:dateSelectionnee = $this.Value
+        if ($this.Value.Date -ne $dateParDefaut.Date) {
+            $script:dateForcee = $true
+            $forceLabel.Text = "Mode force: $($this.Value.ToString('dd/MM/yyyy'))"
+        } else {
+            $script:dateForcee = $false
+            $forceLabel.Text = ""
+        }
+    })
+    
+    $form.Add_Shown({
+        Load-TemplatesAndButtons
+        Set-PlaceholderMode -textBox $textBox -activer $true
+        $form.BeginInvoke([Action]{
+            Start-Sleep -Milliseconds 500
+            $script:formulaireCharge = $true
+            if ($buttonsPanel.Controls.Count -gt 0) {
+                $buttonsPanel.Controls[0].Focus()
+            }
+        })
+    })
+    
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+    [System.Windows.Forms.Application]::Run($form)
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\Main.ps1 ==========
+
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+$scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+. "$scriptPath\Config.ps1"
+. "$scriptPath\Core\TemplateManager.ps1"
+. "$scriptPath\Core\Rename.ps1"
+. "$scriptPath\Core\TemplateEditor.ps1"
+. "$scriptPath\ODM\ODMViewer.ps1"
+. "$scriptPath\GUI.ps1"
+
+function Find-PDFFile {
+    param([string]$Path)
+    
+    if ($Path -and (Test-Path $Path)) { return $Path }
+    
+    if ($Path) {
+        $dossier = Split-Path $Path -Parent
+        if ($dossier -and (Test-Path $dossier)) {
+            $fichiers = Get-ChildItem $dossier -Filter "*.pdf" -File
+            if ($fichiers) { return $fichiers[0].FullName }
+        }
+    }
+    
+    $fichiers = Get-ChildItem (Get-Location) -Filter "*.pdf" -File
+    if ($fichiers) { return $fichiers[0].FullName }
+    
+    return $null
+}
+
+# Lancer l'interface avec onglets
+# Si un fichier est pass? en param?tre, on l'utilise pour l'onglet Convention de nommage
+if ($args.Count -gt 0) {
+    $fichierPDF = $args[0] -replace '^"|"$', '' -replace "'", ''
+    $fichierTrouve = Find-PDFFile $fichierPDF
+    if ($fichierTrouve) {
+        Start-GUI -FichierPDF $fichierTrouve
+    } else {
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.MessageBox]::Show(
+            "Aucun fichier PDF trouv? dans le dossier courant.`n`nL'interface va s'ouvrir sans fichier s?lectionn?.", 
+            "Information", 
+            [System.Windows.Forms.MessageBoxButtons]::OK, 
+            [System.Windows.Forms.MessageBoxIcon]::Information
+        )
+        Start-GUI -FichierPDF $null
+    }
+} else {
+    # Si pas de fichier en param?tre, on lance quand m?me l'interface
+    Start-GUI -FichierPDF $null
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\test-direct.ps1 ==========
+
+# test-direct.ps1
+Write-Host "=== TEST DIRECT ===" -ForegroundColor Cyan
+
+# Créer un fichier test
+$testFile = "C:\Users\alexa\Documents\ConventionDeNommage\test.pdf"
+if (-not (Test-Path $testFile)) {
+    "" | Out-File $testFile -Encoding utf8
+    Write-Host "Fichier test créé" -ForegroundColor Green
+}
+
+Write-Host "1. Chargement des modules..." -ForegroundColor Yellow
+cd "C:\Users\alexa\Documents\ConventionDeNommage\src"
+
+. ".\Config.ps1"
+. ".\Core\TemplateManager.ps1"
+. ".\Core\Rename.ps1"
+. ".\Core\TemplateEditor.ps1"
+. ".\GUI.ps1"
+
+Write-Host "2. Appel de Start-GUI..." -ForegroundColor Yellow
+Start-GUI -FichierPDF $testFile
+
+Write-Host "3. Fin du test" -ForegroundColor Cyan
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\Common\Navigation.ps1 ==========
+
+# Navigation.ps1 - Navigation entre écrans
+
+function Navigate-To {
+    param($From, $To)
+    
+    $From.Visible = $false
+    $To.Visible = $true
+}
+
+function Navigate-Back {
+    param($Current, $Previous)
+    
+    $Current.Visible = $false
+    $Previous.Visible = $true
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\Common\Styles.ps1 ==========
+
+# Styles.ps1 - Styles communs (bouton CERTIFICAT)
+
+function Apply-CertificatStyle {
+    param($Button)
+    
+    $Button.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $Button.FlatStyle = "Flat"
+    $Button.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $Button.FlatAppearance.BorderSize = 2
+    $Button.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $Button.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $Button.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $Button.TabStop = $false
+    
+    $Button.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $Button.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+}
+
+function Apply-QuitterStyle {
+    param($Button)
+    
+    $Button.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $Button.FlatStyle = "Flat"
+    $Button.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $Button.FlatAppearance.BorderSize = 2
+    $Button.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $Button.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $Button.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $Button.TabStop = $false
+    
+    $Button.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $Button.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\Core\DataManager.ps1 ==========
+
+# DataManager.ps1 - Gestion des données (collecteurs, véhicules)
+
+$script:DataPath = Join-Path $PSScriptRoot "..\Data\ressources.json"
+
+function Get-Collecteurs {
+    $data = Load-ODMData
+    if ($data -and $data.chauffeurs) {
+        return $data.chauffeurs
+    }
+    return @()
+}
+
+function Get-Vehicules {
+    $data = Load-ODMData
+    if ($data -and $data.vehicules) {
+        return $data.vehicules
+    }
+    return @()
+}
+
+function Load-ODMData {
+    if (Test-Path $script:DataPath) {
+        try {
+            $data = Get-Content $script:DataPath -Raw | ConvertFrom-Json
+            return $data
+        } catch {
+            return $null
+        }
+    }
+    return $null
+}
+
+function Save-ODMData {
+    param($Collecteurs, $Vehicules)
+    
+    $data = @{
+        chauffeurs = $Collecteurs
+        vehicules = $Vehicules
+        clients = @()
+    }
+    
+    $data | ConvertTo-Json -Depth 10 | Out-File $script:DataPath -Encoding utf8
+    return $true
+}
+
+function Initialize-DefaultData {
+    $defaultCollecteurs = @(
+        @{ id = 1; nom = "DUPONT"; prenom = "Jean"; telephone = "0601020304"; email = "jean.dupont@email.com" },
+        @{ id = 2; nom = "MARTIN"; prenom = "Pierre"; telephone = "0605060708"; email = "pierre.martin@email.com" }
+    )
+    
+    $defaultVehicules = @(
+        @{ id = 1; immatriculation = "AA-123-BB"; marque = "Renault"; modele = "Master"; annee = 2020 },
+        @{ id = 2; immatriculation = "CC-456-DD"; marque = "Citroen"; modele = "Jumper"; annee = 2021 }
+    )
+    
+    Save-ODMData -Collecteurs $defaultCollecteurs -Vehicules $defaultVehicules
+    return $defaultCollecteurs, $defaultVehicules
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\Core\Logger.ps1 ==========
+
+# Logger.ps1 - Système de journalisation
+
+$script:logFile = Join-Path $PSScriptRoot "..\Logs\app.log"
+
+function Write-Log {
+    param(
+        [string]$Message,
+        [string]$Level = "INFO"
+    )
+    
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logEntry = "[$timestamp] [$Level] $Message"
+    
+    # Afficher dans la console (si console disponible)
+    try {
+        Write-Host $logEntry
+    } catch {}
+    
+    # Écrire dans le fichier
+    try {
+        Add-Content -Path $script:logFile -Value $logEntry -ErrorAction SilentlyContinue
+    } catch {}
+}
+
+function Clear-Log {
+    Remove-Item $script:logFile -ErrorAction SilentlyContinue
+    Write-Log "Log effacé" "INFO"
+}
+
+Export-ModuleMember -Function Write-Log, Clear-Log
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\Core\Rename.ps1 ==========
+
+# Rename.ps1 - Fonction de renommage dynamique
+
+function Rename-PDFDynamic {
+    param(
+        [string]$TemplateId,
+        [string]$FichierPDF,
+        [string]$UserText,
+        [datetime]$DateSelectionnee
+    )
+    
+    . "$PSScriptRoot\TemplateManager.ps1"
+    
+    $templates = Get-Templates
+    $template = $templates | Where-Object { $_.id -eq $TemplateId }
+    
+    if (-not $template) {
+        throw "Template non trouvé : $TemplateId"
+    }
+    
+    $cleanText = $UserText -replace '[\\/:*?"<>|]', '_'
+    $formattedDate = $DateSelectionnee.ToString($template.dateFormat)
+    $nouveauNom = $template.format -replace '{text}', $cleanText -replace '{date}', $formattedDate
+    
+    if ($template.includeTime -and $template.timeFormat) {
+        $formattedTime = Get-Date -Format $template.timeFormat
+        $nouveauNom = $nouveauNom -replace '{time}', $formattedTime
+    }
+    
+    if (-not $nouveauNom.EndsWith(".pdf")) {
+        $nouveauNom = $nouveauNom + ".pdf"
+    }
+    
+    try {
+        $dossier = Split-Path $FichierPDF -Parent
+        $nouveauChemin = Join-Path $dossier $nouveauNom
+
+        if (Test-Path $nouveauChemin) {
+            Add-Type -AssemblyName System.Windows.Forms
+            $result = [System.Windows.Forms.MessageBox]::Show(
+                "Le fichier '$nouveauNom' existe déjà. Voulez-vous le remplacer ?",
+                "Fichier existant",
+                [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                [System.Windows.Forms.MessageBoxIcon]::Question
+            )
+            if ($result -eq [System.Windows.Forms.DialogResult]::No) {
+                return $false
+            }
+        }
+
+        Rename-Item -Path $FichierPDF -NewName $nouveauNom -ErrorAction Stop
+        return $true
+    }
+    catch {
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.MessageBox]::Show(
+            "Erreur lors du renommage : $($_.Exception.Message)", 
+            "Erreur", 
+            [System.Windows.Forms.MessageBoxButtons]::OK, 
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        )
+        return $false
+    }
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\Core\TemplateEditor.ps1 ==========
+
+# TemplateEditor.ps1 - Interface complète de gestion des règles (CRUD)
+
+function Show-TemplateEditor {
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    . "$PSScriptRoot\TemplateManager.ps1"
+    
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Gestion des règles de nommage - CRUD"
+    $form.Size = New-Object System.Drawing.Size(950, 750)
+    $form.StartPosition = "CenterScreen"
+    $form.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $form.Topmost = $true
+    
+    # Variables
+    $script:currentEditId = $null
+    $script:selectedButtonColor = "#E26E2A"
+    $script:selectedBorderColor = "#E26E2A"
+    
+    # Sélecteur de couleur
+    $colorDialog = New-Object System.Windows.Forms.ColorDialog
+    
+    # Split container
+    $splitContainer = New-Object System.Windows.Forms.SplitContainer
+    $splitContainer.Dock = "Fill"
+    $splitContainer.SplitterDistance = 350
+    $splitContainer.Panel1.BackColor = [System.Drawing.Color]::FromArgb(250, 250, 250)
+    $splitContainer.Panel2.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    
+    # ========== PANEL GAUCHE - LISTE DES RÈGLES ==========
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = "📋 Règles existantes"
+    $lblTitle.Location = New-Object System.Drawing.Point(10, 10)
+    $lblTitle.Size = New-Object System.Drawing.Size(320, 30)
+    $lblTitle.Font = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold)
+    $splitContainer.Panel1.Controls.Add($lblTitle)
+    
+    $rulesListBox = New-Object System.Windows.Forms.ListBox
+    $rulesListBox.Location = New-Object System.Drawing.Point(10, 45)
+    $rulesListBox.Size = New-Object System.Drawing.Size(325, 550)
+    $rulesListBox.Font = New-Object System.Drawing.Font("Arial", 10)
+    $splitContainer.Panel1.Controls.Add($rulesListBox)
+    
+    $btnAdd = New-Object System.Windows.Forms.Button
+    $btnAdd.Text = "➕ NOUVELLE RÈGLE"
+    $btnAdd.Location = New-Object System.Drawing.Point(10, 610)
+    $btnAdd.Size = New-Object System.Drawing.Size(325, 45)
+    $btnAdd.BackColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
+    $btnAdd.ForeColor = [System.Drawing.Color]::White
+    $btnAdd.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+    $btnAdd.FlatStyle = "Flat"
+    $splitContainer.Panel1.Controls.Add($btnAdd)
+    
+    $btnDelete = New-Object System.Windows.Forms.Button
+    $btnDelete.Text = "🗑️ SUPPRIMER"
+    $btnDelete.Location = New-Object System.Drawing.Point(10, 660)
+    $btnDelete.Size = New-Object System.Drawing.Size(325, 45)
+    $btnDelete.BackColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
+    $btnDelete.ForeColor = [System.Drawing.Color]::White
+    $btnDelete.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+    $btnDelete.FlatStyle = "Flat"
+    $btnDelete.Enabled = $false
+    $splitContainer.Panel1.Controls.Add($btnDelete)
+    
+    # ========== PANEL DROIT - ÉDITION ==========
+    $panelEdit = New-Object System.Windows.Forms.Panel
+    $panelEdit.Dock = "Fill"
+    $panelEdit.Padding = New-Object System.Windows.Forms.Padding(15)
+    $panelEdit.AutoScroll = $true
+    $splitContainer.Panel2.Controls.Add($panelEdit)
+    
+    # Champs du formulaire avec placeholders
+    $yPos = 10
+    
+    # Titre de la section
+    $lblSectionTitle = New-Object System.Windows.Forms.Label
+    $lblSectionTitle.Text = "✏️ INFORMATIONS GÉNÉRALES"
+    $lblSectionTitle.Location = New-Object System.Drawing.Point(10, $yPos)
+    $lblSectionTitle.Size = New-Object System.Drawing.Size(400, 25)
+    $lblSectionTitle.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+    $lblSectionTitle.ForeColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
+    $panelEdit.Controls.Add($lblSectionTitle)
+    
+    $yPos += 35
+    
+    $lblName = New-Object System.Windows.Forms.Label
+    $lblName.Text = "Nom de la règle :"
+    $lblName.Location = New-Object System.Drawing.Point(10, $yPos)
+    $lblName.Size = New-Object System.Drawing.Size(150, 25)
+    $panelEdit.Controls.Add($lblName)
+    
+    $txtName = New-Object System.Windows.Forms.TextBox
+    $txtName.Location = New-Object System.Drawing.Point(170, $yPos)
+    $txtName.Size = New-Object System.Drawing.Size(380, 25)
+    $txtName.Text = ""
+    # Placeholder
+    $txtName.Tag = "ex: CERTIFICAT, PLANNER, FACTURE..."
+    $txtName.Text = $txtName.Tag
+    $txtName.ForeColor = [System.Drawing.Color]::Gray
+    $panelEdit.Controls.Add($txtName)
+    
+    $yPos += 40
+    
+    $lblDesc = New-Object System.Windows.Forms.Label
+    $lblDesc.Text = "Description :"
+    $lblDesc.Location = New-Object System.Drawing.Point(10, $yPos)
+    $lblDesc.Size = New-Object System.Drawing.Size(150, 25)
+    $panelEdit.Controls.Add($lblDesc)
+    
+    $txtDesc = New-Object System.Windows.Forms.TextBox
+    $txtDesc.Location = New-Object System.Drawing.Point(170, $yPos)
+    $txtDesc.Size = New-Object System.Drawing.Size(380, 25)
+    $txtDesc.Text = ""
+    $txtDesc.Tag = "ex: Certificat de destruction pour déchets"
+    $txtDesc.Text = $txtDesc.Tag
+    $txtDesc.ForeColor = [System.Drawing.Color]::Gray
+    $panelEdit.Controls.Add($txtDesc)
+    
+    $yPos += 45
+    
+    $lblSectionFormat = New-Object System.Windows.Forms.Label
+    $lblSectionFormat.Text = "📝 FORMAT DE RENOMMAGE"
+    $lblSectionFormat.Location = New-Object System.Drawing.Point(10, $yPos)
+    $lblSectionFormat.Size = New-Object System.Drawing.Size(400, 25)
+    $lblSectionFormat.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+    $lblSectionFormat.ForeColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
+    $panelEdit.Controls.Add($lblSectionFormat)
+    
+    $yPos += 35
+    
+    $lblFormat = New-Object System.Windows.Forms.Label
+    $lblFormat.Text = "Format de renommage :"
+    $lblFormat.Location = New-Object System.Drawing.Point(10, $yPos)
+    $lblFormat.Size = New-Object System.Drawing.Size(150, 25)
+    $panelEdit.Controls.Add($lblFormat)
+    
+    $txtFormat = New-Object System.Windows.Forms.TextBox
+    $txtFormat.Location = New-Object System.Drawing.Point(170, $yPos)
+    $txtFormat.Size = New-Object System.Drawing.Size(430, 25)
+    $txtFormat.Text = ""
+    $txtFormat.Tag = "{date}-{text}  ou  Certificat-{text}-du {date}"
+    $txtFormat.Text = $txtFormat.Tag
+    $txtFormat.ForeColor = [System.Drawing.Color]::Gray
+    $panelEdit.Controls.Add($txtFormat)
+    
+    $yPos += 25
+    
+    $lblFormatHint = New-Object System.Windows.Forms.Label
+    $lblFormatHint.Text = "💡 {text} = texte utilisateur | {date} = date"
+    $lblFormatHint.Location = New-Object System.Drawing.Point(170, $yPos)
+    $lblFormatHint.Size = New-Object System.Drawing.Size(430, 20)
+    $lblFormatHint.Font = New-Object System.Drawing.Font("Arial", 8)
+    $lblFormatHint.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
+    $panelEdit.Controls.Add($lblFormatHint)
+    
+    $yPos += 40
+    
+    $lblDateFormat = New-Object System.Windows.Forms.Label
+    $lblDateFormat.Text = "Format de date :"
+    $lblDateFormat.Location = New-Object System.Drawing.Point(10, $yPos)
+    $lblDateFormat.Size = New-Object System.Drawing.Size(150, 25)
+    $panelEdit.Controls.Add($lblDateFormat)
+    
+    $cbDateFormat = New-Object System.Windows.Forms.ComboBox
+    $cbDateFormat.Location = New-Object System.Drawing.Point(170, $yPos)
+    $cbDateFormat.Size = New-Object System.Drawing.Size(150, 25)
+    $cbDateFormat.Items.AddRange(@("dd.MM.yy", "yyyyMMdd", "dd-MM-yyyy", "MM/dd/yyyy", "yyyy-MM-dd", "dd/MM/yyyy"))
+    $cbDateFormat.SelectedIndex = 0
+    $panelEdit.Controls.Add($cbDateFormat)
+    
+    $yPos += 45
+    
+    $lblSectionUI = New-Object System.Windows.Forms.Label
+    $lblSectionUI.Text = "🎨 INTERFACE UTILISATEUR"
+    $lblSectionUI.Location = New-Object System.Drawing.Point(10, $yPos)
+    $lblSectionUI.Size = New-Object System.Drawing.Size(400, 25)
+    $lblSectionUI.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+    $lblSectionUI.ForeColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
+    $panelEdit.Controls.Add($lblSectionUI)
+    
+    $yPos += 35
+    
+    $lblPlaceholder = New-Object System.Windows.Forms.Label
+    $lblPlaceholder.Text = "Placeholder :"
+    $lblPlaceholder.Location = New-Object System.Drawing.Point(10, $yPos)
+    $lblPlaceholder.Size = New-Object System.Drawing.Size(150, 25)
+    $panelEdit.Controls.Add($lblPlaceholder)
+    
+    $txtPlaceholder = New-Object System.Windows.Forms.TextBox
+    $txtPlaceholder.Location = New-Object System.Drawing.Point(170, $yPos)
+    $txtPlaceholder.Size = New-Object System.Drawing.Size(380, 25)
+    $txtPlaceholder.Text = ""
+    $txtPlaceholder.Tag = "ex: Renseigner le point de collecte"
+    $txtPlaceholder.Text = $txtPlaceholder.Tag
+    $txtPlaceholder.ForeColor = [System.Drawing.Color]::Gray
+    $panelEdit.Controls.Add($txtPlaceholder)
+    
+    $yPos += 40
+    
+    $chkEnabled = New-Object System.Windows.Forms.CheckBox
+    $chkEnabled.Text = "✅ Règle active (apparaît dans l'écran principal)"
+    $chkEnabled.Location = New-Object System.Drawing.Point(170, $yPos)
+    $chkEnabled.Size = New-Object System.Drawing.Size(300, 25)
+    $chkEnabled.Checked = $true
+    $panelEdit.Controls.Add($chkEnabled)
+    
+    $yPos += 45
+    
+    $lblButtonColor = New-Object System.Windows.Forms.Label
+    $lblButtonColor.Text = "Couleur du bouton :"
+    $lblButtonColor.Location = New-Object System.Drawing.Point(10, $yPos)
+    $lblButtonColor.Size = New-Object System.Drawing.Size(150, 30)
+    $panelEdit.Controls.Add($lblButtonColor)
+    
+    $btnPickButtonColor = New-Object System.Windows.Forms.Button
+    $btnPickButtonColor.Text = "🎨 Choisir"
+    $btnPickButtonColor.Location = New-Object System.Drawing.Point(170, $yPos)
+    $btnPickButtonColor.Size = New-Object System.Drawing.Size(80, 30)
+    $btnPickButtonColor.BackColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
+    $btnPickButtonColor.FlatStyle = "Flat"
+    $panelEdit.Controls.Add($btnPickButtonColor)
+    
+    $lblButtonColorPreview = New-Object System.Windows.Forms.Label
+    $lblButtonColorPreview.Location = New-Object System.Drawing.Point(260, $yPos)
+    $lblButtonColorPreview.Size = New-Object System.Drawing.Size(50, 30)
+    $lblButtonColorPreview.BackColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
+    $lblButtonColorPreview.BorderStyle = "FixedSingle"
+    $panelEdit.Controls.Add($lblButtonColorPreview)
+    
+    $yPos += 45
+    
+    $lblBorderColor = New-Object System.Windows.Forms.Label
+    $lblBorderColor.Text = "Couleur bordure :"
+    $lblBorderColor.Location = New-Object System.Drawing.Point(10, $yPos)
+    $lblBorderColor.Size = New-Object System.Drawing.Size(150, 30)
+    $panelEdit.Controls.Add($lblBorderColor)
+    
+    $btnPickBorderColor = New-Object System.Windows.Forms.Button
+    $btnPickBorderColor.Text = "🎨 Choisir"
+    $btnPickBorderColor.Location = New-Object System.Drawing.Point(170, $yPos)
+    $btnPickBorderColor.Size = New-Object System.Drawing.Size(80, 30)
+    $btnPickBorderColor.BackColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
+    $btnPickBorderColor.FlatStyle = "Flat"
+    $panelEdit.Controls.Add($btnPickBorderColor)
+    
+    $lblBorderColorPreview = New-Object System.Windows.Forms.Label
+    $lblBorderColorPreview.Location = New-Object System.Drawing.Point(260, $yPos)
+    $lblBorderColorPreview.Size = New-Object System.Drawing.Size(50, 30)
+    $lblBorderColorPreview.BackColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
+    $lblBorderColorPreview.BorderStyle = "FixedSingle"
+    $panelEdit.Controls.Add($lblBorderColorPreview)
+    
+    $yPos += 55
+    
+    $btnSave = New-Object System.Windows.Forms.Button
+    $btnSave.Text = "💾 ENREGISTRER LA RÈGLE"
+    $btnSave.Location = New-Object System.Drawing.Point(170, $yPos)
+    $btnSave.Size = New-Object System.Drawing.Size(250, 45)
+    $btnSave.BackColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
+    $btnSave.ForeColor = [System.Drawing.Color]::White
+    $btnSave.Font = New-Object System.Drawing.Font("Arial", 11, [System.Drawing.FontStyle]::Bold)
+    $btnSave.FlatStyle = "Flat"
+    $panelEdit.Controls.Add($btnSave)
+    
+    $btnCancel = New-Object System.Windows.Forms.Button
+    $btnCancel.Text = "ANNULER"
+    $btnCancel.Location = New-Object System.Drawing.Point(430, $yPos)
+    $btnCancel.Size = New-Object System.Drawing.Size(120, 45)
+    $btnCancel.BackColor = [System.Drawing.Color]::LightGray
+    $btnCancel.FlatStyle = "Flat"
+    $panelEdit.Controls.Add($btnCancel)
+    
+    $form.Controls.Add($splitContainer)
+    
+    # Gestion des placeholders
+    function Add-Placeholder {
+        param($textBox)
+        $textBox.Add_GotFocus({
+            if ($this.Text -eq $this.Tag) {
+                $this.Text = ""
+                $this.ForeColor = [System.Drawing.Color]::Black
+            }
+        })
+        $textBox.Add_LostFocus({
+            if ([string]::IsNullOrWhiteSpace($this.Text)) {
+                $this.Text = $this.Tag
+                $this.ForeColor = [System.Drawing.Color]::Gray
+            }
+        })
+    }
+    
+    # Appliquer les placeholders
+    Add-Placeholder $txtName
+    Add-Placeholder $txtDesc
+    Add-Placeholder $txtFormat
+    Add-Placeholder $txtPlaceholder
+    
+    # Fonctions
+    function Load-RulesList {
+        $rulesListBox.Items.Clear()
+        $allTemplates = Get-Templates
+        foreach ($t in $allTemplates) {
+            $status = if ($t.enabled) { "✓" } else { "✗" }
+            $rulesListBox.Items.Add("$status $($t.name)")
+            $rulesListBox.Items[$rulesListBox.Items.Count-1].Tag = $t.id
+        }
+    }
+    
+    function Clear-Form {
+        $script:currentEditId = $null
+        $txtName.Text = $txtName.Tag
+        $txtName.ForeColor = [System.Drawing.Color]::Gray
+        $txtDesc.Text = $txtDesc.Tag
+        $txtDesc.ForeColor = [System.Drawing.Color]::Gray
+        $txtFormat.Text = $txtFormat.Tag
+        $txtFormat.ForeColor = [System.Drawing.Color]::Gray
+        $txtPlaceholder.Text = $txtPlaceholder.Tag
+        $txtPlaceholder.ForeColor = [System.Drawing.Color]::Gray
+        $cbDateFormat.SelectedIndex = 0
+        $chkEnabled.Checked = $true
+        $script:selectedButtonColor = "#E26E2A"
+        $script:selectedBorderColor = "#E26E2A"
+        $btnPickButtonColor.BackColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
+        $lblButtonColorPreview.BackColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
+        $btnPickBorderColor.BackColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
+        $lblBorderColorPreview.BackColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
+        $btnDelete.Enabled = $false
+    }
+    
+    function Load-TemplateToForm {
+        param($Id)
+        $template = Get-Templates | Where-Object { $_.id -eq $Id }
+        if ($template) {
+            $script:currentEditId = $template.id
+            $txtName.Text = $template.name
+            $txtName.ForeColor = [System.Drawing.Color]::Black
+            $txtDesc.Text = $template.description
+            $txtDesc.ForeColor = [System.Drawing.Color]::Black
+            $txtFormat.Text = $template.format
+            $txtFormat.ForeColor = [System.Drawing.Color]::Black
+            $txtPlaceholder.Text = $template.placeholder
+            $txtPlaceholder.ForeColor = [System.Drawing.Color]::Black
+            $cbDateFormat.SelectedItem = $template.dateFormat
+            $chkEnabled.Checked = $template.enabled
+            $script:selectedButtonColor = $template.buttonColor
+            $script:selectedBorderColor = $template.borderColor
+            $btnPickButtonColor.BackColor = [System.Drawing.ColorTranslator]::FromHtml($template.buttonColor)
+            $lblButtonColorPreview.BackColor = [System.Drawing.ColorTranslator]::FromHtml($template.buttonColor)
+            $btnPickBorderColor.BackColor = [System.Drawing.ColorTranslator]::FromHtml($template.borderColor)
+            $lblBorderColorPreview.BackColor = [System.Drawing.ColorTranslator]::FromHtml($template.borderColor)
+            $btnDelete.Enabled = $true
+        }
+    }
+    
+    function Save-Template {
+        # Vérifier si le champ nom a été modifié (pas le placeholder)
+        $nameValue = if ($txtName.Text -eq $txtName.Tag) { "" } else { $txtName.Text }
+        if ([string]::IsNullOrWhiteSpace($nameValue)) {
+            [System.Windows.Forms.MessageBox]::Show("Le nom de la règle est obligatoire", "Erreur")
+            return $false
+        }
+        
+        $descValue = if ($txtDesc.Text -eq $txtDesc.Tag) { "" } else { $txtDesc.Text }
+        $formatValue = if ($txtFormat.Text -eq $txtFormat.Tag) { "{date}-{text}" } else { $txtFormat.Text }
+        $placeholderValue = if ($txtPlaceholder.Text -eq $txtPlaceholder.Tag) { "Renseigner le texte" } else { $txtPlaceholder.Text }
+        
+        $newTemplate = @{
+            name = $txtName.Text
+            description = $descValue
+            format = $formatValue
+            dateFormat = $cbDateFormat.SelectedItem
+            timeFormat = ""
+            includeTime = $false
+            placeholder = $placeholderValue
+            buttonColor = $script:selectedButtonColor
+            borderColor = $script:selectedBorderColor
+            enabled = $chkEnabled.Checked
+        }
+        
+        if ($script:currentEditId) {
+            Update-Template -Id $script:currentEditId -UpdatedTemplate $newTemplate
+            [System.Windows.Forms.MessageBox]::Show("Règle modifiée avec succès", "Succès")
+        } else {
+            Add-Template -Template $newTemplate
+            [System.Windows.Forms.MessageBox]::Show("Nouvelle règle ajoutée avec succès", "Succès")
+        }
+        
+        Load-RulesList
+        Clear-Form
+        return $true
+    }
+    
+    function Delete-Template {
+        if ($rulesListBox.SelectedItem) {
+            $result = [System.Windows.Forms.MessageBox]::Show("Supprimer cette règle ?", "Confirmation", [System.Windows.Forms.MessageBoxButtons]::YesNo)
+            if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+                $selectedId = $rulesListBox.SelectedItem.Tag
+                Remove-Template -Id $selectedId
+                [System.Windows.Forms.MessageBox]::Show("Règle supprimée", "Info")
+                Load-RulesList
+                Clear-Form
+            }
+        }
+    }
+    
+    # Événements
+    $btnAdd.Add_Click({
+        Clear-Form
+        $rulesListBox.SelectedIndex = -1
+    })
+    
+    $btnDelete.Add_Click({
+        Delete-Template
+    })
+    
+    $btnSave.Add_Click({
+        Save-Template
+    })
+    
+    $btnCancel.Add_Click({
+        Clear-Form
+        $rulesListBox.SelectedIndex = -1
+    })
+    
+    $rulesListBox.Add_SelectedIndexChanged({
+        if ($rulesListBox.SelectedItem -and $rulesListBox.SelectedItem.Tag) {
+            $selectedId = $rulesListBox.SelectedItem.Tag
+            Load-TemplateToForm -Id $selectedId
+        }
+    })
+    
+    $btnPickButtonColor.Add_Click({
+        if ($colorDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+            $script:selectedButtonColor = [System.Drawing.ColorTranslator]::ToHtml($colorDialog.Color)
+            $btnPickButtonColor.BackColor = $colorDialog.Color
+            $lblButtonColorPreview.BackColor = $colorDialog.Color
+        }
+    })
+    
+    $btnPickBorderColor.Add_Click({
+        if ($colorDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+            $script:selectedBorderColor = [System.Drawing.ColorTranslator]::ToHtml($colorDialog.Color)
+            $btnPickBorderColor.BackColor = $colorDialog.Color
+            $lblBorderColorPreview.BackColor = $colorDialog.Color
+        }
+    })
+    
+    # Chargement initial
+    Load-RulesList
+    Clear-Form
+    
+    $form.ShowDialog() | Out-Null
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\Core\TemplateManager.ps1 ==========
+
+# TemplateManager.ps1 - Gestion des règles de nommage (sans module)
+
+function Get-TemplatesPath {
+    return Join-Path $PSScriptRoot "..\Data\templates.json"
+}
+
+function Get-Templates {
+    try {
+        $templatesPath = Get-TemplatesPath
+        
+        if (-not (Test-Path $templatesPath)) {
+            Write-Host "Fichier templates.json non trouvé, création d'un fichier par défaut..." -ForegroundColor Yellow
+            
+            $defaultTemplates = @{
+                templates = @(
+                    @{
+                        id = "certificat"
+                        name = "CERTIFICAT"
+                        description = "Certificat de destruction"
+                        format = "Certificat de Destruction-{text}-du {date}"
+                        dateFormat = "dd.MM.yy"
+                        timeFormat = ""
+                        includeTime = $false
+                        placeholder = "Renseigner le point de collecte"
+                        buttonColor = "#E26E2A"
+                        borderColor = "#E26E2A"
+                        enabled = $true
+                    }
+                )
+            }
+            
+            $defaultJson = $defaultTemplates | ConvertTo-Json -Depth 10
+            $defaultJson | Out-File -FilePath $templatesPath -Encoding utf8
+        }
+        
+        $templatesData = Get-Content $templatesPath -Raw -ErrorAction Stop
+        $templates = $templatesData | ConvertFrom-Json -ErrorAction Stop
+        return $templates.templates
+    }
+    catch {
+        Write-Host "Erreur lors du chargement des templates: $($_.Exception.Message)" -ForegroundColor Red
+        return @()
+    }
+}
+
+function Save-Templates {
+    param($Templates)
+    
+    try {
+        $templatesPath = Get-TemplatesPath
+        $data = @{ templates = $Templates } | ConvertTo-Json -Depth 10
+        $data | Out-File -FilePath $templatesPath -Encoding utf8 -ErrorAction Stop
+        return $true
+    }
+    catch {
+        Write-Host "Erreur lors de la sauvegarde: $($_.Exception.Message)" -ForegroundColor Red
+        return $false
+    }
+}
+
+function Add-Template {
+    param($Template)
+    
+    try {
+        $templates = Get-Templates
+        $newId = [guid]::NewGuid().ToString().Substring(0, 8)
+        $Template.id = $newId
+        $templates += $Template
+        Save-Templates -Templates $templates
+        return $newId
+    }
+    catch {
+        return $null
+    }
+}
+
+function Update-Template {
+    param($Id, $UpdatedTemplate)
+    
+    try {
+        $templates = Get-Templates
+        $index = -1
+        for ($i = 0; $i -lt $templates.Count; $i++) {
+            if ($templates[$i].id -eq $Id) {
+                $index = $i
+                break
+            }
+        }
+        
+        if ($index -ge 0) {
+            $UpdatedTemplate.id = $Id
+            $templates[$index] = $UpdatedTemplate
+            Save-Templates -Templates $templates
+            return $true
+        }
+        return $false
+    }
+    catch {
+        return $false
+    }
+}
+
+function Remove-Template {
+    param($Id)
+    
+    try {
+        $templates = Get-Templates
+        $newTemplates = $templates | Where-Object { $_.id -ne $Id }
+        Save-Templates -Templates $newTemplates
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\CollecteursPanel.ps1 ==========
+
+# CollecteursPanel.ps1 - Onglet Données collecteurs
+
+function Show-CollecteursPanel {
+    param(
+        [array]$Collecteurs,
+        [ref]$UpdatedCollecteurs
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = "Fill"
+    $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $panel.Padding = New-Object System.Windows.Forms.Padding(20)
+    
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = "GESTION DES COLLECTEURS"
+    $lbl.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+    $lbl.ForeColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $lbl.Location = New-Object System.Drawing.Point(20, 20)
+    $lbl.Size = New-Object System.Drawing.Size(400, 35)
+    $panel.Controls.Add($lbl)
+    
+    $dgv = New-Object System.Windows.Forms.DataGridView
+    $dgv.Location = New-Object System.Drawing.Point(20, 70)
+    $dgv.Size = New-Object System.Drawing.Size(800, 300)
+    $dgv.AllowUserToAddRows = $true
+    $dgv.Columns.Add("Nom", "Nom") | Out-Null
+    $dgv.Columns.Add("Prenom", "Prénom") | Out-Null
+    $dgv.Columns.Add("Telephone", "Téléphone") | Out-Null
+    $dgv.Columns[0].Width = 150
+    $dgv.Columns[1].Width = 150
+    $dgv.Columns[2].Width = 150
+    
+    foreach ($c in $Collecteurs) {
+        $dgv.Rows.Add($c.nom, $c.prenom, $c.telephone)
+    }
+    $panel.Controls.Add($dgv)
+    
+    $btnSave = New-Object System.Windows.Forms.Button
+    $btnSave.Text = "SAUVEGARDER"
+    $btnSave.Size = New-Object System.Drawing.Size(150, 40)
+    $btnSave.Location = New-Object System.Drawing.Point(20, 390)
+    $btnSave.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnSave.ForeColor = [System.Drawing.Color]::White
+    $btnSave.FlatStyle = "Flat"
+    $btnSave.Add_Click({
+        $nouveaux = @()
+        $id = 1
+        foreach ($row in $dgv.Rows) {
+            if (-not $row.IsNewRow) {
+                $nom = $row.Cells[0].Value
+                $prenom = $row.Cells[1].Value
+                $telephone = $row.Cells[2].Value
+                if ($nom -and $prenom) {
+                    $nouveaux += @{
+                        id = $id
+                        nom = $nom
+                        prenom = $prenom
+                        telephone = $telephone
+                    }
+                    $id++
+                }
+            }
+        }
+        $UpdatedCollecteurs.Value = $nouveaux
+        [System.Windows.Forms.MessageBox]::Show("Collecteurs sauvegardés !", "Succès")
+    })
+    $panel.Controls.Add($btnSave)
+    
+    return $panel
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\ODMViewer.ps1 ==========
+
+# ODMViewer.ps1 - Point d'entrée du module ODM
+
+function Show-ODMViewer {
+    param(
+        [string]$PanelType = "Planning"
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    . "$PSScriptRoot\Screens\Screen1_Date.ps1"
+    . "$PSScriptRoot\Screens\Screen2_NbTournees.ps1"
+    . "$PSScriptRoot\Screens\Screen3_Affectation.ps1"
+    . "$PSScriptRoot\PlanningPanel.ps1"
+    . "$PSScriptRoot\CollecteursPanel.ps1"
+    . "$PSScriptRoot\VehiculesPanel.ps1"
+    . "$PSScriptRoot\..\Core\DataManager.ps1"
+    
+    $collecteurs = Get-Collecteurs
+    $vehicules = Get-Vehicules
+    
+    if ($collecteurs.Count -eq 0) {
+        $collecteurs, $vehicules = Initialize-DefaultData
+    }
+    
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = "Fill"
+    $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    
+    if ($PanelType -eq "Planning") {
+        $result = Show-PlanningPanel -Collecteurs $collecteurs -Vehicules $vehicules -PlanningData ([ref]$null)
+        if ($result -is [array]) { $result = $result[-1] }
+        $result.Dock = "Fill"
+        $panel.Controls.Add($result)
+    }
+    elseif ($PanelType -eq "Collecteurs") {
+        $result = Show-CollecteursPanel -Collecteurs $collecteurs -UpdatedCollecteurs ([ref]$null)
+        if ($result -is [array]) { $result = $result[-1] }
+        $result.Dock = "Fill"
+        $panel.Controls.Add($result)
+    }
+    elseif ($PanelType -eq "Vehicules") {
+        $result = Show-VehiculesPanel -Vehicules $vehicules -UpdatedVehicules ([ref]$null)
+        if ($result -is [array]) { $result = $result[-1] }
+        $result.Dock = "Fill"
+        $panel.Controls.Add($result)
+    }
+    
+    return $panel
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PlanningPanel.ps1 ==========
+
+# PlanningPanel.ps1 - Orchestrateur des écrans
+
+function Show-PlanningPanel {
+    param(
+        [Parameter(Mandatory=$true)]
+        [array]$Collecteurs,
+        [Parameter(Mandatory=$true)]
+        [array]$Vehicules,
+        [ref]$PlanningData
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    $screensPath = "C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Screens"
+    
+    . "$screensPath\Screen1_Date.ps1"
+    . "$screensPath\Screen2_NbTournees.ps1"
+    . "$screensPath\Screen3_Affectation.ps1"
+    
+    $mainPanel = New-Object System.Windows.Forms.Panel
+    $mainPanel.Dock = "Fill"
+    $mainPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    
+    # Créer les panels
+    $screen1 = Show-Screen1_Date -DateSelectionnee $null -NextScreen $null
+    $screen1.Visible = $true
+    $mainPanel.Controls.Add($screen1)
+    
+    $screen3 = New-Object System.Windows.Forms.Panel
+    $screen3.Dock = "Fill"
+    $screen3.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $screen3.Visible = $false
+    $mainPanel.Controls.Add($screen3)
+    
+    $screen2 = Show-Screen2_NbTournees -NbTournees $null -Screen1 $screen1 -Screen3 $screen3 -Collecteurs $Collecteurs -Vehicules $Vehicules
+    $screen2.Visible = $false
+    $mainPanel.Controls.Add($screen2)
+    
+    # Connecter les écrans
+    $screen1.Tag = $screen2
+    $screen2.Tag = $screen3
+    
+    return $mainPanel
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\VehiculesPanel.ps1 ==========
+
+# VehiculesPanel.ps1 - Onglet Données véhicules
+
+function Show-VehiculesPanel {
+    param(
+        [array]$Vehicules,
+        [ref]$UpdatedVehicules
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = "Fill"
+    $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $panel.Padding = New-Object System.Windows.Forms.Padding(20)
+    
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = "GESTION DES VÉHICULES"
+    $lbl.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+    $lbl.ForeColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $lbl.Location = New-Object System.Drawing.Point(20, 20)
+    $lbl.Size = New-Object System.Drawing.Size(400, 35)
+    $panel.Controls.Add($lbl)
+    
+    $dgv = New-Object System.Windows.Forms.DataGridView
+    $dgv.Location = New-Object System.Drawing.Point(20, 70)
+    $dgv.Size = New-Object System.Drawing.Size(800, 300)
+    $dgv.AllowUserToAddRows = $true
+    $dgv.Columns.Add("Immatriculation", "Immatriculation") | Out-Null
+    $dgv.Columns.Add("Marque", "Marque") | Out-Null
+    $dgv.Columns.Add("Modele", "Modèle") | Out-Null
+    $dgv.Columns.Add("Annee", "Année") | Out-Null
+    $dgv.Columns[0].Width = 150
+    $dgv.Columns[1].Width = 120
+    $dgv.Columns[2].Width = 150
+    $dgv.Columns[3].Width = 80
+    
+    foreach ($v in $Vehicules) {
+        $dgv.Rows.Add($v.immatriculation, $v.marque, $v.modele, $v.annee)
+    }
+    $panel.Controls.Add($dgv)
+    
+    $btnSave = New-Object System.Windows.Forms.Button
+    $btnSave.Text = "SAUVEGARDER"
+    $btnSave.Size = New-Object System.Drawing.Size(150, 40)
+    $btnSave.Location = New-Object System.Drawing.Point(20, 390)
+    $btnSave.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnSave.ForeColor = [System.Drawing.Color]::White
+    $btnSave.FlatStyle = "Flat"
+    $btnSave.Add_Click({
+        $nouveaux = @()
+        $id = 1
+        foreach ($row in $dgv.Rows) {
+            if (-not $row.IsNewRow) {
+                $immat = $row.Cells[0].Value
+                $marque = $row.Cells[1].Value
+                $modele = $row.Cells[2].Value
+                $annee = $row.Cells[3].Value
+                if ($immat -and $marque -and $modele) {
+                    $nouveaux += @{
+                        id = $id
+                        immatriculation = $immat
+                        marque = $marque
+                        modele = $modele
+                        annee = $annee
+                    }
+                    $id++
+                }
+            }
+        }
+        $UpdatedVehicules.Value = $nouveaux
+        [System.Windows.Forms.MessageBox]::Show("Véhicules sauvegardés !", "Succès")
+    })
+    $panel.Controls.Add($btnSave)
+    
+    return $panel
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Components\Affectation.ps1 ==========
+
+# Affectation.ps1 - Version test
+
+function Show-Affectation {
+    param(
+        [int]$nbTournees,
+        [System.Windows.Forms.Panel]$panel,
+        [array]$collecteurs,
+        [array]$vehicules,
+        [ref]$affectations
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    $panel.Controls.Clear()
+    
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = "TEST - $nbTournees tournees"
+    $lbl.Location = New-Object System.Drawing.Point(35, 20)
+    $lbl.Size = New-Object System.Drawing.Size(300, 30)
+    $panel.Controls.Add($lbl)
+    
+    return @()
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Components\BoutonsImport.ps1 ==========
+
+# BoutonsImport.ps1 - Boutons supplémentaires pour l'écran d'import
+
+function Add-ImportButtons {
+    param($screen2, $btnImport, $screen1, $datePicker)
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    # Panel pour les boutons secondaires
+    $buttonPanel = New-Object System.Windows.Forms.Panel
+    $buttonPanel.Size = New-Object System.Drawing.Size(400, 55)
+    $buttonPanel.Location = New-Object System.Drawing.Point(20, 95)
+    $buttonPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    
+    # Bouton RETOUR
+    $btnRetour = New-Object System.Windows.Forms.Button
+    $btnRetour.Text = "◀ RETOUR"
+    $btnRetour.Size = New-Object System.Drawing.Size(180, 40)
+    $btnRetour.Location = New-Object System.Drawing.Point(0, 8)
+    $btnRetour.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnRetour.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnRetour.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnRetour.FlatStyle = "Flat"
+    $btnRetour.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnRetour.FlatAppearance.BorderSize = 2
+    $btnRetour.Cursor = [System.Windows.Forms.Cursors]::Hand
+    
+    $btnRetour.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnRetour.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    $btnRetour.Add_Click({
+        $screen2.Visible = $false
+        $screen1.Visible = $true
+        $btnImport.Text = "IMPORTER LES ODM DU"
+        $datePicker.Focus()
+    })
+    $buttonPanel.Controls.Add($btnRetour)
+    
+    # Bouton QUITTER
+    $btnQuitter = New-Object System.Windows.Forms.Button
+    $btnQuitter.Text = "✖ QUITTER"
+    $btnQuitter.Size = New-Object System.Drawing.Size(180, 40)
+    $btnQuitter.Location = New-Object System.Drawing.Point(200, 8)
+    $btnQuitter.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnQuitter.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnQuitter.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnQuitter.FlatStyle = "Flat"
+    $btnQuitter.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(200, 100, 100)
+    $btnQuitter.FlatAppearance.BorderSize = 2
+    $btnQuitter.Cursor = [System.Windows.Forms.Cursors]::Hand
+    
+    $btnQuitter.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(180, 80, 80)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(200, 80, 80)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnQuitter.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(200, 100, 100)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    $btnQuitter.Add_Click({
+        [System.Windows.Forms.Application]::Exit()
+    })
+    $buttonPanel.Controls.Add($btnQuitter)
+    
+    $screen2.Controls.Add($buttonPanel)
+    
+    # Augmenter la hauteur de screen2
+    $screen2.Height = 160
+    
+    return $buttonPanel
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Components\CollecteursPanel.ps1 ==========
+
+# CollecteursPanel.ps1 - Gestion simple des collecteurs
+
+function Show-CollecteursPanel {
+    param(
+        [Parameter(Mandatory=$true)]
+        [array]$Collecteurs,
+        [ref]$UpdatedCollecteurs
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = "Fill"
+    $panel.Padding = New-Object System.Windows.Forms.Padding(20)
+    
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = "????? GESTION DES COLLECTEURS"
+    $lblTitle.Font = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold)
+    $lblTitle.Location = New-Object System.Drawing.Point(20, 20)
+    $lblTitle.Size = New-Object System.Drawing.Size(400, 30)
+    $panel.Controls.Add($lblTitle)
+    
+    $dgv = New-Object System.Windows.Forms.DataGridView
+    $dgv.Location = New-Object System.Drawing.Point(20, 60)
+    $dgv.Size = New-Object System.Drawing.Size(800, 300)
+    $dgv.BackgroundColor = [System.Drawing.Color]::White
+    $dgv.AllowUserToAddRows = $true
+    $dgv.AllowUserToDeleteRows = $true
+    
+    $dgv.Columns.Add("Nom", "Nom") | Out-Null
+    $dgv.Columns.Add("Prenom", "Pr?nom") | Out-Null
+    $dgv.Columns.Add("Telephone", "T?l?phone") | Out-Null
+    
+    $dgv.Columns[0].Width = 150
+    $dgv.Columns[1].Width = 150
+    $dgv.Columns[2].Width = 150
+    
+    foreach ($c in $Collecteurs) {
+        $dgv.Rows.Add($c.nom, $c.prenom, $c.telephone)
+    }
+    
+    $panel.Controls.Add($dgv)
+    
+    $btnSave = New-Object System.Windows.Forms.Button
+    $btnSave.Text = "?? SAUVEGARDER"
+    $btnSave.Size = New-Object System.Drawing.Size(150, 40)
+    $btnSave.Location = New-Object System.Drawing.Point(20, 380)
+    $btnSave.BackColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
+    $btnSave.ForeColor = [System.Drawing.Color]::White
+    $btnSave.FlatStyle = "Flat"
+    $panel.Controls.Add($btnSave)
+    
+    $btnSave.Add_Click({
+        $nouveaux = @()
+        $id = 1
+        foreach ($row in $dgv.Rows) {
+            if (-not $row.IsNewRow) {
+                $nom = $row.Cells[0].Value
+                $prenom = $row.Cells[1].Value
+                $telephone = $row.Cells[2].Value
+                
+                if ($nom -and $prenom) {
+                    $nouveaux += @{
+                        id = $id
+                        nom = $nom
+                        prenom = $prenom
+                        telephone = $telephone
+                    }
+                    $id++
+                }
+            }
+        }
+        $UpdatedCollecteurs.Value = $nouveaux
+        [System.Windows.Forms.MessageBox]::Show("Collecteurs sauvegard?s !", "Succ?s")
+    })
+    
+    return $panel
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Components\DataManager.ps1 ==========
+
+# DataManager.ps1 - Gestion des donn?es
+
+$script:DataPath = Join-Path $PSScriptRoot "..\..\Data\ressources.json"
+
+function Get-Collecteurs {
+    $data = Load-ODMData
+    if ($data -and $data.chauffeurs) {
+        return $data.chauffeurs
+    }
+    return @()
+}
+
+function Get-Vehicules {
+    $data = Load-ODMData
+    if ($data -and $data.vehicules) {
+        return $data.vehicules
+    }
+    return @()
+}
+
+function Load-ODMData {
+    if (Test-Path $script:DataPath) {
+        try {
+            $data = Get-Content $script:DataPath -Raw | ConvertFrom-Json
+            return $data
+        } catch {
+            return $null
+        }
+    }
+    return $null
+}
+
+function Save-ODMData {
+    param($Collecteurs, $Vehicules)
+    
+    $data = @{
+        chauffeurs = $Collecteurs
+        vehicules = $Vehicules
+        clients = @()
+    }
+    
+    $data | ConvertTo-Json -Depth 10 | Out-File $script:DataPath -Encoding utf8
+    return $true
+}
+
+function Initialize-DefaultData {
+    $defaultCollecteurs = @(
+        @{ id = 1; nom = "DUPONT"; prenom = "Jean"; telephone = "0601020304" },
+        @{ id = 2; nom = "MARTIN"; prenom = "Pierre"; telephone = "0605060708" },
+        @{ id = 3; nom = "BERNARD"; prenom = "Philippe"; telephone = "0610111213" },
+        @{ id = 4; nom = "THOMAS"; prenom = "Michel"; telephone = "0614151617" },
+        @{ id = 5; nom = "ROBERT"; prenom = "Nicolas"; telephone = "0618192021" }
+    )
+    
+    $defaultVehicules = @(
+        @{ id = 1; immatriculation = "AA-123-BB"; marque = "Renault"; modele = "Master"; annee = 2020 },
+        @{ id = 2; immatriculation = "CC-456-DD"; marque = "Citro?n"; modele = "Jumper"; annee = 2021 },
+        @{ id = 3; immatriculation = "EE-789-FF"; marque = "Mercedes"; modele = "Sprinter"; annee = 2022 },
+        @{ id = 4; immatriculation = "FF-012-GG"; marque = "Iveco"; modele = "Daily"; annee = 2020 },
+        @{ id = 5; immatriculation = "GG-345-HH"; marque = "Ford"; modele = "Transit"; annee = 2021 }
+    )
+    
+    Save-ODMData -Collecteurs $defaultCollecteurs -Vehicules $defaultVehicules
+    return $defaultCollecteurs, $defaultVehicules
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Components\NombreTournees.ps1 ==========
+
+# NombreTournees.ps1 - Ecran pour saisir le Nombre de tournées
+
+function Show-NombreTournees {
+    param(
+        [ref]$NombreTournees,
+        $screen1, $datePicker, $screen3, $collecteurs, $vehicules
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = "Top"
+    $panel.Height = 150
+    $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    
+    # Label
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = "Nombre de tournées :"
+    $lbl.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $lbl.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $lbl.Location = New-Object System.Drawing.Point(35, 25)
+    $lbl.Size = New-Object System.Drawing.Size(150, 25)
+    $panel.Controls.Add($lbl)
+    
+    # TextBox
+    $txtTournees = New-Object System.Windows.Forms.TextBox
+    $txtTournees.Size = New-Object System.Drawing.Size(50, 25)
+    $txtTournees.Location = New-Object System.Drawing.Point(195, 23)
+    $txtTournees.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $txtTournees.Text = "5"
+    $txtTournees.TextAlign = "Center"
+    $panel.Controls.Add($txtTournees)
+    
+    # Bouton Valider
+    $btnValider = New-Object System.Windows.Forms.Button
+    $btnValider.Text = "VALIDER"
+    $btnValider.Size = New-Object System.Drawing.Size(146, 45)
+    $btnValider.Location = New-Object System.Drawing.Point(260, 18)
+    $btnValider.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnValider.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnValider.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnValider.FlatStyle = "Flat"
+    $btnValider.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnValider.FlatAppearance.BorderSize = 2
+    $btnValider.Cursor = [System.Windows.Forms.Cursors]::Hand
+    
+    $btnValider.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnValider.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    $btnValider.Add_Click({
+        $val = [int]$txtTournees.Text
+        if ($val -lt 1) { $val = 1 }
+        if ($val -gt 20) { $val = 20 }
+        $NombreTournees.Value = $val
+        $panel.Visible = $false
+        $screen3.Visible = $true
+        Show-Affectation -nbTournees $val -panel $screen3 -collecteurs $collecteurs -vehicules $vehicules -affectations ([ref]$null)
+    })
+    $panel.Controls.Add($btnValider)
+    
+    # Espace
+    $spacer = New-Object System.Windows.Forms.Panel
+    $spacer.Dock = "Fill"
+    $spacer.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $panel.Controls.Add($spacer)
+    
+    # Panel boutons bas
+    $buttonPanel = New-Object System.Windows.Forms.Panel
+    $buttonPanel.Dock = "Bottom"
+    $buttonPanel.Height = 60
+    $buttonPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    
+    # RETOUR
+    $btnRetour = New-Object System.Windows.Forms.Button
+    $btnRetour.Text = "RETOUR"
+    $btnRetour.Size = New-Object System.Drawing.Size(140, 40)
+    $btnRetour.Location = New-Object System.Drawing.Point(35, 10)
+    $btnRetour.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnRetour.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnRetour.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnRetour.FlatStyle = "Flat"
+    $btnRetour.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnRetour.FlatAppearance.BorderSize = 2
+    $btnRetour.Cursor = [System.Windows.Forms.Cursors]::Hand
+    
+    $btnRetour.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnRetour.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    $btnRetour.Add_Click({
+        $panel.Visible = $false
+        $screen1.Visible = $true
+        $datePicker.Focus()
+    })
+    $buttonPanel.Controls.Add($btnRetour)
+    
+    # QUITTER
+    $btnQuitter = New-Object System.Windows.Forms.Button
+    $btnQuitter.Text = "QUITTER"
+    $btnQuitter.Size = New-Object System.Drawing.Size(140, 40)
+    $btnQuitter.Location = New-Object System.Drawing.Point(195, 10)
+    $btnQuitter.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnQuitter.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnQuitter.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnQuitter.FlatStyle = "Flat"
+    $btnQuitter.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnQuitter.FlatAppearance.BorderSize = 2
+    $btnQuitter.Cursor = [System.Windows.Forms.Cursors]::Hand
+    
+    $btnQuitter.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnQuitter.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    $btnQuitter.Add_Click({
+        [System.Windows.Forms.Application]::Exit()
+    })
+    $buttonPanel.Controls.Add($btnQuitter)
+    
+    $panel.Controls.Add($buttonPanel)
+    
+    return $panel
+}
+
+
+
+
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Components\PlanningPanel.ps1 ==========
+
+# PlanningPanel.ps1 - Version avec workflow complet
+
+function Show-PlanningPanel {
+    param(
+        [Parameter(Mandatory=$true)]
+        [array]$Collecteurs,
+        [Parameter(Mandatory=$true)]
+        [array]$Vehicules,
+        [ref]$PlanningData
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    . "$PSScriptRoot\NombreTournees.ps1"
+    . "$PSScriptRoot\Affectation.ps1"
+    
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = "Fill"
+    $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $panel.Padding = New-Object System.Windows.Forms.Padding(20)
+    
+    # Variables
+    $script:nbTournees = 0
+    $script:affectations = @()
+    
+    # ========== ?CRAN 1 : CHOISIR LA DATE ==========
+    $script:screen1 = New-Object System.Windows.Forms.Panel
+    $script:screen1.Dock = "Top"
+    $script:screen1.Height = 70
+    $script:screen1.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    
+    $lblDate = New-Object System.Windows.Forms.Label
+    $lblDate.Text = "Choisir une date"
+    $lblDate.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $lblDate.ForeColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $lblDate.Location = New-Object System.Drawing.Point(35, 22)
+    $lblDate.Size = New-Object System.Drawing.Size(130, 25)
+    $script:screen1.Controls.Add($lblDate)
+    
+    $script:datePicker = New-Object System.Windows.Forms.DateTimePicker
+    $script:datePicker.Format = "Short"
+    $script:datePicker.Value = (Get-Date)
+    $script:datePicker.Size = New-Object System.Drawing.Size(120, 25)
+    $script:datePicker.Location = New-Object System.Drawing.Point(180, 20)
+    $script:screen1.Controls.Add($script:datePicker)
+    
+    $btnValiderDate = New-Object System.Windows.Forms.Button
+    $btnValiderDate.Text = "VALIDER"
+    $btnValiderDate.Size = New-Object System.Drawing.Size(146, 45)
+    $btnValiderDate.Location = New-Object System.Drawing.Point(315, 15)
+    $btnValiderDate.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnValiderDate.FlatStyle = "Flat"
+    $btnValiderDate.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnValiderDate.FlatAppearance.BorderSize = 2
+    $btnValiderDate.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnValiderDate.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnValiderDate.Cursor = [System.Windows.Forms.Cursors]::Hand
+    
+    $btnValiderDate.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnValiderDate.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    
+    $script:screen1.Controls.Add($btnValiderDate)
+    $panel.Controls.Add($script:screen1)
+    
+    # ========== ?CRAN 2 : NOMBRE DE TOURN?ES ==========
+    $script:screen2 = Show-NombreTournees -NombreTournees ([ref]$script:nbTournees) -screen1 $script:screen1 -datePicker $script:datePicker -screen3 $null -collecteurs $Collecteurs -vehicules $Vehicules
+    $script:screen2.Visible = $false
+    $panel.Controls.Add($script:screen2)
+    
+    # ========== ?CRAN 3 : AFFECTATION ==========
+    $script:screen3 = New-Object System.Windows.Forms.Panel
+    $script:screen3.Dock = "Fill"
+    $script:screen3.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $script:screen3.Visible = $false
+    $panel.Controls.Add($script:screen3)
+    
+    # ========== ?CRAN 4 : IMPORTER PDF ==========
+    $script:screen4 = New-Object System.Windows.Forms.Panel
+    $script:screen4.Dock = "Top"
+    $script:screen4.Height = 200
+    $script:screen4.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $script:screen4.Visible = $false
+    
+    $btnImport = New-Object System.Windows.Forms.Button
+    $btnImport.Text = "IMPORTER LES ODM DU"
+    $btnImport.Size = New-Object System.Drawing.Size(300, 95)
+    $btnImport.Location = New-Object System.Drawing.Point(35, 10)
+    $btnImport.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnImport.FlatStyle = "Flat"
+    $btnImport.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnImport.FlatAppearance.BorderSize = 2
+    $btnImport.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnImport.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
+    $btnImport.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnImport.TextAlign = "MiddleCenter"
+    
+    $btnImport.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnImport.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    $btnImport.Add_Click({
+        $openDialog = New-Object System.Windows.Forms.OpenFileDialog
+        $openDialog.Filter = "Fichiers PDF (*.pdf)|*.pdf"
+        if ($openDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+            $script:screen4.Visible = $false
+            $script:screen5.Visible = $true
+            $lblMessage.Text = "PDF charg? : $(Split-Path $openDialog.FileName -Leaf)"
+        }
+    })
+    $script:screen4.Controls.Add($btnImport)
+    
+    $btnRetour4 = New-Object System.Windows.Forms.Button
+    $btnRetour4.Text = "RETOUR"
+    $btnRetour4.Size = New-Object System.Drawing.Size(140, 40)
+    $btnRetour4.Location = New-Object System.Drawing.Point(35, 120)
+    $btnRetour4.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnRetour4.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnRetour4.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnRetour4.FlatStyle = "Flat"
+    $btnRetour4.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnRetour4.FlatAppearance.BorderSize = 2
+    $btnRetour4.Cursor = [System.Windows.Forms.Cursors]::Hand
+    
+    $btnRetour4.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnRetour4.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    $btnRetour4.Add_Click({
+        $script:screen4.Visible = $false
+        $script:screen3.Visible = $true
+    })
+    $script:screen4.Controls.Add($btnRetour4)
+    
+    $btnQuitter4 = New-Object System.Windows.Forms.Button
+    $btnQuitter4.Text = "QUITTER"
+    $btnQuitter4.Size = New-Object System.Drawing.Size(140, 40)
+    $btnQuitter4.Location = New-Object System.Drawing.Point(195, 120)
+    $btnQuitter4.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnQuitter4.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnQuitter4.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnQuitter4.FlatStyle = "Flat"
+    $btnQuitter4.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnQuitter4.FlatAppearance.BorderSize = 2
+    $btnQuitter4.Cursor = [System.Windows.Forms.Cursors]::Hand
+    
+    $btnQuitter4.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnQuitter4.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    $btnQuitter4.Add_Click({
+        [System.Windows.Forms.Application]::Exit()
+    })
+    $script:screen4.Controls.Add($btnQuitter4)
+    
+    $panel.Controls.Add($script:screen4)
+    
+    # ========== ?CRAN 5 : CONFIRMATION ==========
+    $script:screen5 = New-Object System.Windows.Forms.Panel
+    $script:screen5.Dock = "Fill"
+    $script:screen5.BackColor = [System.Drawing.Color]::White
+    $script:screen5.Visible = $false
+    
+    $lblMessage = New-Object System.Windows.Forms.Label
+    $lblMessage.Text = ""
+    $lblMessage.Font = New-Object System.Drawing.Font("Arial", 11)
+    $lblMessage.ForeColor = [System.Drawing.Color]::Gray
+    $lblMessage.Dock = "Fill"
+    $lblMessage.TextAlign = "MiddleCenter"
+    $script:screen5.Controls.Add($lblMessage)
+    
+    $panel.Controls.Add($script:screen5)
+    
+    # ========== LOGIQUE ==========
+    $btnValiderDate.Add_Click({
+        $selectedDate = $script:datePicker.Value
+        $btnImport.Text = "IMPORTER LES ODM DU" + "`n" + $selectedDate.ToString("dd/MM/yyyy")
+        $script:screen1.Visible = $false
+        $script:screen2.Visible = $true
+    })
+    
+    # Mettre ? jour la r?f?rence de screen3 dans screen2
+    $script:screen2.Tag = $script:screen3
+    
+    return ,$panel
+}
+
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Components\VehiculesPanel.ps1 ==========
+
+# VehiculesPanel.ps1 - Gestion simple des v?hicules
+
+function Show-VehiculesPanel {
+    param(
+        [Parameter(Mandatory=$true)]
+        [array]$Vehicules,
+        [ref]$UpdatedVehicules
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = "Fill"
+    $panel.Padding = New-Object System.Windows.Forms.Padding(20)
+    
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = "?? GESTION DES V?HICULES"
+    $lblTitle.Font = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold)
+    $lblTitle.Location = New-Object System.Drawing.Point(20, 20)
+    $lblTitle.Size = New-Object System.Drawing.Size(400, 30)
+    $panel.Controls.Add($lblTitle)
+    
+    $dgv = New-Object System.Windows.Forms.DataGridView
+    $dgv.Location = New-Object System.Drawing.Point(20, 60)
+    $dgv.Size = New-Object System.Drawing.Size(800, 300)
+    $dgv.BackgroundColor = [System.Drawing.Color]::White
+    $dgv.AllowUserToAddRows = $true
+    $dgv.AllowUserToDeleteRows = $true
+    
+    $dgv.Columns.Add("Immatriculation", "Immatriculation") | Out-Null
+    $dgv.Columns.Add("Marque", "Marque") | Out-Null
+    $dgv.Columns.Add("Modele", "Mod?le") | Out-Null
+    $dgv.Columns.Add("Annee", "Ann?e") | Out-Null
+    
+    $dgv.Columns[0].Width = 150
+    $dgv.Columns[1].Width = 120
+    $dgv.Columns[2].Width = 150
+    $dgv.Columns[3].Width = 80
+    
+    foreach ($v in $Vehicules) {
+        $dgv.Rows.Add($v.immatriculation, $v.marque, $v.modele, $v.annee)
+    }
+    
+    $panel.Controls.Add($dgv)
+    
+    $btnSave = New-Object System.Windows.Forms.Button
+    $btnSave.Text = "?? SAUVEGARDER"
+    $btnSave.Size = New-Object System.Drawing.Size(150, 40)
+    $btnSave.Location = New-Object System.Drawing.Point(20, 380)
+    $btnSave.BackColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
+    $btnSave.ForeColor = [System.Drawing.Color]::White
+    $btnSave.FlatStyle = "Flat"
+    $panel.Controls.Add($btnSave)
+    
+    $btnSave.Add_Click({
+        $nouveaux = @()
+        $id = 1
+        foreach ($row in $dgv.Rows) {
+            if (-not $row.IsNewRow) {
+                $immat = $row.Cells[0].Value
+                $marque = $row.Cells[1].Value
+                $modele = $row.Cells[2].Value
+                $annee = $row.Cells[3].Value
+                
+                if ($immat -and $marque -and $modele) {
+                    $nouveaux += @{
+                        id = $id
+                        immatriculation = $immat
+                        marque = $marque
+                        modele = $modele
+                        annee = $annee
+                    }
+                    $id++
+                }
+            }
+        }
+        $UpdatedVehicules.Value = $nouveaux
+        [System.Windows.Forms.MessageBox]::Show("V?hicules sauvegard?s !", "Succ?s")
+    })
+    
+    return $panel
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Screens\Screen1_Date.ps1 ==========
+
+# Screen1_Date.ps1 - Écran de choix de la date
+
+function Show-Screen1_Date {
+    param(
+        $DateSelectionnee,
+        $NextScreen
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = "Top"
+    $panel.Height = 70
+    $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    
+    # Sauvegarder dans des variables de script
+    $script:currentPanel = $panel
+    $script:nextScreen = $NextScreen
+    $script:datePickerRef = $null
+    
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = "Choisir une date"
+    $lbl.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $lbl.ForeColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $lbl.Location = New-Object System.Drawing.Point(35, 22)
+    $lbl.Size = New-Object System.Drawing.Size(130, 25)
+    $panel.Controls.Add($lbl)
+    
+    $datePicker = New-Object System.Windows.Forms.DateTimePicker
+    $datePicker.Format = "Short"
+    $datePicker.Value = (Get-Date)
+    $datePicker.Size = New-Object System.Drawing.Size(120, 25)
+    $datePicker.Location = New-Object System.Drawing.Point(180, 20)
+    $panel.Controls.Add($datePicker)
+    $script:datePickerRef = $datePicker
+    
+    $btnValider = New-Object System.Windows.Forms.Button
+    $btnValider.Text = "VALIDER"
+    $btnValider.Size = New-Object System.Drawing.Size(146, 45)
+    $btnValider.Location = New-Object System.Drawing.Point(315, 15)
+    $btnValider.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnValider.FlatStyle = "Flat"
+    $btnValider.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnValider.FlatAppearance.BorderSize = 2
+    $btnValider.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnValider.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnValider.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnValider.TabStop = $false
+    
+    $btnValider.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnValider.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    
+    $btnValider.Add_Click({
+        Write-Host "=== BOUTON VALIDER CLIQUÉ ===" -ForegroundColor Green
+        Write-Host "Date: $($script:datePickerRef.Value)" -ForegroundColor Yellow
+        
+        # Cacher le panel courant
+        $script:currentPanel.Visible = $false
+        
+        # Afficher l'écran suivant
+        if ($script:nextScreen) {
+            $script:nextScreen.Visible = $true
+            Write-Host "Écran suivant affiché" -ForegroundColor Green
+        } else {
+            Write-Host "ERREUR: nextScreen est null" -ForegroundColor Red
+        }
+    })
+    $panel.Controls.Add($btnValider)
+    
+    return $panel
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Screens\Screen2_NbTournees.ps1 ==========
+
+# Screen2_NbTournees.ps1 - Écran pour saisir le nombre de tournees
+
+function Show-Screen2_NbTournees {
+    param(
+        $NbTournees,
+        $Screen1,
+        $Screen3,
+        $Collecteurs,
+        $Vehicules
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = "Top"
+    $panel.Height = 180
+    $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    
+    # Label
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = "Nombre de tournees :"
+    $lbl.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $lbl.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $lbl.Location = New-Object System.Drawing.Point(35, 25)
+    $lbl.Size = New-Object System.Drawing.Size(150, 25)
+    $panel.Controls.Add($lbl)
+    
+    # TextBox
+    $txtTournees = New-Object System.Windows.Forms.TextBox
+    $txtTournees.Size = New-Object System.Drawing.Size(60, 25)
+    $txtTournees.Location = New-Object System.Drawing.Point(195, 23)
+    $txtTournees.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $txtTournees.Text = ""
+    $txtTournees.TextAlign = "Center"
+    $panel.Controls.Add($txtTournees)
+    
+    # Case à cocher
+    $chkSauvegarder = New-Object System.Windows.Forms.CheckBox
+    $chkSauvegarder.Text = "Sauvegarder cette valeur"
+    $chkSauvegarder.Location = New-Object System.Drawing.Point(35, 70)
+    $chkSauvegarder.Size = New-Object System.Drawing.Size(180, 25)
+    $chkSauvegarder.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $panel.Controls.Add($chkSauvegarder)
+    
+    # Bouton Valider
+    $btnValider = New-Object System.Windows.Forms.Button
+    $btnValider.Text = "VALIDER"
+    $btnValider.Size = New-Object System.Drawing.Size(146, 45)
+    $btnValider.Location = New-Object System.Drawing.Point(260, 60)
+    $btnValider.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnValider.FlatStyle = "Flat"
+    $btnValider.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnValider.FlatAppearance.BorderSize = 2
+    $btnValider.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnValider.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnValider.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnValider.TabStop = $false
+    
+    $btnValider.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnValider.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    
+    # Sauvegarder les références
+    $script:screen2Panel = $panel
+    $script:targetScreen3 = $Screen3
+    $script:collecteursRef = $Collecteurs
+    $script:vehiculesRef = $Vehicules
+    
+    $btnValider.Add_Click({
+        $val = [int]$txtTournees.Text
+        if ($val -lt 1) { $val = 1 }
+        if ($val -gt 20) { $val = 20 }
+        
+        # Cacher ce panel
+        $script:screen2Panel.Visible = $false
+        
+        # Afficher Screen3
+        if ($script:targetScreen3) {
+            $script:targetScreen3.Visible = $true
+            # Appeler l'affectation
+            . "$PSScriptRoot\Screen3_Affectation.ps1"
+            Show-Screen3_Affectation -NbTournees $val -Panel $script:targetScreen3 -Collecteurs $script:collecteursRef -Vehicules $script:vehiculesRef
+        }
+    })
+    $panel.Controls.Add($btnValider)
+    
+    # Espace
+    $spacer = New-Object System.Windows.Forms.Panel
+    $spacer.Dock = "Fill"
+    $spacer.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $panel.Controls.Add($spacer)
+    
+    # Boutons du bas
+    $bottomPanel = New-Object System.Windows.Forms.Panel
+    $bottomPanel.Dock = "Bottom"
+    $bottomPanel.Height = 60
+    $bottomPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    
+    # RETOUR
+    $btnRetour = New-Object System.Windows.Forms.Button
+    $btnRetour.Text = "RETOUR"
+    $btnRetour.Size = New-Object System.Drawing.Size(140, 40)
+    $btnRetour.Location = New-Object System.Drawing.Point(35, 10)
+    $btnRetour.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnRetour.FlatStyle = "Flat"
+    $btnRetour.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnRetour.FlatAppearance.BorderSize = 2
+    $btnRetour.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnRetour.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnRetour.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnRetour.TabStop = $false
+    
+    $btnRetour.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnRetour.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    
+    $btnRetour.Add_Click({
+        $script:screen2Panel.Visible = $false
+        $Screen1.Visible = $true
+    })
+    $bottomPanel.Controls.Add($btnRetour)
+    
+    # QUITTER
+    $btnQuitter = New-Object System.Windows.Forms.Button
+    $btnQuitter.Text = "QUITTER"
+    $btnQuitter.Size = New-Object System.Drawing.Size(140, 40)
+    $btnQuitter.Location = New-Object System.Drawing.Point(195, 10)
+    $btnQuitter.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnQuitter.FlatStyle = "Flat"
+    $btnQuitter.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnQuitter.FlatAppearance.BorderSize = 2
+    $btnQuitter.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnQuitter.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnQuitter.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnQuitter.TabStop = $false
+    
+    $btnQuitter.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnQuitter.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    
+    $btnQuitter.Add_Click({
+        [System.Windows.Forms.Application]::Exit()
+    })
+    $bottomPanel.Controls.Add($btnQuitter)
+    
+    $panel.Controls.Add($bottomPanel)
+    
+    return $panel
+}
+
+
+========== C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Screens\Screen3_Affectation.ps1 ==========
+
+# Screen3_Affectation.ps1 - Écran d'affectation
+
+function Show-Screen3_Affectation {
+    param(
+        [int]$NbTournees,
+        [System.Windows.Forms.Panel]$Panel,
+        [array]$Collecteurs,
+        [array]$Vehicules
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    # Vider le panel
+    $Panel.Controls.Clear()
+    
+    # Titre
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = "AFFECTATION DES COLLECTEURS ET VEHICULES"
+    $lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
+    $lblTitle.ForeColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $lblTitle.Location = New-Object System.Drawing.Point(35, 20)
+    $lblTitle.Size = New-Object System.Drawing.Size(500, 30)
+    $Panel.Controls.Add($lblTitle)
+    
+    # Listes pour les ComboBox
+    $collecteursList = New-Object System.Collections.ArrayList
+    $collecteursList.Add("-- Selectionner --") | Out-Null
+    foreach ($c in $Collecteurs) {
+        $collecteursList.Add("$($c.nom) $($c.prenom)") | Out-Null
+    }
+    
+    $vehiculesList = New-Object System.Collections.ArrayList
+    $vehiculesList.Add("-- Selectionner --") | Out-Null
+    foreach ($v in $Vehicules) {
+        $vehiculesList.Add("$($v.immatriculation) - $($v.marque) $($v.modele)") | Out-Null
+    }
+    
+    # Conteneur des lignes
+    $rowsContainer = New-Object System.Windows.Forms.Panel
+    $rowsContainer.Location = New-Object System.Drawing.Point(35, 60)
+    $rowsContainer.Size = New-Object System.Drawing.Size(800, $NbTournees * 55 + 20)
+    $rowsContainer.AutoScroll = $true
+    $rowsContainer.BackColor = [System.Drawing.Color]::White
+    $rowsContainer.BorderStyle = "FixedSingle"
+    
+    $yPos = 10
+    
+    for ($i = 1; $i -le $NbTournees; $i++) {
+        $rowPanel = New-Object System.Windows.Forms.Panel
+        $rowPanel.Location = New-Object System.Drawing.Point(5, $yPos)
+        $rowPanel.Size = New-Object System.Drawing.Size(780, 50)
+        $rowPanel.BackColor = [System.Drawing.Color]::FromArgb(250, 250, 250)
+        $rowPanel.BorderStyle = "FixedSingle"
+        
+        $lblNum = New-Object System.Windows.Forms.Label
+        $lblNum.Text = "Tournee $i"
+        $lblNum.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+        $lblNum.Location = New-Object System.Drawing.Point(10, 15)
+        $lblNum.Size = New-Object System.Drawing.Size(70, 25)
+        $rowPanel.Controls.Add($lblNum)
+        
+        $cbCollecteur = New-Object System.Windows.Forms.ComboBox
+        $cbCollecteur.Location = New-Object System.Drawing.Point(90, 12)
+        $cbCollecteur.Size = New-Object System.Drawing.Size(200, 25)
+        $cbCollecteur.DropDownStyle = "DropDownList"
+        foreach ($item in $collecteursList) {
+            $cbCollecteur.Items.Add($item)
+        }
+        $cbCollecteur.SelectedIndex = 0
+        $rowPanel.Controls.Add($cbCollecteur)
+        
+        $cbVehicule = New-Object System.Windows.Forms.ComboBox
+        $cbVehicule.Location = New-Object System.Drawing.Point(310, 12)
+        $cbVehicule.Size = New-Object System.Drawing.Size(200, 25)
+        $cbVehicule.DropDownStyle = "DropDownList"
+        foreach ($item in $vehiculesList) {
+            $cbVehicule.Items.Add($item)
+        }
+        $cbVehicule.SelectedIndex = 0
+        $rowPanel.Controls.Add($cbVehicule)
+        
+        $rowsContainer.Controls.Add($rowPanel)
+        $yPos += 55
+    }
+    
+    $rowsContainer.Height = $yPos + 10
+    $Panel.Controls.Add($rowsContainer)
+    
+    # Bouton Valider
+    $btnValider = New-Object System.Windows.Forms.Button
+    $btnValider.Text = "VALIDER"
+    $btnValider.Size = New-Object System.Drawing.Size(146, 45)
+    $btnValider.Location = New-Object System.Drawing.Point(250, $rowsContainer.Bottom + 10)
+    $btnValider.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnValider.FlatStyle = "Flat"
+    $btnValider.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnValider.FlatAppearance.BorderSize = 2
+    $btnValider.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnValider.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnValider.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnValider.TabStop = $false
+    
+    $btnValider.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnValider.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    
+    $btnValider.Add_Click({
+        [System.Windows.Forms.MessageBox]::Show("Affectation validée", "Succès")
+    })
+    $Panel.Controls.Add($btnValider)
+    
+    return $Panel
+}

@@ -1,0 +1,7 @@
+InvalidOperation: C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Screens\Screen2_NbTournees.ps1:134:9
+Line |
+ 134 |          $Screen1.Visible = $true
+     |          ~~~~~~~~~~~~~~~~~~~~~~~~
+     | The property 'Visible' cannot be found on this object. Verify that the property exists and
+     | can be set.
+

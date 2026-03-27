@@ -1,0 +1,24 @@
+
+[DEBUG] ========== Show-PlanningPanel DÉMARRÉ ==========
+[DEBUG] Collecteurs count: 2
+[DEBUG] Vehicules count: 2
+[DEBUG] Création de screen3...
+[DEBUG] Création de screen2...
+
+[DEBUG] ==================== SCREEN2 - DÉMARRAGE ====================
+[DEBUG] Screen1 reçu: False
+[DEBUG] Screen3 reçu: True
+[LOG][CONFIG] Aucun fichier de sauvegarde trouvé
+[LOG][AFFICHAGE] Champ VIDE
+[DEBUG] Création de screen1 avec NextScreen = screen2...
+[DEBUG] Show-Screen1_Date appelée
+[DEBUG] NextScreen reçu = System.Windows.Forms.Panel, BorderStyle: System.Windows.Forms.BorderStyle.None
+[DEBUG] NextScreen existe, type: System.Windows.Forms.Panel
+[DEBUG] script:nextScreen après affectation = System.Windows.Forms.Panel, BorderStyle: System.Windows.Forms.BorderStyle.None
+[DEBUG] Show-Screen1_Date retourne le panel
+[DEBUG] Mise à jour de targetScreen1 dans screen2...
+[DEBUG] Vérification finale:
+[DEBUG] screen1.Visible = True
+[DEBUG] screen2.Visible = False
+[DEBUG] screen3.Visible = False
+[DEBUG] ========== Show-PlanningPanel TERMINÉ ==========
