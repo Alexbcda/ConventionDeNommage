@@ -5,7 +5,7 @@
   ],
   "vehicules": [
     { "id": 1, "immatriculation": "AA-123-BB", "marque": "Renault", "modele": "Master", "annee": 2020, "dateControle": "2025-03-15", "prochainEntretien": "2024-06-01" },
-    { "id": 2, "immatriculation": "CC-456-DD", "marque": "Citroën", "modele": "Jumper", "annee": 2021, "dateControle": "2025-06-20", "prochainEntretien": "2024-07-15" }
+    { "id": 2, "immatriculation": "CC-456-DD", "marque": "Citroen", "modele": "Jumper", "annee": 2021, "dateControle": "2025-06-20", "prochainEntretien": "2024-07-15" }
   ],
   "clients": []
 }

@@ -1,4 +1,4 @@
-# DataManager.ps1 - Gestion des données
+# DataManager.ps1 - Gestion des donn?es
 
 $script:DataPath = Join-Path $PSScriptRoot "..\..\Data\ressources.json"
 
@@ -54,7 +54,7 @@ function Initialize-DefaultData {
     
     $defaultVehicules = @(
         @{ id = 1; immatriculation = "AA-123-BB"; marque = "Renault"; modele = "Master"; annee = 2020 },
-        @{ id = 2; immatriculation = "CC-456-DD"; marque = "Citroën"; modele = "Jumper"; annee = 2021 },
+        @{ id = 2; immatriculation = "CC-456-DD"; marque = "Citro?n"; modele = "Jumper"; annee = 2021 },
         @{ id = 3; immatriculation = "EE-789-FF"; marque = "Mercedes"; modele = "Sprinter"; annee = 2022 },
         @{ id = 4; immatriculation = "FF-012-GG"; marque = "Iveco"; modele = "Daily"; annee = 2020 },
         @{ id = 5; immatriculation = "GG-345-HH"; marque = "Ford"; modele = "Transit"; annee = 2021 }

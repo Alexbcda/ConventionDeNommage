@@ -1,4 +1,4 @@
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
@@ -29,7 +29,7 @@ function Find-PDFFile {
 }
 
 # Lancer l'interface avec onglets
-# Si un fichier est passé en paramètre, on l'utilise pour l'onglet Convention de nommage
+# Si un fichier est pass? en param?tre, on l'utilise pour l'onglet Convention de nommage
 if ($args.Count -gt 0) {
     $fichierPDF = $args[0] -replace '^"|"$', '' -replace "'", ''
     $fichierTrouve = Find-PDFFile $fichierPDF
@@ -38,7 +38,7 @@ if ($args.Count -gt 0) {
     } else {
         Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.MessageBox]::Show(
-            "Aucun fichier PDF trouvé dans le dossier courant.`n`nL'interface va s'ouvrir sans fichier sélectionné.", 
+            "Aucun fichier PDF trouv? dans le dossier courant.`n`nL'interface va s'ouvrir sans fichier s?lectionn?.", 
             "Information", 
             [System.Windows.Forms.MessageBoxButtons]::OK, 
             [System.Windows.Forms.MessageBoxIcon]::Information
@@ -46,6 +46,6 @@ if ($args.Count -gt 0) {
         Start-GUI -FichierPDF $null
     }
 } else {
-    # Si pas de fichier en paramètre, on lance quand même l'interface
+    # Si pas de fichier en param?tre, on lance quand m?me l'interface
     Start-GUI -FichierPDF $null
 }

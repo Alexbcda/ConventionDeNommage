@@ -1,4 +1,4 @@
-# ODMViewer.ps1 - Version simplifiée
+﻿# ODMViewer.ps1 - Version simplifi?e
 
 function Show-ODMViewer {
     param(
@@ -14,7 +14,7 @@ function Show-ODMViewer {
     . "$PSScriptRoot\Components\CollecteursPanel.ps1"
     . "$PSScriptRoot\Components\VehiculesPanel.ps1"
     
-    # Charger les données
+    # Charger les donn?es
     $collecteurs = Get-Collecteurs
     $vehicules = Get-Vehicules
     
@@ -26,7 +26,7 @@ function Show-ODMViewer {
     $updatedCollecteurs = $collecteurs
     $updatedVehicules = $vehicules
     
-    # Créer le panel
+    # Cr?er le panel
     $panel = New-Object System.Windows.Forms.Panel
     $panel.Dock = "Fill"
     $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)

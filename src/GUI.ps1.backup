@@ -1,4 +1,4 @@
-# GUI.ps1 - Interface graphique avec gestion des règles
+# GUI.ps1 - Interface graphique avec 4 onglets
 
 function Start-GUI {
     param([string]$FichierPDF)
@@ -10,49 +10,42 @@ function Start-GUI {
     . "$PSScriptRoot\Core\TemplateManager.ps1"
     . "$PSScriptRoot\Core\Rename.ps1"
     . "$PSScriptRoot\Core\TemplateEditor.ps1"
-    
-    if (-not $FichierPDF -or -not (Test-Path $FichierPDF)) { 
-        Write-Host "Fichier PDF invalide: $FichierPDF"
-        exit 
-    }
+    . "$PSScriptRoot\ODM\ODMViewer.ps1"
     
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = "Convention de nommage - v2.0"
-    $form.Size = New-Object System.Drawing.Size(700, 500)
+    $form.Text = "Convention de nommage"
+    $form.Size = New-Object System.Drawing.Size(1400, 700)
     $form.StartPosition = "CenterScreen"
-    $form.FormBorderStyle = "FixedDialog"
-    $form.BackColor = $formBackColor
-    $form.Font = $font
-    $form.Topmost = $true
+    $form.FormBorderStyle = "Sizable"
+    $form.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $form.MinimumSize = New-Object System.Drawing.Size(1000, 550)
     
-    # Onglets
+    # Onglets principaux
     $tabControl = New-Object System.Windows.Forms.TabControl
     $tabControl.Dock = "Fill"
-    $tabControl.Padding = New-Object System.Drawing.Point(10, 5)
+    $tabControl.Font = New-Object System.Drawing.Font("Segoe UI", 10)
     
+    # ========== ONGLET 1 : Convention de nommage ==========
     $tabRename = New-Object System.Windows.Forms.TabPage
-    $tabRename.Text = "🏷️ Renommage"
+    $tabRename.Text = "Convention de nommage"
+    $tabRename.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     
-    $tabManage = New-Object System.Windows.Forms.TabPage
-    $tabManage.Text = "⚙️ Gestion des règles"
-    
-    $tabControl.TabPages.Add($tabRename)
-    $tabControl.TabPages.Add($tabManage)
-    
-    # ========== ONGLET RENOMMAGE ==========
     $panelRename = New-Object System.Windows.Forms.Panel
     $panelRename.Dock = "Fill"
-    $panelRename.Padding = New-Object System.Windows.Forms.Padding(20, 10, 20, 10)
+    $panelRename.Padding = New-Object System.Windows.Forms.Padding(20)
     
     $margeGauche = 35
     $largeurPlaceholder = 470
     
+    # Champ texte
     $textBox = New-Object System.Windows.Forms.TextBox
     $textBox.Location = New-Object System.Drawing.Point($margeGauche, 40)
     $textBox.Size = New-Object System.Drawing.Size($largeurPlaceholder, 35)
-    $textBox.Font = $font
+    $textBox.Font = New-Object System.Drawing.Font("Segoe UI", 10)
     $panelRename.Controls.Add($textBox)
     
+    # Panel pour les boutons dynamiques
     $buttonsPanel = New-Object System.Windows.Forms.Panel
     $buttonsPanel.Location = New-Object System.Drawing.Point($margeGauche, 95)
     $buttonsPanel.Size = New-Object System.Drawing.Size(610, 120)
@@ -64,14 +57,14 @@ function Start-GUI {
     $calLabel.Text = "Forcer la date :"
     $calLabel.Location = New-Object System.Drawing.Point($margeGauche, 225)
     $calLabel.Size = New-Object System.Drawing.Size(120, 20)
-    $calLabel.Font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Bold)
+    $calLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
     $panelRename.Controls.Add($calLabel)
     
     $datePicker = New-Object System.Windows.Forms.DateTimePicker
     $datePicker.Location = New-Object System.Drawing.Point($margeGauche, 250)
     $datePicker.Size = New-Object System.Drawing.Size(220, 25)
     $datePicker.Format = "Short"
-    $datePicker.Font = New-Object System.Drawing.Font("Arial", 9)
+    $datePicker.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     
     function Get-DateParDefaut {
         $aujourdhui = Get-Date
@@ -87,66 +80,65 @@ function Start-GUI {
     $forceLabel = New-Object System.Windows.Forms.Label
     $forceLabel.Location = New-Object System.Drawing.Point(($margeGauche + 230), 252)
     $forceLabel.Size = New-Object System.Drawing.Size(220, 20)
-    $forceLabel.Font = New-Object System.Drawing.Font("Arial", 8, [System.Drawing.FontStyle]::Bold)
+    $forceLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
     $forceLabel.ForeColor = [System.Drawing.Color]::Red
     $forceLabel.Text = ""
     $panelRename.Controls.Add($forceLabel)
     
-    $btnManageRules = New-Object System.Windows.Forms.Button
-    $btnManageRules.Text = "⚙️ Gérer les règles"
-    $btnManageRules.Location = New-Object System.Drawing.Point($margeGauche, 300)
-    $btnManageRules.Size = New-Object System.Drawing.Size(200, 40)
-    $btnManageRules.BackColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
-    $btnManageRules.ForeColor = [System.Drawing.Color]::White
-    $btnManageRules.FlatStyle = "Flat"
-    $btnManageRules.Font = New-Object System.Drawing.Font("Arial", 10)
-    $panelRename.Controls.Add($btnManageRules)
-    
     $tabRename.Controls.Add($panelRename)
     
-    # ========== ONGLET GESTION DES RÈGLES ==========
-    $panelManage = New-Object System.Windows.Forms.Panel
-    $panelManage.Dock = "Fill"
-    $panelManage.Padding = New-Object System.Windows.Forms.Padding(20)
+    # ========== ONGLET 2 : PLANNING ==========
+    $tabPlanning = New-Object System.Windows.Forms.TabPage
+    $tabPlanning.Text = "Planning"
+    $tabPlanning.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     
-    $lblManageTitle = New-Object System.Windows.Forms.Label
-    $lblManageTitle.Text = "Gestion des règles de nommage"
-    $lblManageTitle.Location = New-Object System.Drawing.Point(20, 20)
-    $lblManageTitle.Size = New-Object System.Drawing.Size(400, 30)
-    $lblManageTitle.Font = New-Object System.Drawing.Font("Arial", 14, [System.Drawing.FontStyle]::Bold)
+    # Appeler Show-ODMViewer pour le planning
+    $planningResult = Show-ODMViewer -PanelType "Planning"
+    if ($planningResult -is [array]) {
+        $planningPanel = $planningResult[-1]
+    } else {
+        $planningPanel = $planningResult
+    }
+    $planningPanel.Dock = "Fill"
+    $tabPlanning.Controls.Add($planningPanel)
     
-    $rulesListBox = New-Object System.Windows.Forms.ListBox
-    $rulesListBox.Location = New-Object System.Drawing.Point(20, 60)
-    $rulesListBox.Size = New-Object System.Drawing.Size(400, 300)
-    $rulesListBox.Font = New-Object System.Drawing.Font("Arial", 10)
+    # ========== ONGLET 3 : COLLECTEURS ==========
+    $tabCollecteurs = New-Object System.Windows.Forms.TabPage
+    $tabCollecteurs.Text = "Donn?es collecteurs"
+    $tabCollecteurs.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     
-    $btnOpenEditor = New-Object System.Windows.Forms.Button
-    $btnOpenEditor.Text = "📝 Ouvrir l'éditeur"
-    $btnOpenEditor.Location = New-Object System.Drawing.Point(440, 60)
-    $btnOpenEditor.Size = New-Object System.Drawing.Size(200, 50)
-    $btnOpenEditor.BackColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
-    $btnOpenEditor.ForeColor = [System.Drawing.Color]::White
-    $btnOpenEditor.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
-    $btnOpenEditor.FlatStyle = "Flat"
+    $collecteursResult = Show-ODMViewer -PanelType "Collecteurs"
+    if ($collecteursResult -is [array]) {
+        $collecteursPanel = $collecteursResult[-1]
+    } else {
+        $collecteursPanel = $collecteursResult
+    }
+    $collecteursPanel.Dock = "Fill"
+    $tabCollecteurs.Controls.Add($collecteursPanel)
     
-    $btnRefreshRules = New-Object System.Windows.Forms.Button
-    $btnRefreshRules.Text = "🔄 Rafraîchir"
-    $btnRefreshRules.Location = New-Object System.Drawing.Point(440, 120)
-    $btnRefreshRules.Size = New-Object System.Drawing.Size(200, 40)
-    $btnRefreshRules.BackColor = [System.Drawing.Color]::FromArgb(80, 171, 242)
-    $btnRefreshRules.ForeColor = [System.Drawing.Color]::White
-    $btnRefreshRules.FlatStyle = "Flat"
+    # ========== ONGLET 4 : V?HICULES ==========
+    $tabVehicules = New-Object System.Windows.Forms.TabPage
+    $tabVehicules.Text = "Donn?es v?hicules"
+    $tabVehicules.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     
-    $panelManage.Controls.Add($lblManageTitle)
-    $panelManage.Controls.Add($rulesListBox)
-    $panelManage.Controls.Add($btnOpenEditor)
-    $panelManage.Controls.Add($btnRefreshRules)
+    $vehiculesResult = Show-ODMViewer -PanelType "Vehicules"
+    if ($vehiculesResult -is [array]) {
+        $vehiculesPanel = $vehiculesResult[-1]
+    } else {
+        $vehiculesPanel = $vehiculesResult
+    }
+    $vehiculesPanel.Dock = "Fill"
+    $tabVehicules.Controls.Add($vehiculesPanel)
     
-    $tabManage.Controls.Add($panelManage)
+    # Ajouter les onglets
+    $tabControl.TabPages.Add($tabRename)
+    $tabControl.TabPages.Add($tabPlanning)
+    $tabControl.TabPages.Add($tabCollecteurs)
+    $tabControl.TabPages.Add($tabVehicules)
     
     $form.Controls.Add($tabControl)
     
-    # Variables
+    # ========== FONCTIONS POUR L'ONGLET Convention de nommage ==========
     $script:estEnModePlaceholder = $true
     $script:texteUtilisateur = ""
     $script:formulaireCharge = $false
@@ -155,7 +147,6 @@ function Start-GUI {
     $script:currentPlaceholder = ""
     $script:templates = @()
     
-    # Fonctions
     function Load-TemplatesAndButtons {
         try {
             $script:templates = Get-Templates | Where-Object { $_.enabled -eq $true }
@@ -180,11 +171,10 @@ function Start-GUI {
                 $btn.FlatAppearance.BorderColor = [System.Drawing.ColorTranslator]::FromHtml($template.borderColor)
                 $btn.FlatAppearance.BorderSize = 2
                 $btn.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
-                $btn.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+                $btn.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
                 $btn.TextAlign = "MiddleCenter"
                 $btn.Tag = $template.id
                 
-                # Couleurs de survol
                 $btn.Add_MouseEnter({
                     $currentBtn = $this
                     $templateId = $currentBtn.Tag
@@ -245,15 +235,6 @@ function Start-GUI {
         }
     }
     
-    function Update-RulesList {
-        $rulesListBox.Items.Clear()
-        $allTemplates = Get-Templates
-        foreach ($t in $allTemplates) {
-            $status = if ($t.enabled) { "✓" } else { "✗" }
-            $rulesListBox.Items.Add("$status $($t.name) - $($t.description)")
-        }
-    }
-    
     function Set-PlaceholderMode {
         param($textBox, $activer)
         if ($activer) {
@@ -293,7 +274,7 @@ function Start-GUI {
         }
     }
     
-    # Événements
+    # ?v?nements
     $textBox.Add_Enter({
         if (-not $script:formulaireCharge) { return }
         if ($script:estEnModePlaceholder) {
@@ -330,25 +311,8 @@ function Start-GUI {
         }
     })
     
-    $btnManageRules.Add_Click({
-        Show-TemplateEditor
-        Load-TemplatesAndButtons
-        Update-RulesList
-    })
-    
-    $btnOpenEditor.Add_Click({
-        Show-TemplateEditor
-        Load-TemplatesAndButtons
-        Update-RulesList
-    })
-    
-    $btnRefreshRules.Add_Click({
-        Update-RulesList
-    })
-    
     $form.Add_Shown({
         Load-TemplatesAndButtons
-        Update-RulesList
         Set-PlaceholderMode -textBox $textBox -activer $true
         $form.BeginInvoke([Action]{
             Start-Sleep -Milliseconds 500

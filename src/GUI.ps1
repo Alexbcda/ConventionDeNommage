@@ -1,4 +1,4 @@
-# GUI.ps1 - Interface graphique avec 4 onglets
+﻿# GUI.ps1 - Interface graphique avec 4 onglets
 
 function Start-GUI {
     param([string]$FichierPDF)
@@ -102,7 +102,7 @@ function Start-GUI {
     $planningPanel.Dock = "Fill"
     $tabPlanning.Controls.Add($planningPanel)
     
-    # ========== ONGLET 3 : COLLECTEURS ==========
+    # ========== ONGLET 3 : DONNÉES COLLECTEURS ==========
     $tabCollecteurs = New-Object System.Windows.Forms.TabPage
     $tabCollecteurs.Text = "Données collecteurs"
     $tabCollecteurs.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
@@ -116,7 +116,7 @@ function Start-GUI {
     $collecteursPanel.Dock = "Fill"
     $tabCollecteurs.Controls.Add($collecteursPanel)
     
-    # ========== ONGLET 4 : VÉHICULES ==========
+    # ========== ONGLET 4 : DONNÉES VÉHICULES ==========
     $tabVehicules = New-Object System.Windows.Forms.TabPage
     $tabVehicules.Text = "Données véhicules"
     $tabVehicules.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)

@@ -67,12 +67,12 @@ function Show-PlanningPanel {
     # ========== ÉCRAN 2 : IMPORTER PDF ==========
     $script:screen2 = New-Object System.Windows.Forms.Panel
     $script:screen2.Dock = "Top"
-    $script:screen2.Height = 110
+    $script:screen2.Height =  160
     $script:screen2.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     $script:screen2.Visible = $false
     
     $script:btnImport = New-Object System.Windows.Forms.Button
-    $script:btnImport.Size = New-Object System.Drawing.Size(420, 95)
+    $script:btnImport.Size = New-Object System.Drawing.Size(300, 95)
     $script:btnImport.Location = New-Object System.Drawing.Point(20, 5)
     $script:btnImport.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
     $script:btnImport.FlatStyle = "Flat"
@@ -106,6 +106,63 @@ function Show-PlanningPanel {
     })
     
     $script:screen2.Controls.Add($script:btnImport)
+    
+    $btnRetour = New-Object System.Windows.Forms.Button
+    $btnRetour.Text = "RETOUR"
+    $btnRetour.Size = New-Object System.Drawing.Size(140, 40)
+    $btnRetour.Location = New-Object System.Drawing.Point(20,  115)
+    $btnRetour.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnRetour.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnRetour.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnRetour.FlatStyle = "Flat"
+    $btnRetour.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $btnRetour.FlatAppearance.BorderSize = 2
+    $btnRetour.Cursor = [System.Windows.Forms.Cursors]::Hand
+    
+    $btnRetour.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnRetour.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    $btnRetour.Add_Click({
+        $script:screen2.Visible = $false
+        $script:screen1.Visible = $true
+        $script:btnImport.Text = "IMPORTER LES ODM DU"
+        $script:datePicker.Focus()
+    })
+    $script:screen2.Controls.Add($btnRetour)
+    
+    $btnQuitter = New-Object System.Windows.Forms.Button
+    $btnQuitter.Text = "QUITTER"
+    $btnQuitter.Size = New-Object System.Drawing.Size(140, 40)
+    $btnQuitter.Location = New-Object System.Drawing.Point(180, 115)
+    $btnQuitter.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+    $btnQuitter.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnQuitter.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnQuitter.FlatStyle = "Flat"
+    $btnQuitter.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $btnQuitter.FlatAppearance.BorderSize = 2
+    $btnQuitter.Cursor = [System.Windows.Forms.Cursors]::Hand
+    
+    $btnQuitter.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnQuitter.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
+    $btnQuitter.Add_Click({
+        [System.Windows.Forms.Application]::Exit()
+    })
+    $script:screen2.Controls.Add($btnQuitter)
     $panel.Controls.Add($script:screen2)
     
     # ========== ÉCRAN 3 : CONFIRMATION ==========
@@ -134,4 +191,19 @@ function Show-PlanningPanel {
     
     return ,$panel
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
