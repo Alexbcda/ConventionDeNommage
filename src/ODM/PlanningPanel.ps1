@@ -1,4 +1,4 @@
-# PlanningPanel.ps1 - Orchestrateur des écrans avec logs
+# PlanningPanel.ps1 - Orchestrateur des écrans
 
 function Show-PlanningPanel {
     param(

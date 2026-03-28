@@ -14,12 +14,12 @@ function Start-GUI {
     
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "Convention de nommage"
-    $form.Size = New-Object System.Drawing.Size(1400, 700)
+    $form.Size = New-Object System.Drawing.Size(1400, 800)
     $form.StartPosition = "CenterScreen"
     $form.FormBorderStyle = "Sizable"
     $form.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-    $form.MinimumSize = New-Object System.Drawing.Size(1000, 550)
+    $form.MinimumSize = New-Object System.Drawing.Size(1000, 650)
     
     # Onglets principaux
     $tabControl = New-Object System.Windows.Forms.TabControl
@@ -326,4 +326,5 @@ function Start-GUI {
     [System.Windows.Forms.Application]::EnableVisualStyles()
     [System.Windows.Forms.Application]::Run($form)
 }
+
 
