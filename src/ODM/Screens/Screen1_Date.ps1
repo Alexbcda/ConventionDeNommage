@@ -27,7 +27,7 @@ function Show-Screen1_Date {
     $lbl = New-Object System.Windows.Forms.Label
     $lbl.Text = "Choisir une date"
     $lbl.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $lbl.ForeColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+    $lbl.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
     $lbl.Location = New-Object System.Drawing.Point(35, 22)
     $lbl.Size = New-Object System.Drawing.Size(130, 25)
     $panel.Controls.Add($lbl)
@@ -85,3 +85,4 @@ function Show-Screen1_Date {
     Write-Host "[DEBUG] ========== SCREEN1_DATE TERMINÉ ==========" -ForegroundColor Cyan
     return $panel
 }
+
