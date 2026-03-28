@@ -1,25 +1,17 @@
 {
   "clients": [],
-  "vehicules": [
-    {
-      "id": 1,
-      "immatriculation": "AA-123-BB",
-      "marque": "Renault",
-      "modele": "Master",
-      "annee": 2020,
-      "dateControle": "2025-03-15",
-      "prochainEntretien": "2024-06-01"
-    },
-    {
-      "id": 2,
-      "immatriculation": "CC-456-DD",
-      "marque": "Citroen",
-      "modele": "Jumper",
-      "annee": 2021,
-      "dateControle": "2025-06-20",
-      "prochainEntretien": "2024-07-15"
-    }
-  ],
+  "vehicules": {
+    "id": 693,
+    "numeroParc": "06",
+    "immatriculation": "EDED",
+    "numeroChassis": "DDDDDDDDDDDDDDDDD",
+    "marque": "",
+    "modele": "",
+    "dateMiseCirculation": "02/12/2026",
+    "dateControle": "20/12/2026",
+    "alerte": "",
+    "dateAlerte": ""
+  },
   "chauffeurs": [
     {
       "prenom": "Pierre",
@@ -202,6 +194,14 @@
       "vehiculeDefaut": null,
       "prenom": null,
       "id": 282,
+      "email": null,
+      "telephone": null
+    },
+    {
+      "nom": null,
+      "vehiculeDefaut": null,
+      "prenom": null,
+      "id": 632,
       "email": null,
       "telephone": null
     }
