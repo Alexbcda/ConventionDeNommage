@@ -29,17 +29,28 @@ function Show-CollecteursPanel {
     $panel.Controls.Add($lblTitle)
 
     # Bouton AJOUTER
-    $btnAjouter = New-Object System.Windows.Forms.Button
+        $btnAjouter = New-Object System.Windows.Forms.Button
     $btnAjouter.Text = "➕ AJOUTER UN COLLECTEUR"
     $btnAjouter.Size = New-Object System.Drawing.Size(200, 45)
     $btnAjouter.Location = New-Object System.Drawing.Point(900, 20)
     $btnAjouter.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
     $btnAjouter.FlatStyle = "Flat"
-    $btnAjouter.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
+    $btnAjouter.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
     $btnAjouter.FlatAppearance.BorderSize = 2
     $btnAjouter.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
     $btnAjouter.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
     $btnAjouter.Cursor = [System.Windows.Forms.Cursors]::Hand
+    
+    $btnAjouter.Add_MouseEnter({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $btnAjouter.Add_MouseLeave({
+        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 107, 53)
+        $this.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        $this.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    })
     $panel.Controls.Add($btnAjouter)
 
     # DataGridView
@@ -176,3 +187,4 @@ function Show-CollecteursPanel {
     Write-Host "[PANEL] Terminé" -ForegroundColor Cyan
     return $panel
 }
+
