@@ -1,4 +1,4 @@
-# CollecteursPanel.ps1
+# CollecteursPanel.ps1 - Version avec styles de sélection orange
 
 . "C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Collecteurs\CollecteursForm.ps1"
 . "C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Collecteurs\CollecteursManager.ps1"
@@ -17,7 +17,8 @@ function Show-CollecteursPanel {
     $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     $panel.Padding = New-Object System.Windows.Forms.Padding(20)
 
-    Write-Host "[PANEL] Démarrage" -ForegroundColor Cyan
+    Write-Host "[PANEL] ========== COLLECTEURS PANEL ==========" -ForegroundColor Cyan
+    Write-Host "[PANEL] Collecteurs reçus: $($Collecteurs.Count)" -ForegroundColor Cyan
 
     # Titre
     $lblTitle = New-Object System.Windows.Forms.Label
@@ -29,7 +30,7 @@ function Show-CollecteursPanel {
     $panel.Controls.Add($lblTitle)
 
     # Bouton AJOUTER
-        $btnAjouter = New-Object System.Windows.Forms.Button
+    $btnAjouter = New-Object System.Windows.Forms.Button
     $btnAjouter.Text = "➕ AJOUTER UN COLLECTEUR"
     $btnAjouter.Size = New-Object System.Drawing.Size(200, 45)
     $btnAjouter.Location = New-Object System.Drawing.Point(900, 20)
@@ -63,6 +64,12 @@ function Show-CollecteursPanel {
     $script:dgv.RowHeadersVisible = $false
     $script:dgv.SelectionMode = "FullRowSelect"
     $script:dgv.BorderStyle = "FixedSingle"
+    
+    # ========== STYLES DE SÉLECTION (orange au lieu de bleu Windows) ==========
+    $script:dgv.DefaultCellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+    $script:dgv.DefaultCellStyle.SelectionForeColor = [System.Drawing.Color]::White
+    $script:dgv.RowHeadersDefaultCellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
+    $script:dgv.ColumnHeadersDefaultCellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(229, 90, 42)
 
     # Colonnes
     $script:dgv.Columns.Add("Nom", "Nom") | Out-Null
@@ -104,7 +111,7 @@ function Show-CollecteursPanel {
 
     # Scriptblock de rafraîchissement
     $script:Refresh = {
-        Write-Host "[REFRESH] Début" -ForegroundColor Yellow
+        Write-Host "[REFRESH] ========== RAFRAÎCHISSEMENT ==========" -ForegroundColor Yellow
         $liste = Get-Collecteurs
         Write-Host "[REFRESH] $($liste.Count) collecteurs trouvés" -ForegroundColor Green
         
@@ -126,28 +133,38 @@ function Show-CollecteursPanel {
             }
             $i++
         }
-        Write-Host "[REFRESH] Terminé - $($listeTriee.Count) collecteurs affichés" -ForegroundColor Green
+        Write-Host "[REFRESH] ✅ Terminé - $($listeTriee.Count) collecteurs affichés" -ForegroundColor Green
     }
 
-    # Événement AJOUTER
+    # ========== ÉVÉNEMENT AJOUTER ==========
     $btnAjouter.Add_Click({
         . "C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Collecteurs\CollecteursForm.ps1"
         . "C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Collecteurs\CollecteursManager.ps1"
         
-        Write-Host "[EVT] AJOUT" -ForegroundColor Cyan
+        Write-Host "[EVT] ========== AJOUT ==========" -ForegroundColor Cyan
         $nouveau = Show-CollecteurForm -Mode "Ajouter"
         if ($nouveau) {
-            Write-Host "[EVT] $($nouveau.prenom) $($nouveau.nom)" -ForegroundColor Green
-            Add-Collecteur -Prenom $nouveau.prenom -Nom $nouveau.nom -Telephone $nouveau.telephone -Email $nouveau.email -VehiculeDefaut $nouveau.vehiculeDefaut
-            & $script:Refresh
-            Write-Host "[EVT] ✅ Ajouté" -ForegroundColor Green
+            Write-Host "[EVT] Données: $($nouveau.prenom) $($nouveau.nom)" -ForegroundColor Green
+            $resultat = Add-Collecteur -Prenom $nouveau.prenom -Nom $nouveau.nom -Telephone $nouveau.telephone -Email $nouveau.email -VehiculeDefaut $nouveau.vehiculeDefaut
+            if ($resultat) {
+                & $script:Refresh
+                Write-Host "[EVT] ✅ Ajouté" -ForegroundColor Green
+            } else {
+                Write-Host "[EVT] ❌ Erreur ajout" -ForegroundColor Red
+                [System.Windows.Forms.MessageBox]::Show("Erreur lors de l'ajout", "Erreur")
+            }
+        } else {
+            Write-Host "[EVT] Ajout annulé" -ForegroundColor Yellow
         }
     })
 
-    # Événement MODIFIER/SUPPRIMER
+    # ========== ÉVÉNEMENT MODIFIER / SUPPRIMER ==========
     $script:dgv.Add_CellClick({
         . "C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Collecteurs\CollecteursForm.ps1"
         . "C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Collecteurs\CollecteursManager.ps1"
+        
+        Write-Host "[CELL] ========== CLIC DANS DATAGRIDVIEW ==========" -ForegroundColor Magenta
+        Write-Host "[CELL] RowIndex: $($_.RowIndex), ColumnIndex: $($_.ColumnIndex)" -ForegroundColor Gray
         
         if ($_.RowIndex -ge 0 -and ($_.ColumnIndex -eq 5 -or $_.ColumnIndex -eq 6)) {
             $row = $script:dgv.Rows[$_.RowIndex]
@@ -155,8 +172,13 @@ function Show-CollecteursPanel {
             $nom = $row.Cells[0].Value
             $prenom = $row.Cells[1].Value
             
+            Write-Host "[CELL] Collecteur sélectionné: ID=$id, $nom $prenom" -ForegroundColor Yellow
+            
             if ($_.ColumnIndex -eq 5) {
-                Write-Host "[EVT] MODIFIER: $nom $prenom" -ForegroundColor Yellow
+                # MODIFIER
+                Write-Host "[MODIF] ========== DÉBUT MODIFICATION ==========" -ForegroundColor Cyan
+                Write-Host "[MODIF] Collecteur: $nom $prenom (ID=$id)" -ForegroundColor Yellow
+                
                 $collecteur = @{
                     id = $id
                     nom = $nom
@@ -165,26 +187,42 @@ function Show-CollecteursPanel {
                     email = $row.Cells[3].Value
                     vehiculeDefaut = $row.Cells[4].Value
                 }
+                
                 $modifie = Show-CollecteurForm -Mode "Modifier" -Collecteur $collecteur
+                
                 if ($modifie) {
-                    Update-Collecteur -Id $id -Prenom $modifie.prenom -Nom $modifie.nom -Telephone $modifie.telephone -Email $modifie.email -VehiculeDefaut $modifie.vehiculeDefaut
-                    & $script:Refresh
-                    Write-Host "[EVT] ✅ Modifié" -ForegroundColor Green
+                    $resultat = Update-Collecteur -Id $id -Prenom $modifie.prenom -Nom $modifie.nom -Telephone $modifie.telephone -Email $modifie.email -VehiculeDefaut $modifie.vehiculeDefaut
+                    if ($resultat) {
+                        & $script:Refresh
+                        Write-Host "[MODIF] ✅ Modification terminée" -ForegroundColor Green
+                        [System.Windows.Forms.MessageBox]::Show("Collecteur modifié avec succès !", "Succès")
+                    }
                 }
             } 
             elseif ($_.ColumnIndex -eq 6) {
-                Write-Host "[EVT] SUPPRIMER: $nom $prenom" -ForegroundColor Red
-                $confirm = [System.Windows.Forms.MessageBox]::Show("Supprimer $nom $prenom ?", "Confirmation", [System.Windows.Forms.MessageBoxButtons]::YesNo)
+                # SUPPRIMER
+                Write-Host "[SUPPR] ========== DÉBUT SUPPRESSION ==========" -ForegroundColor Red
+                Write-Host "[SUPPR] Collecteur: $nom $prenom (ID=$id)" -ForegroundColor Yellow
+                
+                $confirm = [System.Windows.Forms.MessageBox]::Show(
+                    "Supprimer définitivement $prenom $nom ?`n`nCette action est irréversible.", 
+                    "Confirmation de suppression", 
+                    [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                    [System.Windows.Forms.MessageBoxIcon]::Warning
+                )
+                
                 if ($confirm -eq [System.Windows.Forms.DialogResult]::Yes) {
-                    Remove-Collecteur -Id $id
-                    & $script:Refresh
-                    Write-Host "[EVT] ✅ Supprimé" -ForegroundColor Green
+                    $resultat = Remove-Collecteur -Id $id
+                    if ($resultat) {
+                        & $script:Refresh
+                        Write-Host "[SUPPR] ✅ Suppression terminée" -ForegroundColor Green
+                        [System.Windows.Forms.MessageBox]::Show("Collecteur supprimé avec succès !", "Succès")
+                    }
                 }
             }
         }
     })
 
-    Write-Host "[PANEL] Terminé" -ForegroundColor Cyan
+    Write-Host "[PANEL] ========== COLLECTEURS PANEL TERMINÉ ==========" -ForegroundColor Cyan
     return $panel
 }
-
