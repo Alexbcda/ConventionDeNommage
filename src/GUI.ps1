@@ -104,7 +104,7 @@ function Start-GUI {
     
     # ========== ONGLET 3 : COLLECTEURS ==========
     $tabCollecteurs = New-Object System.Windows.Forms.TabPage
-    $tabCollecteurs.Text = "Donn?es collecteurs"
+    $tabCollecteurs.Text = "Données collecteurs"
     $tabCollecteurs.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     
     $collecteursResult = Show-ODMViewer -PanelType "Collecteurs"
@@ -116,9 +116,9 @@ function Start-GUI {
     $collecteursPanel.Dock = "Fill"
     $tabCollecteurs.Controls.Add($collecteursPanel)
     
-    # ========== ONGLET 4 : V?HICULES ==========
+    # ========== ONGLET 4 : véhicules ==========
     $tabVehicules = New-Object System.Windows.Forms.TabPage
-    $tabVehicules.Text = "Donn?es v?hicules"
+    $tabVehicules.Text = "Données véhicules"
     $tabVehicules.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     
     $vehiculesResult = Show-ODMViewer -PanelType "Vehicules"
@@ -326,6 +326,7 @@ function Start-GUI {
     [System.Windows.Forms.Application]::EnableVisualStyles()
     [System.Windows.Forms.Application]::Run($form)
 }
+
 
 
 

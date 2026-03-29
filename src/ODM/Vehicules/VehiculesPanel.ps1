@@ -1,7 +1,7 @@
 # VehiculesPanel.ps1 - Interface de gestion des véhicules
 
-. "$PSScriptRoot\Vehicules\VehiculesForm.ps1"
-. "$PSScriptRoot\Vehicules\VehiculesManager.ps1"
+. "$PSScriptRoot\VehiculesForm.ps1"
+. "$PSScriptRoot\VehiculesManager.ps1"
 
 function Show-VehiculesPanel {
     param(
@@ -146,14 +146,13 @@ function Show-VehiculesPanel {
             }
             $i++
         }
-        $UpdatedVehicules.Value = $liste
         Write-Host "[REFRESH] ✅ Terminé" -ForegroundColor Green
     }
 
     # ========== ÉVÉNEMENT AJOUTER ==========
     $btnAjouter.Add_Click({
-        . "$PSScriptRoot\Vehicules\VehiculesForm.ps1"
-        . "$PSScriptRoot\Vehicules\VehiculesManager.ps1"
+        . "$PSScriptRoot\VehiculesForm.ps1"
+        . "$PSScriptRoot\VehiculesManager.ps1"
         
         Write-Host "[EVT] ========== AJOUT VÉHICULE ==========" -ForegroundColor Cyan
         $nouveau = Show-VehiculeForm -Mode "Ajouter"
@@ -183,8 +182,8 @@ function Show-VehiculesPanel {
 
     # ========== ÉVÉNEMENT MODIFIER/SUPPRIMER ==========
     $script:dgv.Add_CellClick({
-        . "$PSScriptRoot\Vehicules\VehiculesForm.ps1"
-        . "$PSScriptRoot\Vehicules\VehiculesManager.ps1"
+        . "$PSScriptRoot\VehiculesForm.ps1"
+        . "$PSScriptRoot\VehiculesManager.ps1"
         
         if ($_.RowIndex -ge 0 -and ($_.ColumnIndex -eq 9 -or $_.ColumnIndex -eq 10)) {
             $row = $script:dgv.Rows[$_.RowIndex]
@@ -245,3 +244,5 @@ function Show-VehiculesPanel {
 
     return $panel
 }
+
+

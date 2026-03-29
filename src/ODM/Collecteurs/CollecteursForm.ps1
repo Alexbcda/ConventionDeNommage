@@ -2,7 +2,7 @@
 
 . "$PSScriptRoot\..\..\Core\DataManager.ps1"
 
-function Show-CollecteurForm {
+function global:Show-CollecteurForm {
     param(
         [string]$Mode = "Ajouter",
         [hashtable]$Collecteur = $null
@@ -241,7 +241,7 @@ function Show-CollecteurForm {
     })
     $form.Controls.Add($btnOK)
 
-            $btnCancel = New-Object System.Windows.Forms.Button
+        $btnCancel = New-Object System.Windows.Forms.Button
     $btnCancel.Text = "QUITTER"
     $btnCancel.Size = New-Object System.Drawing.Size(100, 40)
     $btnCancel.Location = New-Object System.Drawing.Point(($fieldLeft + 120), $yPos)
