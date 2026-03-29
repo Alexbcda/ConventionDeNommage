@@ -1,11 +1,27 @@
-﻿# Fichiers temporaires
+# Dossiers de données
+Data/
+src/Data/
+*.json
+
+# Fichiers temporaires
 *.tmp
 *.log
+*.bak
+*.backup
+*.ps1~
+*.ps1.bak
+*.txt
 
-# Output de l'installateur
-Output/
+# Gros fichiers
+complete_export.txt
+CODE_COMPLET.txt
 
-# Dossiers système
+# Fichiers système
 .DS_Store
 Thumbs.db
-complete_export.txt
+desktop.ini
+*.suo
+*.user
+
+# Dossier Git
+.git/
