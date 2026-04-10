@@ -1,0 +1,171 @@
+# ========== FONCTION DE LOG GLOBALE ==========
+$script:logFile = "C:\Users\alexa\Documents\ConventionDeNommage\odm_debug.log"
+
+function Write-DebugLog {
+    param(
+        [string]$Message,
+        [string]$Level = "INFO",
+        [string]$Location = ""
+    )
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+    $logEntry = "[$timestamp] [$Level] [$Location] $Message"
+    Add-Content -Path $script:logFile -Value $logEntry -Encoding UTF8 -ErrorAction SilentlyContinue
+    Write-Host $logEntry -ForegroundColor $(switch($Level){"ERROR"{"Red"} "WARNING"{"Yellow"} "SUCCESS"{"Green"} default{"Cyan"}})
+}
+
+$scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# ============================================
+# 1. CHARGEMENT DES MODULES CORE
+# ============================================
+# ============================================
+# CHARGEMENT DE LA NOUVELLE ARCHITECTURE (onglet Affectation)
+# ============================================
+Write-Host "[MAIN] Chargement de la nouvelle architecture..." -ForegroundColor Cyan
+. "$scriptPath\Framework\Store.ps1"
+. "$scriptPath\Framework\Router.ps1"
+. "$scriptPath\Framework\Components.ps1"
+. "$scriptPath\Services\AffectationService.ps1"
+. "$scriptPath\Pages\DatePage.ps1"
+. "$scriptPath\Pages\TourneesPage.ps1"
+. "$scriptPath\Pages\AffectationPage.ps1"
+
+# ============================================
+# CHARGEMENT DE LA NOUVELLE ARCHITECTURE (onglet Affectation)
+# ============================================
+Write-Host "[MAIN] Chargement de la nouvelle architecture..." -ForegroundColor Cyan
+. "$scriptPath\Framework\Store.ps1"
+. "$scriptPath\Framework\Router.ps1"
+. "$scriptPath\Framework\Components.ps1"
+. "$scriptPath\Services\AffectationService.ps1"
+. "$scriptPath\Pages\DatePage.ps1"
+. "$scriptPath\Pages\TourneesPage.ps1"
+. "$scriptPath\Pages\AffectationPage.ps1"
+
+Write-Host "[MAIN] Chargement des modules Core..." -ForegroundColor Cyan
+. "$scriptPath\Config.ps1"
+. "$scriptPath\Core\DataManager.ps1"
+. "$scriptPath\Common\Styles.ps1"
+
+# Chargement du module ConventionNommage
+. "$scriptPath\ODM\ConventionNommage\ConventionNommage.ps1"
+
+# ==========================================================
+# ONGLET 2 : Affectation
+# ==========================================================
+
+$tabAffectation = New-Object System.Windows.Forms.TabPage
+$tabAffectation.Text = "🚚 Affectation"
+$tabAffectation.BackColor = [System.Drawing.Color]::FromArgb(248,249,250)
+
+$affectationContainer = New-Object System.Windows.Forms.Panel
+$affectationContainer.Dock = "Fill"
+$affectationContainer.Name = "AffectationContainer"
+
+# Création des panels 1, 2 ET 3
+$panelDate = Show-DatePanel -NextPanel $null -CurrentPanel $null
+$panelDate.Dock = "Fill"
+$panelDate.Name = "DatePanel"
+
+$panelTournees = Show-AffectationNbTourneesPanel -NextPanel $null -CurrentPanel $null -PreviousPanel $panelDate
+$panelTournees.Dock = "Fill"
+$panelTournees.Name = "TourneesPanel"
+$panelTournees.Visible = $false
+
+# Créer le panel 3 immédiatement (pas besoin du nombre de tournées)
+$panelCollecteurTournee = Show-AffectationCollecteurTourneePanel -NextPanel $null -CurrentPanel $null -PreviousPanel $panelTournees
+$panelCollecteurTournee.Dock = "Fill"
+$panelCollecteurTournee.Name = "CollecteurTourneePanel"
+$panelCollecteurTournee.Visible = $false
+
+$affectationContainer.Controls.Add($panelDate)
+$affectationContainer.Controls.Add($panelTournees)
+$affectationContainer.Controls.Add($panelCollecteurTournee)
+
+$tabAffectation.Controls.Add($affectationContainer)
+$tabControl.TabPages.Add($tabAffectation)
+
+# Stocker les références
+$form.Tag = @{
+    DatePanel = $panelDate
+    TourneesPanel = $panelTournees
+    CollecteurTourneePanel = $panelCollecteurTournee
+    TabControl = $tabControl
+    AffectationContainer = $affectationContainer
+}
+
+# ============================================
+# 3. CHARGEMENT DES MODULES VEHICULES
+# ============================================
+Write-Host "[MAIN] Chargement des modules Vehicules..." -ForegroundColor Cyan
+. "$scriptPath\ODM\Vehicules\VehiculesForm.ps1"
+. "$scriptPath\ODM\Vehicules\VehiculesManager.ps1"
+
+# ============================================
+# CHARGEMENT DES FICHIERS D'AFFECTATION (ordre IMPORTANT)
+# ============================================
+Write-Host "[MAIN] Chargement des fichiers d'affectation..." -ForegroundColor Cyan
+
+# 1. D'abord la logique métier (Date.ps1 contient TOUTES les fonctions)
+. "$scriptPath\ODM\Affectations\Date.ps1"
+
+# 2. Ensuite les interfaces UI (qui utilisent les fonctions du 1)
+. "$scriptPath\ODM\Affectations\DatePanel.ps1"
+. "$scriptPath\ODM\Affectations\AffectationNbTourneesPanel.ps1"
+. "$scriptPath\ODM\Affectations\AffectationCollecteurTourneePanel.ps1"
+. "$scriptPath\ODM\Affectations\AffectationCollecteurTournee.ps1"
+
+# ============================================
+# 5. CHARGEMENT DES MODULES ODM ET GUI
+# ============================================
+Write-Host "[MAIN] Chargement des modules ODM et GUI..." -ForegroundColor Cyan
+. "$scriptPath\ODM\ODMViewer.ps1"
+. "$scriptPath\GUI.ps1"
+
+# ============================================
+# 6. FONCTIONS UTILITAIRES
+# ============================================
+function Find-PDFFile {
+    param([string]$Path)
+    
+    if ($Path -and (Test-Path $Path)) { return $Path }
+    
+    if ($Path) {
+        $dossier = Split-Path $Path -Parent
+        if ($dossier -and (Test-Path $dossier)) {
+            $fichiers = Get-ChildItem $dossier -Filter "*.pdf" -File
+            if ($fichiers) { return $fichiers[0].FullName }
+        }
+    }
+    
+    $fichiers = Get-ChildItem (Get-Location) -Filter "*.pdf" -File
+    if ($fichiers) { return $fichiers[0].FullName }
+    
+    return $null
+}
+
+
+# ============================================
+# 7. LANCEMENT DE L'INTERFACE
+# ============================================
+Write-Host "[MAIN] Lancement de l'interface..." -ForegroundColor Green
+
+if ($args.Count -gt 0) {
+    $fichierPDF = $args[0] -replace '^"|"$', '' -replace "'", ''
+    $fichierTrouve = Find-PDFFile $fichierPDF
+    if ($fichierTrouve) {
+        Start-GUI -FichierPDF $fichierTrouve
+    } else {
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.MessageBox]::Show(
+            "Aucun fichier PDF trouvé dans le dossier courant.`n`nL'interface va s'ouvrir sans fichier sélectionné.", 
+            "Information", 
+            [System.Windows.Forms.MessageBoxButtons]::OK, 
+            [System.Windows.Forms.MessageBoxIcon]::Information
+        )
+        Start-GUI -FichierPDF $null
+    }
+} else {
+    Start-GUI -FichierPDF $null
+}
+

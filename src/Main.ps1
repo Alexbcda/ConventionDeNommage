@@ -1,51 +1,47 @@
-﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+# ========== MAIN.PS1 - POINT D'ENTRÉE PRINCIPAL ==========
 
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+Write-Host "🚀 DÉMARRAGE DE L'APPLICATION..." -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+
+# ============================================
+# 1. CHARGEMENT DES STYLES ET CONFIGURATION
+# ============================================
+Write-Host "[MAIN] Chargement des styles..." -ForegroundColor Gray
 . "$scriptPath\Config.ps1"
-. "$scriptPath\Core\TemplateManager.ps1"
-. "$scriptPath\Core\Rename.ps1"
-. "$scriptPath\Core\TemplateEditor.ps1"
-. "$scriptPath\ODM\ODMViewer.ps1"
+. "$scriptPath\Common\Styles.ps1"
+
+# ============================================
+# 2. CHARGEMENT DE LA NOUVELLE ARCHITECTURE
+# ============================================
+Write-Host "[MAIN] Chargement de la nouvelle architecture..." -ForegroundColor Gray
+. "$scriptPath\Framework\Store.ps1"
+. "$scriptPath\Framework\Router.ps1"
+. "$scriptPath\Framework\Components.ps1"
+. "$scriptPath\Services\AffectationService.ps1"
+. "$scriptPath\Pages\DatePage.ps1"
+. "$scriptPath\Pages\TourneesPage.ps1"
+. "$scriptPath\Pages\AffectationPage.ps1"
+
+# ============================================
+# 3. CHARGEMENT DES MODULES EXISTANTS
+# ============================================
+Write-Host "[MAIN] Chargement des modules métier..." -ForegroundColor Gray
+. "$scriptPath\ODM\ConventionNommage\ConventionNommage.ps1"
+. "$scriptPath\ODM\Collecteurs\CollecteursManager.ps1"
+. "$scriptPath\ODM\Vehicules\VehiculesManager.ps1"
+
+# ============================================
+# 4. CHARGEMENT DE LA GUI
+# ============================================
+Write-Host "[MAIN] Chargement de l'interface..." -ForegroundColor Gray
 . "$scriptPath\GUI.ps1"
 
-function Find-PDFFile {
-    param([string]$Path)
-    
-    if ($Path -and (Test-Path $Path)) { return $Path }
-    
-    if ($Path) {
-        $dossier = Split-Path $Path -Parent
-        if ($dossier -and (Test-Path $dossier)) {
-            $fichiers = Get-ChildItem $dossier -Filter "*.pdf" -File
-            if ($fichiers) { return $fichiers[0].FullName }
-        }
-    }
-    
-    $fichiers = Get-ChildItem (Get-Location) -Filter "*.pdf" -File
-    if ($fichiers) { return $fichiers[0].FullName }
-    
-    return $null
-}
+# ============================================
+# 5. LANCEMENT
+# ============================================
+Write-Host "[MAIN] Lancement..." -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Green
 
-# Lancer l'interface avec onglets
-# Si un fichier est pass? en param?tre, on l'utilise pour l'onglet Convention de nommage
-if ($args.Count -gt 0) {
-    $fichierPDF = $args[0] -replace '^"|"$', '' -replace "'", ''
-    $fichierTrouve = Find-PDFFile $fichierPDF
-    if ($fichierTrouve) {
-        Start-GUI -FichierPDF $fichierTrouve
-    } else {
-        Add-Type -AssemblyName System.Windows.Forms
-        [System.Windows.Forms.MessageBox]::Show(
-            "Aucun fichier PDF trouv? dans le dossier courant.`n`nL'interface va s'ouvrir sans fichier s?lectionn?.", 
-            "Information", 
-            [System.Windows.Forms.MessageBoxButtons]::OK, 
-            [System.Windows.Forms.MessageBoxIcon]::Information
-        )
-        Start-GUI -FichierPDF $null
-    }
-} else {
-    # Si pas de fichier en param?tre, on lance quand m?me l'interface
-    Start-GUI -FichierPDF $null
-}
+Start-GUI
