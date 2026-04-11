@@ -1,110 +1,76 @@
-. "$PSScriptRoot\..\..\Core\DataManager.ps1"
+# VehiculesManager.ps1 - Version SQLite
+
+. "$PSScriptRoot\..\..\Database\Database.ps1"
 
 function Add-Vehicule {
-    param(
-        $NumeroParc, $Immatriculation, $NumeroChassis,
-        $Marque, $Modele, $DateMiseCirculation, $DateControle,
-        $Alerte, $DateAlerte
-    )
+    param($NumeroParc, $Immatriculation, $NumeroChassis, $Marque, $Modele, $DateMiseCirculation, $DateControle)
     
-    $vehicules = @(Get-Vehicules)
-    $newId = (Get-Random -Minimum 100 -Maximum 999)
-    while ($vehicules.id -contains $newId) { $newId = (Get-Random -Minimum 100 -Maximum 999) }
-    
-    $newVehicule = [PSCustomObject]@{
-        id = $newId
-        numeroParc = $NumeroParc
-        immatriculation = $Immatriculation.ToUpper()
-        numeroChassis = $NumeroChassis.ToUpper()
-        marque = $Marque
-        modele = $Modele
-        dateMiseCirculation = $DateMiseCirculation
-        dateControle = $DateControle
-        alerte = $Alerte
-        dateAlerte = $DateAlerte
-        conducteurId = $null
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+INSERT INTO Vehicule (numero_parc, immatriculation, numero_chassis, marque, modele, date_mise_circulation, date_controle, actif)
+VALUES (@parc, @immat, @chassis, @marque, @modele, @date_mise, @date_ctrl, 1)
+"@
+        $cmd.Parameters.AddWithValue("@parc", $NumeroParc) | Out-Null
+        $cmd.Parameters.AddWithValue("@immat", $Immatriculation.ToUpper()) | Out-Null
+        $cmd.Parameters.AddWithValue("@chassis", $NumeroChassis.ToUpper()) | Out-Null
+        $cmd.Parameters.AddWithValue("@marque", $Marque) | Out-Null
+        $cmd.Parameters.AddWithValue("@modele", $Modele) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_mise", $DateMiseCirculation) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_ctrl", $DateControle) | Out-Null
+        
+        $cmd.ExecuteNonQuery()
+        $cmd.CommandText = "SELECT last_insert_rowid()"
+        return $cmd.ExecuteScalar()
+    } finally {
+        Close-Connection $conn
     }
-    
-    $vehicules = $vehicules + @($newVehicule)
-    $collecteurs = @(Get-Collecteurs)
-    Save-ODMData -Collecteurs $collecteurs -Vehicules $vehicules
-    return $newVehicule
 }
 
 function Update-Vehicule {
-    param($Id, $NumeroParc, $Immatriculation, $NumeroChassis,
-          $Marque, $Modele, $DateMiseCirculation, $DateControle,
-          $Alerte, $DateAlerte)
+    param($Id, $NumeroParc, $Immatriculation, $NumeroChassis, $Marque, $Modele, $DateMiseCirculation, $DateControle)
     
-    $vehicules = @(Get-Vehicules)
-    for ($i = 0; $i -lt $vehicules.Count; $i++) {
-        if ($vehicules[$i].id -eq $Id) {
-            $vehicules[$i] = [PSCustomObject]@{
-                id = $Id
-                numeroParc = $NumeroParc
-                immatriculation = $Immatriculation.ToUpper()
-                numeroChassis = $NumeroChassis.ToUpper()
-                marque = $Marque
-                modele = $Modele
-                dateMiseCirculation = $DateMiseCirculation
-                dateControle = $DateControle
-                alerte = $Alerte
-                dateAlerte = $DateAlerte
-                conducteurId = $vehicules[$i].conducteurId
-            }
-            break
-        }
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+UPDATE Vehicule 
+SET numero_parc = @parc, immatriculation = @immat, numero_chassis = @chassis, 
+    marque = @marque, modele = @modele, date_mise_circulation = @date_mise, date_controle = @date_ctrl
+WHERE id_vehicule = @id
+"@
+        $cmd.Parameters.AddWithValue("@id", $Id) | Out-Null
+        $cmd.Parameters.AddWithValue("@parc", $NumeroParc) | Out-Null
+        $cmd.Parameters.AddWithValue("@immat", $Immatriculation.ToUpper()) | Out-Null
+        $cmd.Parameters.AddWithValue("@chassis", $NumeroChassis.ToUpper()) | Out-Null
+        $cmd.Parameters.AddWithValue("@marque", $Marque) | Out-Null
+        $cmd.Parameters.AddWithValue("@modele", $Modele) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_mise", $DateMiseCirculation) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_ctrl", $DateControle) | Out-Null
+        
+        return $cmd.ExecuteNonQuery()
+    } finally {
+        Close-Connection $conn
     }
-    $collecteurs = @(Get-Collecteurs)
-    Save-ODMData -Collecteurs $collecteurs -Vehicules $vehicules
-    return $true
 }
 
 function Remove-Vehicule {
     param($Id)
     
-    $vehicules = @(Get-Vehicules)
-    $newVehicules = @()
-    foreach ($v in $vehicules) {
-        if ($v.id -ne $Id) { $newVehicules += $v }
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = "DELETE FROM Vehicule WHERE id_vehicule = @id"
+        $cmd.Parameters.AddWithValue("@id", $Id) | Out-Null
+        return $cmd.ExecuteNonQuery()
+    } finally {
+        Close-Connection $conn
     }
-    $collecteurs = @(Get-Collecteurs)
-    Save-ODMData -Collecteurs $collecteurs -Vehicules $newVehicules
-    return $true
 }
 
-function Update-AffectationVehicule {
-    param($VehiculeId, $CollecteurId)
-    
-    Write-Host "[DATA] Update-AffectationVehicule - Vehicule: $VehiculeId, Collecteur: $CollecteurId" -ForegroundColor Cyan
-    
-    $vehicules = @(Get-Vehicules)
-    for ($i = 0; $i -lt $vehicules.Count; $i++) {
-        if ($vehicules[$i].id -eq $VehiculeId) {
-            $vehicules[$i] = [PSCustomObject]@{
-                id = $vehicules[$i].id
-                numeroParc = $vehicules[$i].numeroParc
-                immatriculation = $vehicules[$i].immatriculation
-                numeroChassis = $vehicules[$i].numeroChassis
-                marque = $vehicules[$i].marque
-                modele = $vehicules[$i].modele
-                dateMiseCirculation = $vehicules[$i].dateMiseCirculation
-                dateControle = $vehicules[$i].dateControle
-                alerte = $vehicules[$i].alerte
-                dateAlerte = $vehicules[$i].dateAlerte
-                conducteurId = $CollecteurId
-            }
-            break
-        }
-    }
-    $collecteurs = @(Get-Collecteurs)
-    Save-ODMData -Collecteurs $collecteurs -Vehicules $vehicules
-    Write-Host "[DATA] Affectation sauvegardée" -ForegroundColor Green
-    return $true
-}
-
-function Get-VehiculeByCollecteurId {
-    param($CollecteurId)
-    $vehicules = @(Get-Vehicules)
-    return $vehicules | Where-Object { $_.conducteurId -eq $CollecteurId } | Select-Object -First 1
+function Get-VehiculeById {
+    param($Id)
+    $vehicules = Get-Vehicules
+    return $vehicules | Where-Object { $_.id -eq $Id }
 }

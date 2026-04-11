@@ -13,6 +13,12 @@ Write-Host "[MAIN] Chargement des styles..." -ForegroundColor Gray
 . "$scriptPath\Common\Styles.ps1"
 
 # ============================================
+# 1.5 INITIALISATION DE LA BASE SQLITE
+# ============================================
+. "$scriptPath\Database\Database.ps1"
+Initialize-Database
+
+# ============================================
 # 2. CHARGEMENT DE LA NOUVELLE ARCHITECTURE
 # ============================================
 Write-Host "[MAIN] Chargement de la nouvelle architecture..." -ForegroundColor Gray
@@ -29,7 +35,7 @@ Write-Host "[MAIN] Chargement de la nouvelle architecture..." -ForegroundColor G
 # ============================================
 Write-Host "[MAIN] Chargement des modules métier..." -ForegroundColor Gray
 . "$scriptPath\ODM\ConventionNommage\ConventionNommage.ps1"
-. "$scriptPath\ODM\Collecteurs\CollecteursManager.ps1"
+. "$scriptPath\ODM\Agents\AgentRepository.ps1"
 . "$scriptPath\ODM\Vehicules\VehiculesManager.ps1"
 
 # ============================================

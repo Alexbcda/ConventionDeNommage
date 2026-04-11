@@ -5,7 +5,7 @@ $script:GlobalState = @{
     Date = $null
     NbTournees = 0
     Affectations = @{}
-    Collecteurs = @()
+    Agents = @()
     Vehicules = @()
     CurrentRoute = "/date"
     Loading = $false
@@ -35,10 +35,11 @@ function Reset-State {
         Date = $null
         NbTournees = 0
         Affectations = @{}
-        Collecteurs = @()
+        Agents = @()
         Vehicules = @()
         CurrentRoute = "/date"
         Loading = $false
     }
     Write-Host "[STATE] Réinitialisé" -ForegroundColor Yellow
 }
+

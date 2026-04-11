@@ -27,3 +27,4 @@ CREATE TABLE IF NOT EXISTS Collecte (
     id_conteneur TEXT NOT NULL,
     quantite INTEGER DEFAULT 0
 );
+

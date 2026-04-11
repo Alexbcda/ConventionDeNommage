@@ -16,17 +16,15 @@ function Start-GUI {
     . "$PSScriptRoot\Config.ps1"
 
     . "$PSScriptRoot\ODM\ConventionNommage\ConventionNommage.ps1"
-    . "$PSScriptRoot\ODM\Collecteurs\CollecteursPanel.ps1"
-    . "$PSScriptRoot\ODM\Collecteurs\CollecteursManager.ps1"
+    . "$PSScriptRoot\ODM\Agents\AgentPanel.ps1"
+    . "$PSScriptRoot\ODM\Agents\AgentRepository.ps1"
     . "$PSScriptRoot\ODM\Vehicules\VehiculesPanel.ps1"
     . "$PSScriptRoot\ODM\Vehicules\VehiculesManager.ps1"
     . "$PSScriptRoot\ODM\Affectations\Date.ps1"
     . "$PSScriptRoot\ODM\Affectations\DatePanel.ps1"
     . "$PSScriptRoot\ODM\Affectations\AffectationNbTournees.ps1"
     . "$PSScriptRoot\ODM\Affectations\AffectationNbTourneesPanel.ps1"
-    . "$PSScriptRoot\ODM\Affectations\AffectationCollecteurTournee.ps1"
-    . "$PSScriptRoot\ODM\Affectations\AffectationCollecteurTourneePanel.ps1"
-
+        
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "Convention de nommage"
     $form.Size = New-Object System.Drawing.Size(1400, 800)
@@ -64,25 +62,20 @@ function Start-GUI {
     $panelTournees.Dock = "Fill"
     $panelTournees.Name = "TourneesPanel"
     $panelTournees.Visible = $false
-    $panelCollecteurTournee = Show-AffectationCollecteurTourneePanel -NextPanel $null -CurrentPanel $null
-    $panelCollecteurTournee.Dock = "Fill"
-    $panelCollecteurTournee.Name = "CollecteurTourneePanel"
-    $panelCollecteurTournee.Visible = $false
-    $affectationContainer.Controls.Add($panelDate)
+                    $affectationContainer.Controls.Add($panelDate)
     $affectationContainer.Controls.Add($panelTournees)
-    $affectationContainer.Controls.Add($panelCollecteurTournee)
-    $tabAffectation.Controls.Add($affectationContainer)
+        $tabAffectation.Controls.Add($affectationContainer)
     $tabControl.TabPages.Add($tabAffectation)
     $form.Tag = $affectationContainer
 
-    # ONGLET 3 : Collecteurs
-    $tabCollecteurs = New-Object System.Windows.Forms.TabPage
-    $tabCollecteurs.Text = "Données collecteurs"
-    $tabCollecteurs.BackColor = $script:CouleurGrisFond
-    $collecteursPanel = Show-CollecteursPanel -Collecteurs (Get-Collecteurs)
-    $collecteursPanel.Dock = "Fill"
-    $tabCollecteurs.Controls.Add($collecteursPanel)
-    $tabControl.TabPages.Add($tabCollecteurs)
+    # ONGLET 3 : Agents
+    $tabAgents = New-Object System.Windows.Forms.TabPage
+    $tabAgents.Text = "Agents"
+    $tabAgents.BackColor = $script:CouleurGrisFond
+    $agentsPanel = Show-AgentsPanel
+    $agentsPanel.Dock = "Fill"
+    $tabAgents.Controls.Add($agentsPanel)
+    $tabControl.TabPages.Add($tabAgents)
 
     # ONGLET 4 : Vehicules
     $tabVehicules = New-Object System.Windows.Forms.TabPage
@@ -136,3 +129,5 @@ function Show-PDFViewer {
     $form.Controls.Add($btnClose)
     $form.ShowDialog()
 }
+
+

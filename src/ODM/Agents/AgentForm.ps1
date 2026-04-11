@@ -1,23 +1,23 @@
-# CollecteursForm.ps1 - Formulaire d'ajout/modification de collecteur
+# AgentForm.ps1 - Formulaire d'ajout/modification d'agent
 
-. "$PSScriptRoot\..\..\Core\DataManager.ps1"
+. "$PSScriptRoot\..\..\Database\Database.ps1"
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
 
-function Show-CollecteurForm {
+function Show-AgentForm {
     param(
         [string]$Mode = "Ajouter",
-        [hashtable]$Collecteur = $null
+        [hashtable]$Agent = $null
     )
 
-    Write-Host "[FORM] ========== FORMULAIRE COLLECTEUR OUVERT ==========" -ForegroundColor Magenta
+    Write-Host "[FORM] ========== FORMULAIRE AGENT OUVERT ==========" -ForegroundColor Magenta
     Write-Host "[FORM] Mode: $Mode" -ForegroundColor Magenta
 
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = "$Mode un collecteur"
-    $form.Size = New-Object System.Drawing.Size(600, 550)
+    $form.Text = "$Mode un agent"
+    $form.Size = New-Object System.Drawing.Size(650, 650)
     $form.StartPosition = "CenterParent"
     $form.BackColor = $CouleurGrisFond
     $form.FormBorderStyle = "FixedDialog"
@@ -25,7 +25,7 @@ function Show-CollecteurForm {
     $form.MinimizeBox = $false
 
     $yPos = 20
-    $labelWidth = 100
+    $labelWidth = 150
     $fieldWidth = 350
     $checkWidth = 30
     $leftMargin = 30
@@ -44,15 +44,8 @@ function Show-CollecteurForm {
     $txtNom.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
     $txtNom.Size = New-Object System.Drawing.Size($fieldWidth, 25)
     $txtNom.MaxLength = 50
-    if ($Collecteur) { $txtNom.Text = $Collecteur.nom }
+    if ($Agent) { $txtNom.Text = $Agent.nom }
     $form.Controls.Add($txtNom)
-    
-    $lblNomCheck = New-Object System.Windows.Forms.Label
-    $lblNomCheck.Text = ""
-    $lblNomCheck.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
-    $lblNomCheck.Location = New-Object System.Drawing.Point(($fieldLeft + $fieldWidth + 5), $yPos)
-    $lblNomCheck.Size = New-Object System.Drawing.Size($checkWidth, 25)
-    $form.Controls.Add($lblNomCheck)
     
     $lblNomError = New-Object System.Windows.Forms.Label
     $lblNomError.Text = ""
@@ -76,15 +69,8 @@ function Show-CollecteurForm {
     $txtPrenom.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
     $txtPrenom.Size = New-Object System.Drawing.Size($fieldWidth, 25)
     $txtPrenom.MaxLength = 50
-    if ($Collecteur) { $txtPrenom.Text = $Collecteur.prenom }
+    if ($Agent) { $txtPrenom.Text = $Agent.prenom }
     $form.Controls.Add($txtPrenom)
-    
-    $lblPrenomCheck = New-Object System.Windows.Forms.Label
-    $lblPrenomCheck.Text = ""
-    $lblPrenomCheck.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
-    $lblPrenomCheck.Location = New-Object System.Drawing.Point(($fieldLeft + $fieldWidth + 5), $yPos)
-    $lblPrenomCheck.Size = New-Object System.Drawing.Size($checkWidth, 25)
-    $form.Controls.Add($lblPrenomCheck)
     
     $lblPrenomError = New-Object System.Windows.Forms.Label
     $lblPrenomError.Text = ""
@@ -108,8 +94,8 @@ function Show-CollecteurForm {
     $txtTel.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
     $txtTel.Size = New-Object System.Drawing.Size($fieldWidth, 25)
     $txtTel.MaxLength = 14
-    if ($Collecteur -and $Collecteur.telephone) { 
-        $tel = $Collecteur.telephone
+    if ($Agent -and $Agent.telephone) { 
+        $tel = $Agent.telephone
         if ($tel -match '^(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$') {
             $txtTel.Text = "$1 $2 $3 $4 $5"
         } else {
@@ -117,13 +103,6 @@ function Show-CollecteurForm {
         }
     }
     $form.Controls.Add($txtTel)
-    
-    $lblTelCheck = New-Object System.Windows.Forms.Label
-    $lblTelCheck.Text = ""
-    $lblTelCheck.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
-    $lblTelCheck.Location = New-Object System.Drawing.Point(($fieldLeft + $fieldWidth + 5), $yPos)
-    $lblTelCheck.Size = New-Object System.Drawing.Size($checkWidth, 25)
-    $form.Controls.Add($lblTelCheck)
     
     $lblTelError = New-Object System.Windows.Forms.Label
     $lblTelError.Text = ""
@@ -135,39 +114,68 @@ function Show-CollecteurForm {
     $yPos += 55
 
     # ============================================
-    # EMAIL
+    # DATE D'ENTRÉE
     # ============================================
-    $lblEmail = New-Object System.Windows.Forms.Label
-    $lblEmail.Text = "Email :"
-    $lblEmail.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
-    $lblEmail.Size = New-Object System.Drawing.Size($labelWidth, 25)
-    $form.Controls.Add($lblEmail)
+    $lblDateEntree = New-Object System.Windows.Forms.Label
+    $lblDateEntree.Text = "Date d'entrée * :"
+    $lblDateEntree.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
+    $lblDateEntree.Size = New-Object System.Drawing.Size($labelWidth, 25)
+    $form.Controls.Add($lblDateEntree)
 
-    $txtEmail = New-Object System.Windows.Forms.TextBox
-    $txtEmail.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
-    $txtEmail.Size = New-Object System.Drawing.Size($fieldWidth, 25)
-    $txtEmail.MaxLength = 100
-    if ($Collecteur) { $txtEmail.Text = $Collecteur.email }
-    $form.Controls.Add($txtEmail)
-    
-    $lblEmailCheck = New-Object System.Windows.Forms.Label
-    $lblEmailCheck.Text = ""
-    $lblEmailCheck.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
-    $lblEmailCheck.Location = New-Object System.Drawing.Point(($fieldLeft + $fieldWidth + 5), $yPos)
-    $lblEmailCheck.Size = New-Object System.Drawing.Size($checkWidth, 25)
-    $form.Controls.Add($lblEmailCheck)
-    
-    $lblEmailError = New-Object System.Windows.Forms.Label
-    $lblEmailError.Text = ""
-    $lblEmailError.ForeColor = $CouleurOrange
-    $lblEmailError.Font = New-Object System.Drawing.Font("Segoe UI", 8)
-    $lblEmailError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
-    $lblEmailError.Size = New-Object System.Drawing.Size($fieldWidth, 15)
-    $form.Controls.Add($lblEmailError)
+    $dtpDateEntree = New-Object System.Windows.Forms.DateTimePicker
+    $dtpDateEntree.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
+    $dtpDateEntree.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+    $dtpDateEntree.Format = "Short"
+    if ($Agent -and $Agent.date_entree) { 
+        $dtpDateEntree.Value = [DateTime]::ParseExact($Agent.date_entree, "yyyy-MM-dd", $null)
+    } else {
+        $dtpDateEntree.Value = (Get-Date)
+    }
+    $form.Controls.Add($dtpDateEntree)
     $yPos += 55
 
     # ============================================
-    # VÉHICULE
+    # TYPE DE CONTRAT
+    # ============================================
+    $lblContrat = New-Object System.Windows.Forms.Label
+    $lblContrat.Text = "Type de contrat * :"
+    $lblContrat.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
+    $lblContrat.Size = New-Object System.Drawing.Size($labelWidth, 25)
+    $form.Controls.Add($lblContrat)
+
+    $cmbContrat = New-Object System.Windows.Forms.ComboBox
+    $cmbContrat.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
+    $cmbContrat.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+    $cmbContrat.DropDownStyle = "DropDownList"
+    $cmbContrat.Items.AddRange(@("CDI", "CDD", "Interim", "Apprentissage"))
+    if ($Agent -and $Agent.type_contrat) {
+        $cmbContrat.SelectedItem = $Agent.type_contrat
+    } else {
+        $cmbContrat.SelectedIndex = 0
+    }
+    $form.Controls.Add($cmbContrat)
+    $yPos += 55
+
+    # ============================================
+    # BASE HEURES SEMAINE
+    # ============================================
+    $lblHeures = New-Object System.Windows.Forms.Label
+    $lblHeures.Text = "Base heures/semaine :"
+    $lblHeures.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
+    $lblHeures.Size = New-Object System.Drawing.Size($labelWidth, 25)
+    $form.Controls.Add($lblHeures)
+
+    $numHeures = New-Object System.Windows.Forms.NumericUpDown
+    $numHeures.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
+    $numHeures.Size = New-Object System.Drawing.Size(100, 25)
+    $numHeures.Minimum = 0
+    $numHeures.Maximum = 48
+    $numHeures.Value = if ($Agent -and $Agent.base_heures_semaine) { $Agent.base_heures_semaine } else { 35 }
+    $form.Controls.Add($numHeures)
+    $yPos += 55
+
+    # ============================================
+    # VÉHICULE ATTITRÉ
     # ============================================
     $lblVehicule = New-Object System.Windows.Forms.Label
     $lblVehicule.Text = "Véhicule attitré :"
@@ -180,28 +188,16 @@ function Show-CollecteurForm {
     $cmbVehicule.Size = New-Object System.Drawing.Size($fieldWidth, 25)
     $cmbVehicule.DropDownStyle = "DropDownList"
     $form.Controls.Add($cmbVehicule)
-
-    $lblAlerteVehicule = New-Object System.Windows.Forms.Label
-    $lblAlerteVehicule.Text = ""
-    $lblAlerteVehicule.ForeColor = $CouleurOrange
-    $lblAlerteVehicule.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-    $lblAlerteVehicule.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 30))
-    $lblAlerteVehicule.Size = New-Object System.Drawing.Size($fieldWidth, 40)
-    $lblAlerteVehicule.AutoSize = $false
-    $form.Controls.Add($lblAlerteVehicule)
     $yPos += 85
 
     # ============================================
-    # BOUTONS - STYLE CENTRALISÉ
+    # BOUTONS
     # ============================================
-    
-    # Bouton VALIDER
     $BtnValider = New-Object System.Windows.Forms.Button
     Set-BtnValiderStyle -BtnValider $BtnValider
     $BtnValider.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
     $form.Controls.Add($BtnValider)
 
-    # Bouton QUITTER
     $BtnQuitter = New-Object System.Windows.Forms.Button
     Set-BtnQuitterStyle -BtnQuitter $BtnQuitter
     $BtnQuitter.Location = New-Object System.Drawing.Point(($fieldLeft + 120), $yPos)
@@ -209,109 +205,91 @@ function Show-CollecteurForm {
     $form.Controls.Add($BtnQuitter)
 
     # ============================================
-    # FONCTIONS DE VALIDATION
+    # REMPLIR LA LISTE DES VÉHICULES
+    # ============================================
+    function Load-VehiculesList {
+        $tousVehicules = Get-Vehicules
+        $cmbVehicule.Items.Clear()
+        $cmbVehicule.Items.Add("(Aucun véhicule)") | Out-Null
+        
+        $script:vehiculeIds = @()
+        $script:vehiculeIds += $null
+        
+        foreach ($v in $tousVehicules) {
+            $displayText = "$($v.numero_parc) - $($v.immatriculation)"
+            $cmbVehicule.Items.Add($displayText) | Out-Null
+            $script:vehiculeIds += $v.id
+        }
+        $cmbVehicule.SelectedIndex = 0
+        
+        if ($Agent -and $Agent.vehicule_id) {
+            $index = [array]::IndexOf($script:vehiculeIds, $Agent.vehicule_id)
+            if ($index -ge 0) { $cmbVehicule.SelectedIndex = $index }
+        }
+    }
+    Load-VehiculesList
+
+    # ============================================
+    # VALIDATION DOUBLONS (SQLite)
     # ============================================
     function Test-DoublonEmail {
         param($Email)
         if ([string]::IsNullOrWhiteSpace($Email)) { return $false }
-        $collecteursExistants = Get-Collecteurs
-        $doublon = $collecteursExistants | Where-Object { $_.email -eq $Email.ToLower() }
-        if ($Mode -eq "Modifier" -and $Collecteur) {
-            $doublon = $doublon | Where-Object { $_.id -ne $Collecteur.id }
+        
+        $conn = Open-Connection
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = "SELECT id_agent FROM Agent WHERE email = @email"
+        $cmd.Parameters.AddWithValue("@email", $Email.ToLower()) | Out-Null
+        $existing = $cmd.ExecuteScalar()
+        $conn.Close()
+        
+        if ($Mode -eq "Modifier" -and $Agent -and $existing -eq $Agent.id) {
+            return $false
         }
-        return ($doublon.Count -gt 0)
+        return ($existing -ne $null)
     }
     
     function Test-DoublonTel {
         param($Telephone)
         if ([string]::IsNullOrWhiteSpace($Telephone)) { return $false }
-        $collecteursExistants = Get-Collecteurs
-        $doublon = $collecteursExistants | Where-Object { $_.telephone -eq $Telephone }
-        if ($Mode -eq "Modifier" -and $Collecteur) {
-            $doublon = $doublon | Where-Object { $_.id -ne $Collecteur.id }
+        
+        $conn = Open-Connection
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = "SELECT id_agent FROM Agent WHERE telephone = @tel"
+        $cmd.Parameters.AddWithValue("@tel", $Telephone) | Out-Null
+        $existing = $cmd.ExecuteScalar()
+        $conn.Close()
+        
+        if ($Mode -eq "Modifier" -and $Agent -and $existing -eq $Agent.id) {
+            return $false
         }
-        return ($doublon.Count -gt 0)
-    }
-
-    # ============================================
-    # REMPLIR LA LISTE DES VÉHICULES
-    # ============================================
-    $tousVehicules = Get-Vehicules
-    $cmbVehicule.Items.Clear()
-    $cmbVehicule.Items.Add("(Aucun véhicule)") | Out-Null
-    
-    $script:vehiculeIds = @()
-    $script:vehiculeIds += $null
-    
-    foreach ($v in $tousVehicules) {
-        $displayText = "$($v.numeroParc)"
-        $cmbVehicule.Items.Add($displayText) | Out-Null
-        $script:vehiculeIds += $v.id
-    }
-    $cmbVehicule.SelectedIndex = 0
-    
-    if ($Collecteur -and $Collecteur.vehiculeId) {
-        $index = [array]::IndexOf($script:vehiculeIds, $Collecteur.vehiculeId)
-        if ($index -ge 0) { $cmbVehicule.SelectedIndex = $index }
+        return ($existing -ne $null)
     }
 
     # ============================================
     # VALIDATION EN TEMPS RÉEL
     # ============================================
-    $txtNom.Add_TextChanged({
-        $val = $txtNom.Text.Trim()
-        if ([string]::IsNullOrWhiteSpace($val)) {
-            $lblNomCheck.Text = ""
-            $lblNomError.Text = ""
-        } else {
-            $lblNomCheck.Text = "✅"
-            $lblNomCheck.ForeColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
-            $lblNomError.Text = ""
-        }
-    })
-
-    $txtPrenom.Add_TextChanged({
-        $val = $txtPrenom.Text.Trim()
-        if ([string]::IsNullOrWhiteSpace($val)) {
-            $lblPrenomCheck.Text = ""
-            $lblPrenomError.Text = ""
-        } else {
-            $lblPrenomCheck.Text = "✅"
-            $lblPrenomCheck.ForeColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
-            $lblPrenomError.Text = ""
-        }
-    })
-
     $txtTel.Add_TextChanged({
-        $val = $txtTel.Text.Trim()
-        if ([string]::IsNullOrWhiteSpace($val)) {
-            $lblTelCheck.Text = ""
-            $lblTelError.Text = ""
-        } elseif (Test-DoublonTel -Telephone ($val -replace '[^0-9]', '')) {
-            $lblTelCheck.Text = ""
-            $lblTelError.Text = "Ce numéro de téléphone existe déjà !"
+        $val = $txtTel.Text.Trim() -replace '[^0-9]', ''
+        if (-not [string]::IsNullOrWhiteSpace($val) -and $val.Length -ne 10) {
+            $lblTelError.Text = "10 chiffres requis"
+        } elseif (Test-DoublonTel -Telephone $val) {
+            $lblTelError.Text = "Ce numéro existe déjà !"
         } else {
-            $lblTelCheck.Text = "✅"
-            $lblTelCheck.ForeColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
             $lblTelError.Text = ""
         }
     })
 
     $txtEmail.Add_TextChanged({
         $val = $txtEmail.Text.Trim()
-        if ([string]::IsNullOrWhiteSpace($val)) {
-            $lblEmailCheck.Text = ""
-            $lblEmailError.Text = ""
-        } elseif ($val -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') {
-            $lblEmailCheck.Text = ""
-            $lblEmailError.Text = "Format email invalide"
-        } elseif (Test-DoublonEmail -Email $val) {
-            $lblEmailCheck.Text = ""
-            $lblEmailError.Text = "Cet email existe déjà !"
-        } else {
-            $lblEmailCheck.Text = "✅"
-            $lblEmailCheck.ForeColor = [System.Drawing.Color]::FromArgb(27, 91, 74)
-            $lblEmailError.Text = ""
+        if (-not [string]::IsNullOrWhiteSpace($val)) {
+            if ($val -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') {
+                $lblEmailError.Text = "Format email invalide"
+            } elseif (Test-DoublonEmail -Email $val) {
+                $lblEmailError.Text = "Cet email existe déjà !"
+            } else {
+                $lblEmailError.Text = ""
+            }
         }
     })
 
@@ -331,10 +309,6 @@ function Show-CollecteurForm {
             $lblNomError.Text = "Minimum 2 caractères"
             $erreurs += "Nom"
             $valid = $false
-        } elseif ($nom.Length -gt 50) {
-            $lblNomError.Text = "Maximum 50 caractères"
-            $erreurs += "Nom"
-            $valid = $false
         } else {
             $lblNomError.Text = ""
         }
@@ -348,27 +322,19 @@ function Show-CollecteurForm {
             $lblPrenomError.Text = "Minimum 2 caractères"
             $erreurs += "Prénom"
             $valid = $false
-        } elseif ($prenom.Length -gt 50) {
-            $lblPrenomError.Text = "Maximum 50 caractères"
-            $erreurs += "Prénom"
-            $valid = $false
         } else {
             $lblPrenomError.Text = ""
         }
         
         $telephone = $txtTel.Text.Trim() -replace '[^0-9]', ''
-        if (-not [string]::IsNullOrWhiteSpace($telephone)) {
-            if ($telephone.Length -ne 10) {
-                $lblTelError.Text = "10 chiffres requis"
-                $erreurs += "Téléphone"
-                $valid = $false
-            } elseif (Test-DoublonTel -Telephone $telephone) {
-                $lblTelError.Text = "Numéro déjà existant"
-                $erreurs += "Téléphone"
-                $valid = $false
-            } else {
-                $lblTelError.Text = ""
-            }
+        if (-not [string]::IsNullOrWhiteSpace($telephone) -and $telephone.Length -ne 10) {
+            $lblTelError.Text = "10 chiffres requis"
+            $erreurs += "Téléphone"
+            $valid = $false
+        } elseif (Test-DoublonTel -Telephone $telephone) {
+            $lblTelError.Text = "Numéro déjà existant"
+            $erreurs += "Téléphone"
+            $valid = $false
         }
         
         $email = $txtEmail.Text.Trim().ToLower()
@@ -381,8 +347,6 @@ function Show-CollecteurForm {
                 $lblEmailError.Text = "Email déjà existant"
                 $erreurs += "Email"
                 $valid = $false
-            } else {
-                $lblEmailError.Text = ""
             }
         }
         
@@ -399,12 +363,13 @@ function Show-CollecteurForm {
     })
 
     # ============================================
-    # AFFICHAGE DU FORMULAIRE
+    # AFFICHAGE
     # ============================================
     $result = $form.ShowDialog()
 
     if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
         $vehiculeId = $script:vehiculeIds[$cmbVehicule.SelectedIndex]
+        if ($vehiculeId -eq $null) { $vehiculeId = 0 }
         
         $telephoneClean = $txtTel.Text.Trim() -replace '[^0-9]', ''
         if ([string]::IsNullOrWhiteSpace($telephoneClean)) { $telephoneClean = $null }
@@ -417,7 +382,10 @@ function Show-CollecteurForm {
             prenom = $txtPrenom.Text.Trim()
             telephone = $telephoneClean
             email = $emailClean
-            vehiculeId = $vehiculeId
+            date_entree = $dtpDateEntree.Value.ToString("yyyy-MM-dd")
+            type_contrat = $cmbContrat.SelectedItem.ToString()
+            base_heures_semaine = [int]$numHeures.Value
+            vehicule_id = $vehiculeId
         }
         
         Write-Host "[FORM] Donnees retournees: $($donnees | ConvertTo-Json -Compress)" -ForegroundColor Green
