@@ -52,7 +52,7 @@ function Start-GUI {
 
     # ONGLET 2 : Affectation
     $tabAffectation = New-Object System.Windows.Forms.TabPage
-    $tabAffectation.Text = "🚚 Affectation"
+    $tabAffectation.Text = "Affectation"
     $tabAffectation.BackColor = $script:CouleurGrisFond
     $affectationContainer = New-Object System.Windows.Forms.Panel
     $affectationContainer.Dock = "Fill"
@@ -77,7 +77,7 @@ function Start-GUI {
 
     # ONGLET 3 : Collecteurs
     $tabCollecteurs = New-Object System.Windows.Forms.TabPage
-    $tabCollecteurs.Text = "📋 Données collecteurs"
+    $tabCollecteurs.Text = "Données collecteurs"
     $tabCollecteurs.BackColor = $script:CouleurGrisFond
     $collecteursPanel = Show-CollecteursPanel -Collecteurs (Get-Collecteurs)
     $collecteursPanel.Dock = "Fill"
@@ -86,7 +86,7 @@ function Start-GUI {
 
     # ONGLET 4 : Vehicules
     $tabVehicules = New-Object System.Windows.Forms.TabPage
-    $tabVehicules.Text = "🚗 Données véhicules"
+    $tabVehicules.Text = "Données véhicules"
     $tabVehicules.BackColor = $script:CouleurGrisFond
     $vehiculesPanel = Show-VehiculesPanel -Vehicules (Get-Vehicules)
     $vehiculesPanel.Dock = "Fill"
