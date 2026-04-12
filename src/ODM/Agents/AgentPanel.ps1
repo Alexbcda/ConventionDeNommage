@@ -171,7 +171,7 @@ function Show-AgentsPanel {
                 $modifie = Show-AgentForm -Mode "Modifier" -Agent $agentHash
                 if ($modifie) {
                     Write-Host "[PANEL] Sauvegarde des modifications..." -ForegroundColor Yellow
-                    $resultat = Update-Agent -Id $id -Nom $modifie.nom -Prenom $modifie.prenom -Telephone $modifie.telephone -Email $modifie.email -VehiculeId $modifie.vehicule_id
+                    $resultat = Update-Agent -Id $id -Nom $modifie.nom -Prenom $modifie.prenom -Telephone $modifie.telephone -Email $modifie.email -DateEntree $modifie.date_entree -DateSortie $null -TypeContrat $modifie.type_contrat -BaseHeuresSemaine $modifie.base_heures_semaine -VehiculeId $modifie.vehicule_id -Poste $modifie.poste
                     if ($resultat) {
                         Write-Host "[PANEL] Agent modifié, rafraîchissement..." -ForegroundColor Green
                         & $global:RefreshAgentsGrid
@@ -201,5 +201,6 @@ function Show-AgentsPanel {
 
     return $panel
 }
+
 
 
