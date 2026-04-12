@@ -3,82 +3,45 @@
 . "$PSScriptRoot\..\..\Database\Database.ps1"
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
 
-# Fonction pour nettoyer le téléphone (enlever espaces et caractères)
 function Clean-Telephone {
     param($Telephone)
     if ([string]::IsNullOrWhiteSpace($Telephone)) { return "" }
-    # Garde uniquement les chiffres et le +
     return ($Telephone -replace '[^0-9+]', '')
 }
 
-# Fonction pour valider le téléphone français (tous les indicatifs 01-09)
 function Test-TelephoneFrancais {
     param($Telephone)
-    
-    if ([string]::IsNullOrWhiteSpace($Telephone)) { return $true } # Champ optionnel
-    
+    if ([string]::IsNullOrWhiteSpace($Telephone)) { return $true }
     $clean = Clean-Telephone -Telephone $Telephone
-    
-    # Format 10 chiffres commençant par 0 (01,02,03,04,05,06,07,08,09)
-    if ($clean -match '^0[1-9][0-9]{8}$') {
-        return $true
-    }
-    
-    # Format +33 suivi de 9 chiffres (commençant par 1-9)
-    if ($clean -match '^\+33[1-9][0-9]{8}$') {
-        return $true
-    }
-    
+    if ($clean -match '^0[1-9][0-9]{8}$') { return $true }
+    if ($clean -match '^\+33[1-9][0-9]{8}$') { return $true }
     return $false
 }
 
-# Fonction pour formater le téléphone pour stockage
 function Format-TelephoneStockage {
     param($Telephone)
-    
     if ([string]::IsNullOrWhiteSpace($Telephone)) { return $null }
-    
     $clean = Clean-Telephone -Telephone $Telephone
-    
-    # Si format +33..., garder tel quel
-    if ($clean -match '^\+33[1-9][0-9]{8}$') {
-        return $clean
-    }
-    
-    # Si format 0XXXXXXXXX, formater en XX XX XX XX XX
+    if ($clean -match '^\+33[1-9][0-9]{8}$') { return $clean }
     if ($clean -match '^0([1-9])([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})$') {
         return "0$($Matches[1]) $($Matches[2]) $($Matches[3]) $($Matches[4]) $($Matches[5])"
     }
-    
     return $clean
 }
 
-# Fonction pour formater l'affichage dans le champ texte
 function Format-TelephoneAffichage {
     param($Telephone)
-    
     if ([string]::IsNullOrWhiteSpace($Telephone)) { return "" }
-    
-    # Si c'est un format +33...
-    if ($Telephone -match '^\+33[1-9][0-9]{8}$') {
-        # Formater pour affichage: +33 X XX XX XX XX
-        if ($Telephone -match '^\+33([1-9])([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})$') {
-            return "+33 $($Matches[1]) $($Matches[2]) $($Matches[3]) $($Matches[4]) $($Matches[5])"
-        }
-        return $Telephone
+    if ($Telephone -match '^\+33([1-9])([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})$') {
+        return "+33 $($Matches[1]) $($Matches[2]) $($Matches[3]) $($Matches[4]) $($Matches[5])"
     }
-    
-    # Si c'est un format 0X XX XX XX XX
     if ($Telephone -match '^0[1-9] [0-9]{2} [0-9]{2} [0-9]{2} [0-9]{2}$') {
         return $Telephone
     }
-    
-    # Si c'est un format 0XXXXXXXXX compact
     if ($Telephone -match '^0[1-9][0-9]{8}$') {
         $num = $Telephone
         return "$($num.Substring(0,2)) $($num.Substring(2,2)) $($num.Substring(4,2)) $($num.Substring(6,2)) $($num.Substring(8,2))"
     }
-    
     return $Telephone
 }
 
@@ -109,9 +72,7 @@ function Show-AgentForm {
     $leftMargin = 30
     $fieldLeft = $leftMargin + $labelWidth
 
-    # ============================================
     # NOM
-    # ============================================
     $lblNom = New-Object System.Windows.Forms.Label
     $lblNom.Text = "Nom * :"
     $lblNom.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
@@ -122,7 +83,7 @@ function Show-AgentForm {
     $txtNom.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
     $txtNom.Size = New-Object System.Drawing.Size($fieldWidth, 25)
     $txtNom.MaxLength = 50
-    if ($Agent) { $txtNom.Text = $Agent.nom }
+    if ($Agent -and $Agent.nom -and $Agent.nom -ne "") { $txtNom.Text = $Agent.nom }
     $form.Controls.Add($txtNom)
     
     $lblNomError = New-Object System.Windows.Forms.Label
@@ -134,9 +95,7 @@ function Show-AgentForm {
     $form.Controls.Add($lblNomError)
     $yPos += 55
 
-    # ============================================
     # PRÉNOM
-    # ============================================
     $lblPrenom = New-Object System.Windows.Forms.Label
     $lblPrenom.Text = "Prénom * :"
     $lblPrenom.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
@@ -147,7 +106,7 @@ function Show-AgentForm {
     $txtPrenom.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
     $txtPrenom.Size = New-Object System.Drawing.Size($fieldWidth, 25)
     $txtPrenom.MaxLength = 50
-    if ($Agent) { $txtPrenom.Text = $Agent.prenom }
+    if ($Agent -and $Agent.prenom -and $Agent.prenom -ne "") { $txtPrenom.Text = $Agent.prenom }
     $form.Controls.Add($txtPrenom)
     
     $lblPrenomError = New-Object System.Windows.Forms.Label
@@ -159,9 +118,7 @@ function Show-AgentForm {
     $form.Controls.Add($lblPrenomError)
     $yPos += 55
 
-    # ============================================
     # TÉLÉPHONE
-    # ============================================
     $lblTel = New-Object System.Windows.Forms.Label
     $lblTel.Text = "Téléphone :"
     $lblTel.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
@@ -172,13 +129,13 @@ function Show-AgentForm {
     $txtTel.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
     $txtTel.Size = New-Object System.Drawing.Size($fieldWidth, 25)
     $txtTel.MaxLength = 25
-    if ($Agent -and $Agent.telephone) { 
+    if ($Agent -and $Agent.telephone -and $Agent.telephone -ne "") { 
         $txtTel.Text = Format-TelephoneAffichage -Telephone $Agent.telephone
     }
     $form.Controls.Add($txtTel)
     
     $lblTelError = New-Object System.Windows.Forms.Label
-    $lblTelError.Text = "Ex: 0123456789 ou 01 23 45 67 89 ou +33 1 23 45 67 89"
+    $lblTelError.Text = "Ex: 0123456789 ou 01 23 45 67 89"
     $lblTelError.ForeColor = [System.Drawing.Color]::Gray
     $lblTelError.Font = New-Object System.Drawing.Font("Segoe UI", 8)
     $lblTelError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
@@ -186,9 +143,7 @@ function Show-AgentForm {
     $form.Controls.Add($lblTelError)
     $yPos += 55
 
-    # ============================================
     # EMAIL
-    # ============================================
     $lblEmail = New-Object System.Windows.Forms.Label
     $lblEmail.Text = "Email :"
     $lblEmail.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
@@ -199,7 +154,7 @@ function Show-AgentForm {
     $txtEmail.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
     $txtEmail.Size = New-Object System.Drawing.Size($fieldWidth, 25)
     $txtEmail.MaxLength = 100
-    if ($Agent) { $txtEmail.Text = $Agent.email }
+    if ($Agent -and $Agent.email -and $Agent.email -ne "") { $txtEmail.Text = $Agent.email }
     $form.Controls.Add($txtEmail)
     
     $lblEmailError = New-Object System.Windows.Forms.Label
@@ -211,9 +166,7 @@ function Show-AgentForm {
     $form.Controls.Add($lblEmailError)
     $yPos += 55
 
-    # ============================================
     # DATE D'ENTRÉE
-    # ============================================
     $lblDateEntree = New-Object System.Windows.Forms.Label
     $lblDateEntree.Text = "Date d'entrée * :"
     $lblDateEntree.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
@@ -224,17 +177,23 @@ function Show-AgentForm {
     $dtpDateEntree.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
     $dtpDateEntree.Size = New-Object System.Drawing.Size($fieldWidth, 25)
     $dtpDateEntree.Format = "Short"
-    if ($Agent -and $Agent.date_entree) { 
-        $dtpDateEntree.Value = [DateTime]::ParseExact($Agent.date_entree, "yyyy-MM-dd", $null)
-    } else {
-        $dtpDateEntree.Value = (Get-Date)
+    
+    $dateOk = $false
+    if ($Agent -and $Agent.date_entree -and $Agent.date_entree -ne "") {
+        try {
+            $dtpDateEntree.Value = [DateTime]::ParseExact($Agent.date_entree, "yyyy-MM-dd", $null)
+            $dateOk = $true
+        } catch {
+            $dateOk = $false
+        }
+    }
+    if (-not $dateOk) {
+        $dtpDateEntree.Value = [DateTime]::Now
     }
     $form.Controls.Add($dtpDateEntree)
     $yPos += 55
 
-    # ============================================
     # TYPE DE CONTRAT
-    # ============================================
     $lblContrat = New-Object System.Windows.Forms.Label
     $lblContrat.Text = "Type de contrat * :"
     $lblContrat.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
@@ -246,7 +205,7 @@ function Show-AgentForm {
     $cmbContrat.Size = New-Object System.Drawing.Size($fieldWidth, 25)
     $cmbContrat.DropDownStyle = "DropDownList"
     $cmbContrat.Items.AddRange(@("CDI", "CDD", "Interim", "Apprentissage"))
-    if ($Agent -and $Agent.type_contrat) {
+    if ($Agent -and $Agent.type_contrat -and $Agent.type_contrat -ne "") {
         $cmbContrat.SelectedItem = $Agent.type_contrat
     } else {
         $cmbContrat.SelectedIndex = 0
@@ -254,9 +213,7 @@ function Show-AgentForm {
     $form.Controls.Add($cmbContrat)
     $yPos += 55
 
-    # ============================================
     # BASE HEURES SEMAINE
-    # ============================================
     $lblHeures = New-Object System.Windows.Forms.Label
     $lblHeures.Text = "Base heures/semaine :"
     $lblHeures.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
@@ -268,13 +225,19 @@ function Show-AgentForm {
     $numHeures.Size = New-Object System.Drawing.Size(100, 25)
     $numHeures.Minimum = 0
     $numHeures.Maximum = 48
-    $numHeures.Value = if ($Agent -and $Agent.base_heures_semaine) { $Agent.base_heures_semaine } else { 35 }
+    try {
+        if ($Agent -and $Agent.base_heures_semaine -and $Agent.base_heures_semaine -ne "") {
+            $numHeures.Value = [int]$Agent.base_heures_semaine
+        } else {
+            $numHeures.Value = 35
+        }
+    } catch {
+        $numHeures.Value = 35
+    }
     $form.Controls.Add($numHeures)
     $yPos += 55
 
-    # ============================================
     # POSTE
-    # ============================================
     $lblPoste = New-Object System.Windows.Forms.Label
     $lblPoste.Text = "Poste * :"
     $lblPoste.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
@@ -286,7 +249,7 @@ function Show-AgentForm {
     $cmbPoste.Size = New-Object System.Drawing.Size($fieldWidth, 25)
     $cmbPoste.DropDownStyle = "DropDownList"
     $cmbPoste.Items.AddRange(@(Get-PostesListe))
-    if ($Agent -and $Agent.poste) {
+    if ($Agent -and $Agent.poste -and $Agent.poste -ne "") {
         $cmbPoste.SelectedItem = $Agent.poste
     } else {
         $cmbPoste.SelectedIndex = 0
@@ -294,9 +257,7 @@ function Show-AgentForm {
     $form.Controls.Add($cmbPoste)
     $yPos += 55
 
-    # ============================================
     # VÉHICULE ATTITRÉ
-    # ============================================
     $lblVehicule = New-Object System.Windows.Forms.Label
     $lblVehicule.Text = "Véhicule attitré :"
     $lblVehicule.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
@@ -310,9 +271,7 @@ function Show-AgentForm {
     $form.Controls.Add($cmbVehicule)
     $yPos += 85
 
-    # ============================================
     # BOUTONS
-    # ============================================
     $BtnValider = New-Object System.Windows.Forms.Button
     Set-BtnValiderStyle -BtnValider $BtnValider
     $BtnValider.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
@@ -324,16 +283,15 @@ function Show-AgentForm {
     $BtnQuitter.Add_Click({ $form.Close() })
     $form.Controls.Add($BtnQuitter)
 
-    # ============================================
-    # REMPLIR LA LISTE DES VÉHICULES
-    # ============================================
+    # VARIABLES POUR VEHICULES
+    $script:vehiculeIds = @()
+    
     function Load-VehiculesList {
         $tousVehicules = Get-Vehicules
         $cmbVehicule.Items.Clear()
         $cmbVehicule.Items.Add("(Aucun véhicule)") | Out-Null
         
-        $script:vehiculeIds = @()
-        $script:vehiculeIds += $null
+        $script:vehiculeIds = @($null)
         
         foreach ($v in $tousVehicules) {
             $displayText = "$($v.numero_parc) - $($v.immatriculation) - $($v.marque) $($v.modele)"
@@ -342,21 +300,18 @@ function Show-AgentForm {
         }
         $cmbVehicule.SelectedIndex = 0
         
-        if ($Agent -and $Agent.vehicule_id) {
+        if ($Agent -and $Agent.vehicule_id -and $Agent.vehicule_id -ne 0) {
             $index = [array]::IndexOf($script:vehiculeIds, $Agent.vehicule_id)
             if ($index -ge 0) { $cmbVehicule.SelectedIndex = $index }
         }
     }
     Load-VehiculesList
 
-    # ============================================
     # VALIDATION EN TEMPS RÉEL
-    # ============================================
-    
     $txtTel.Add_TextChanged({
         $val = $txtTel.Text.Trim()
         if ([string]::IsNullOrWhiteSpace($val)) {
-            $lblTelError.Text = "Optionnel - Ex: 0123456789 ou 01 23 45 67 89 ou +33 1 23 45 67 89"
+            $lblTelError.Text = "Optionnel - Ex: 0123456789 ou 01 23 45 67 89"
             $lblTelError.ForeColor = [System.Drawing.Color]::Gray
         } elseif (Test-TelephoneFrancais -Telephone $val) {
             $lblTelError.Text = "✓ Numéro valide"
@@ -380,12 +335,14 @@ function Show-AgentForm {
     })
 
     # ============================================
-    # VALIDATION FINALE
+    # VARIABLE SCRIPT POUR RÉCUPÉRER LES DONNÉES
     # ============================================
+    $script:donneesFormulaire = $null
+
+    # VALIDATION FINALE
     $BtnValider.Add_Click({
         $valid = $true
         
-        # Nom
         $nom = $txtNom.Text.Trim()
         if ([string]::IsNullOrWhiteSpace($nom)) {
             $lblNomError.Text = "Champ obligatoire"
@@ -397,7 +354,6 @@ function Show-AgentForm {
             $lblNomError.Text = ""
         }
         
-        # Prénom
         $prenom = $txtPrenom.Text.Trim()
         if ([string]::IsNullOrWhiteSpace($prenom)) {
             $lblPrenomError.Text = "Champ obligatoire"
@@ -409,7 +365,6 @@ function Show-AgentForm {
             $lblPrenomError.Text = ""
         }
         
-        # Téléphone
         $telephoneRaw = $txtTel.Text.Trim()
         if (-not [string]::IsNullOrWhiteSpace($telephoneRaw)) {
             if (-not (Test-TelephoneFrancais -Telephone $telephoneRaw)) {
@@ -418,7 +373,6 @@ function Show-AgentForm {
             }
         }
         
-        # Email
         $emailRaw = $txtEmail.Text.Trim()
         if (-not [string]::IsNullOrWhiteSpace($emailRaw)) {
             if ($emailRaw -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') {
@@ -431,27 +385,39 @@ function Show-AgentForm {
             return
         }
         
-        # Stocker le téléphone
         $telephoneFinal = $null
         if (-not [string]::IsNullOrWhiteSpace($telephoneRaw)) {
             $telephoneFinal = Format-TelephoneStockage -Telephone $telephoneRaw
         }
         
-        $vehiculeId = $script:vehiculeIds[$cmbVehicule.SelectedIndex]
-        if ($vehiculeId -eq $null) { $vehiculeId = 0 }
+        # Vérifier que vehiculeIds existe et l'index est valide
+        $vehiculeId = 0
+        if ($script:vehiculeIds -and $cmbVehicule.SelectedIndex -ge 0 -and $cmbVehicule.SelectedIndex -lt $script:vehiculeIds.Count) {
+            $vehiculeId = $script:vehiculeIds[$cmbVehicule.SelectedIndex]
+            if ($vehiculeId -eq $null) { $vehiculeId = 0 }
+        }
         
         $emailFinal = $txtEmail.Text.Trim()
         if ([string]::IsNullOrWhiteSpace($emailFinal)) { $emailFinal = $null }
         
-        $donnees = @{
+        # CRÉATION DES DONNÉES DANS LA VARIABLE SCRIPT
+        $script:donneesFormulaire = @{
             nom = $txtNom.Text.Trim()
             prenom = $txtPrenom.Text.Trim()
             telephone = $telephoneFinal
             email = $emailFinal
             date_entree = $dtpDateEntree.Value.ToString("yyyy-MM-dd")
-            type_contrat = $cmbContrat.SelectedItem.ToString()
+            type_contrat = if ($cmbContrat.SelectedItem) { 
+                $cmbContrat.SelectedItem.ToString() 
+            } else { 
+                "CDI" 
+            }
             base_heures_semaine = [int]$numHeures.Value
-            poste = $cmbPoste.SelectedItem.ToString()
+            poste = if ($cmbPoste.SelectedItem) { 
+                $cmbPoste.SelectedItem.ToString() 
+            } else { 
+                "Collecteur" 
+            }
             vehicule_id = $vehiculeId
         }
         
@@ -462,7 +428,7 @@ function Show-AgentForm {
     $result = $form.ShowDialog()
 
     if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-        return $donnees
+        return $script:donneesFormulaire
     }
     return $null
 }
