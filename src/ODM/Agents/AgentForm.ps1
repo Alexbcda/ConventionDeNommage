@@ -1,58 +1,13 @@
-# AgentForm.ps1 - Formulaire d'ajout/modification d'agent
+# AgentForm.ps1 - Formulaire agent (envoie DateTime normal)
 
 . "$PSScriptRoot\..\..\Database\Database.ps1"
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
 
-function Clean-Telephone {
-    param($Telephone)
-    if ([string]::IsNullOrWhiteSpace($Telephone)) { return "" }
-    return ($Telephone -replace '[^0-9+]', '')
-}
-
-function Test-TelephoneFrancais {
-    param($Telephone)
-    if ([string]::IsNullOrWhiteSpace($Telephone)) { return $true }
-    $clean = Clean-Telephone -Telephone $Telephone
-    if ($clean -match '^0[1-9][0-9]{8}$') { return $true }
-    if ($clean -match '^\+33[1-9][0-9]{8}$') { return $true }
-    return $false
-}
-
-function Format-TelephoneStockage {
-    param($Telephone)
-    if ([string]::IsNullOrWhiteSpace($Telephone)) { return $null }
-    $clean = Clean-Telephone -Telephone $Telephone
-    if ($clean -match '^\+33[1-9][0-9]{8}$') { return $clean }
-    if ($clean -match '^0([1-9])([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})$') {
-        return "0$($Matches[1]) $($Matches[2]) $($Matches[3]) $($Matches[4]) $($Matches[5])"
-    }
-    return $clean
-}
-
-function Format-TelephoneAffichage {
-    param($Telephone)
-    if ([string]::IsNullOrWhiteSpace($Telephone)) { return "" }
-    if ($Telephone -match '^\+33([1-9])([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})$') {
-        return "+33 $($Matches[1]) $($Matches[2]) $($Matches[3]) $($Matches[4]) $($Matches[5])"
-    }
-    if ($Telephone -match '^0[1-9] [0-9]{2} [0-9]{2} [0-9]{2} [0-9]{2}$') {
-        return $Telephone
-    }
-    if ($Telephone -match '^0[1-9][0-9]{8}$') {
-        $num = $Telephone
-        return "$($num.Substring(0,2)) $($num.Substring(2,2)) $($num.Substring(4,2)) $($num.Substring(6,2)) $($num.Substring(8,2))"
-    }
-    return $Telephone
-}
-
 function Show-AgentForm {
     param(
         [string]$Mode = "Ajouter",
-        [hashtable]$Agent = $null
+        [pscustomobject]$Agent = $null
     )
-
-    Write-Host "[FORM] ========== FORMULAIRE AGENT ==========" -ForegroundColor Magenta
-    Write-Host "[FORM] Mode: $Mode" -ForegroundColor Magenta
 
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
@@ -64,371 +19,157 @@ function Show-AgentForm {
     $form.BackColor = $CouleurGrisFond
     $form.FormBorderStyle = "FixedDialog"
     $form.MaximizeBox = $false
-    $form.MinimizeBox = $false
 
-    $yPos = 20
-    $labelWidth = 150
-    $fieldWidth = 350
-    $leftMargin = 30
-    $fieldLeft = $leftMargin + $labelWidth
+    $y = 20
+    $left = 30
+    $labelW = 150
+    $fieldW = 350
+
+    function Add-Label($text) {
+        $lbl = New-Object System.Windows.Forms.Label
+        $lbl.Text = $text
+        $lbl.Location = New-Object System.Drawing.Point($left, $y)
+        $lbl.Size = New-Object System.Drawing.Size($labelW, 25)
+        $form.Controls.Add($lbl)
+    }
+
+    function Add-TextBox($value) {
+        $txt = New-Object System.Windows.Forms.TextBox
+        $txt.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+        $txt.Size = New-Object System.Drawing.Size($fieldW, 25)
+        $txt.Text = $value
+        $form.Controls.Add($txt)
+        return $txt
+    }
 
     # NOM
-    $lblNom = New-Object System.Windows.Forms.Label
-    $lblNom.Text = "Nom * :"
-    $lblNom.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
-    $lblNom.Size = New-Object System.Drawing.Size($labelWidth, 25)
-    $form.Controls.Add($lblNom)
+    Add-Label "Nom * :"
+    $txtNom = Add-TextBox $(if ($Agent -and $Agent.nom) { $Agent.nom } else { "" })
+    $y += 40
 
-    $txtNom = New-Object System.Windows.Forms.TextBox
-    $txtNom.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
-    $txtNom.Size = New-Object System.Drawing.Size($fieldWidth, 25)
-    $txtNom.MaxLength = 50
-    if ($Agent -and $Agent.nom -and $Agent.nom -ne "") { $txtNom.Text = $Agent.nom }
-    $form.Controls.Add($txtNom)
-    
-    $lblNomError = New-Object System.Windows.Forms.Label
-    $lblNomError.Text = ""
-    $lblNomError.ForeColor = $CouleurOrange
-    $lblNomError.Font = New-Object System.Drawing.Font("Segoe UI", 8)
-    $lblNomError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
-    $lblNomError.Size = New-Object System.Drawing.Size($fieldWidth, 15)
-    $form.Controls.Add($lblNomError)
-    $yPos += 55
+    # PRENOM
+    Add-Label "Prénom * :"
+    $txtPrenom = Add-TextBox $(if ($Agent -and $Agent.prenom) { $Agent.prenom } else { "" })
+    $y += 40
 
-    # PRÉNOM
-    $lblPrenom = New-Object System.Windows.Forms.Label
-    $lblPrenom.Text = "Prénom * :"
-    $lblPrenom.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
-    $lblPrenom.Size = New-Object System.Drawing.Size($labelWidth, 25)
-    $form.Controls.Add($lblPrenom)
-
-    $txtPrenom = New-Object System.Windows.Forms.TextBox
-    $txtPrenom.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
-    $txtPrenom.Size = New-Object System.Drawing.Size($fieldWidth, 25)
-    $txtPrenom.MaxLength = 50
-    if ($Agent -and $Agent.prenom -and $Agent.prenom -ne "") { $txtPrenom.Text = $Agent.prenom }
-    $form.Controls.Add($txtPrenom)
-    
-    $lblPrenomError = New-Object System.Windows.Forms.Label
-    $lblPrenomError.Text = ""
-    $lblPrenomError.ForeColor = $CouleurOrange
-    $lblPrenomError.Font = New-Object System.Drawing.Font("Segoe UI", 8)
-    $lblPrenomError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
-    $lblPrenomError.Size = New-Object System.Drawing.Size($fieldWidth, 15)
-    $form.Controls.Add($lblPrenomError)
-    $yPos += 55
-
-    # TÉLÉPHONE
-    $lblTel = New-Object System.Windows.Forms.Label
-    $lblTel.Text = "Téléphone :"
-    $lblTel.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
-    $lblTel.Size = New-Object System.Drawing.Size($labelWidth, 25)
-    $form.Controls.Add($lblTel)
-
-    $txtTel = New-Object System.Windows.Forms.TextBox
-    $txtTel.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
-    $txtTel.Size = New-Object System.Drawing.Size($fieldWidth, 25)
-    $txtTel.MaxLength = 25
-    if ($Agent -and $Agent.telephone -and $Agent.telephone -ne "") { 
-        $txtTel.Text = Format-TelephoneAffichage -Telephone $Agent.telephone
-    }
-    $form.Controls.Add($txtTel)
-    
-    $lblTelError = New-Object System.Windows.Forms.Label
-    $lblTelError.Text = "Ex: 0123456789 ou 01 23 45 67 89"
-    $lblTelError.ForeColor = [System.Drawing.Color]::Gray
-    $lblTelError.Font = New-Object System.Drawing.Font("Segoe UI", 8)
-    $lblTelError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
-    $lblTelError.Size = New-Object System.Drawing.Size($fieldWidth, 15)
-    $form.Controls.Add($lblTelError)
-    $yPos += 55
+    # TEL
+    Add-Label "Téléphone :"
+    $txtTel = Add-TextBox $(if ($Agent -and $Agent.telephone) { $Agent.telephone } else { "" })
+    $y += 40
 
     # EMAIL
-    $lblEmail = New-Object System.Windows.Forms.Label
-    $lblEmail.Text = "Email :"
-    $lblEmail.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
-    $lblEmail.Size = New-Object System.Drawing.Size($labelWidth, 25)
-    $form.Controls.Add($lblEmail)
+    Add-Label "Email :"
+    $txtEmail = Add-TextBox $(if ($Agent -and $Agent.email) { $Agent.email } else { "" })
+    $y += 40
 
-    $txtEmail = New-Object System.Windows.Forms.TextBox
-    $txtEmail.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
-    $txtEmail.Size = New-Object System.Drawing.Size($fieldWidth, 25)
-    $txtEmail.MaxLength = 100
-    if ($Agent -and $Agent.email -and $Agent.email -ne "") { $txtEmail.Text = $Agent.email }
-    $form.Controls.Add($txtEmail)
-    
-    $lblEmailError = New-Object System.Windows.Forms.Label
-    $lblEmailError.Text = ""
-    $lblEmailError.ForeColor = $CouleurOrange
-    $lblEmailError.Font = New-Object System.Drawing.Font("Segoe UI", 8)
-    $lblEmailError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
-    $lblEmailError.Size = New-Object System.Drawing.Size($fieldWidth, 15)
-    $form.Controls.Add($lblEmailError)
-    $yPos += 55
-
-    # DATE D'ENTRÉE
-    $lblDateEntree = New-Object System.Windows.Forms.Label
-    $lblDateEntree.Text = "Date d'entrée * :"
-    $lblDateEntree.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
-    $lblDateEntree.Size = New-Object System.Drawing.Size($labelWidth, 25)
-    $form.Controls.Add($lblDateEntree)
-
-    $dtpDateEntree = New-Object System.Windows.Forms.DateTimePicker
-    $dtpDateEntree.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
-    $dtpDateEntree.Size = New-Object System.Drawing.Size($fieldWidth, 25)
-    $dtpDateEntree.Format = "Short"
-    
-    $dateOk = $false
-    if ($Agent -and $Agent.date_entree -and $Agent.date_entree -ne "") {
-        try {
-            $dtpDateEntree.Value = [DateTime]::ParseExact($Agent.date_entree, "yyyy-MM-dd", $null)
-            $dateOk = $true
-        } catch {
-            $dateOk = $false
-        }
-    }
-    if (-not $dateOk) {
-        $dtpDateEntree.Value = [DateTime]::Now
-    }
-    $form.Controls.Add($dtpDateEntree)
-    $yPos += 55
-
-    # TYPE DE CONTRAT
-    $lblContrat = New-Object System.Windows.Forms.Label
-    $lblContrat.Text = "Type de contrat * :"
-    $lblContrat.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
-    $lblContrat.Size = New-Object System.Drawing.Size($labelWidth, 25)
-    $form.Controls.Add($lblContrat)
-
+    # CONTRAT
+    Add-Label "Contrat :"
     $cmbContrat = New-Object System.Windows.Forms.ComboBox
-    $cmbContrat.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
-    $cmbContrat.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+    $cmbContrat.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+    $cmbContrat.Size = New-Object System.Drawing.Size($fieldW, 25)
     $cmbContrat.DropDownStyle = "DropDownList"
-    $cmbContrat.Items.AddRange(@("CDI", "CDD", "Interim", "Apprentissage"))
-    if ($Agent -and $Agent.type_contrat -and $Agent.type_contrat -ne "") {
+    $cmbContrat.Items.AddRange(@("CDI","CDD","Interim","Apprentissage"))
+    if ($Agent -and $Agent.type_contrat) {
         $cmbContrat.SelectedItem = $Agent.type_contrat
     } else {
         $cmbContrat.SelectedIndex = 0
     }
     $form.Controls.Add($cmbContrat)
-    $yPos += 55
+    $y += 40
 
-    # BASE HEURES SEMAINE
-    $lblHeures = New-Object System.Windows.Forms.Label
-    $lblHeures.Text = "Base heures/semaine :"
-    $lblHeures.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
-    $lblHeures.Size = New-Object System.Drawing.Size($labelWidth, 25)
-    $form.Controls.Add($lblHeures)
-
+    # HEURES
+    Add-Label "Heures/semaine :"
     $numHeures = New-Object System.Windows.Forms.NumericUpDown
-    $numHeures.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
-    $numHeures.Size = New-Object System.Drawing.Size(100, 25)
+    $numHeures.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
     $numHeures.Minimum = 0
-    $numHeures.Maximum = 48
-    try {
-        if ($Agent -and $Agent.base_heures_semaine -and $Agent.base_heures_semaine -ne "") {
-            $numHeures.Value = [int]$Agent.base_heures_semaine
-        } else {
-            $numHeures.Value = 35
-        }
-    } catch {
+    $numHeures.Maximum = 60
+    if ($Agent -and $Agent.base_heures_semaine) {
+        $numHeures.Value = $Agent.base_heures_semaine
+    } else {
         $numHeures.Value = 35
     }
     $form.Controls.Add($numHeures)
-    $yPos += 55
+    $y += 40
 
     # POSTE
-    $lblPoste = New-Object System.Windows.Forms.Label
-    $lblPoste.Text = "Poste * :"
-    $lblPoste.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
-    $lblPoste.Size = New-Object System.Drawing.Size($labelWidth, 25)
-    $form.Controls.Add($lblPoste)
-
+    Add-Label "Poste :"
     $cmbPoste = New-Object System.Windows.Forms.ComboBox
-    $cmbPoste.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
-    $cmbPoste.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+    $cmbPoste.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+    $cmbPoste.Size = New-Object System.Drawing.Size($fieldW, 25)
     $cmbPoste.DropDownStyle = "DropDownList"
     $cmbPoste.Items.AddRange(@(Get-PostesListe))
-    if ($Agent -and $Agent.poste -and $Agent.poste -ne "") {
+    if ($Agent -and $Agent.poste) {
         $cmbPoste.SelectedItem = $Agent.poste
     } else {
         $cmbPoste.SelectedIndex = 0
     }
     $form.Controls.Add($cmbPoste)
-    $yPos += 55
+    $y += 40
 
-    # VÉHICULE ATTITRÉ
-    $lblVehicule = New-Object System.Windows.Forms.Label
-    $lblVehicule.Text = "Véhicule attitré :"
-    $lblVehicule.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
-    $lblVehicule.Size = New-Object System.Drawing.Size($labelWidth, 25)
-    $form.Controls.Add($lblVehicule)
+    # DATE ENTREE (objet DateTime normal)
+    Add-Label "Date entrée :"
+    $dtEntree = New-Object System.Windows.Forms.DateTimePicker
+    $dtEntree.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+    $dtEntree.Format = "Short"
+    if ($Agent -and $Agent.date_entree) {
+        $dtEntree.Value = $Agent.date_entree
+    }
+    $form.Controls.Add($dtEntree)
+    $y += 40
 
-    $cmbVehicule = New-Object System.Windows.Forms.ComboBox
-    $cmbVehicule.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
-    $cmbVehicule.Size = New-Object System.Drawing.Size($fieldWidth, 25)
-    $cmbVehicule.DropDownStyle = "DropDownList"
-    $form.Controls.Add($cmbVehicule)
-    $yPos += 85
+    # DATE SORTIE (objet DateTime normal)
+    Add-Label "Date sortie :"
+    $dtSortie = New-Object System.Windows.Forms.DateTimePicker
+    $dtSortie.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+    $dtSortie.Format = "Short"
+    $dtSortie.ShowCheckBox = $true
+    if ($Agent -and $Agent.date_sortie) {
+        $dtSortie.Checked = $true
+        $dtSortie.Value = $Agent.date_sortie
+    }
+    $form.Controls.Add($dtSortie)
+    $y += 60
 
     # BOUTONS
-    $BtnValider = New-Object System.Windows.Forms.Button
-    Set-BtnValiderStyle -BtnValider $BtnValider
-    $BtnValider.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
-    $form.Controls.Add($BtnValider)
+    $btnOk = New-Object System.Windows.Forms.Button
+    $btnOk.Text = "OK"
+    $btnOk.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+    $btnOk.BackColor = $CouleurCertificat
+    $btnOk.ForeColor = $CouleurBlanc
+    $btnOk.FlatStyle = "Flat"
+    $form.Controls.Add($btnOk)
 
-    $BtnQuitter = New-Object System.Windows.Forms.Button
-    Set-BtnQuitterStyle -BtnQuitter $BtnQuitter
-    $BtnQuitter.Location = New-Object System.Drawing.Point(($fieldLeft + 120), $yPos)
-    $BtnQuitter.Add_Click({ $form.Close() })
-    $form.Controls.Add($BtnQuitter)
+    $btnCancel = New-Object System.Windows.Forms.Button
+    $btnCancel.Text = "Annuler"
+    $btnCancel.Location = New-Object System.Drawing.Point(($left + $labelW + 120), $y)
+    $btnCancel.BackColor = $CouleurGrisFonce
+    $btnCancel.ForeColor = $CouleurBlanc
+    $btnCancel.FlatStyle = "Flat"
+    $btnCancel.Add_Click({ $form.Close() })
+    $form.Controls.Add($btnCancel)
 
-    # VARIABLES POUR VEHICULES
-    $script:vehiculeIds = @()
-    
-    function Load-VehiculesList {
-        $tousVehicules = Get-Vehicules
-        $cmbVehicule.Items.Clear()
-        $cmbVehicule.Items.Add("(Aucun véhicule)") | Out-Null
-        
-        $script:vehiculeIds = @($null)
-        
-        foreach ($v in $tousVehicules) {
-            $displayText = "$($v.numero_parc) - $($v.immatriculation) - $($v.marque) $($v.modele)"
-            $cmbVehicule.Items.Add($displayText) | Out-Null
-            $script:vehiculeIds += $v.id
-        }
-        $cmbVehicule.SelectedIndex = 0
-        
-        if ($Agent -and $Agent.vehicule_id -and $Agent.vehicule_id -ne 0) {
-            $index = [array]::IndexOf($script:vehiculeIds, $Agent.vehicule_id)
-            if ($index -ge 0) { $cmbVehicule.SelectedIndex = $index }
-        }
-    }
-    Load-VehiculesList
+    $result = $null
 
-    # VALIDATION EN TEMPS RÉEL
-    $txtTel.Add_TextChanged({
-        $val = $txtTel.Text.Trim()
-        if ([string]::IsNullOrWhiteSpace($val)) {
-            $lblTelError.Text = "Optionnel - Ex: 0123456789 ou 01 23 45 67 89"
-            $lblTelError.ForeColor = [System.Drawing.Color]::Gray
-        } elseif (Test-TelephoneFrancais -Telephone $val) {
-            $lblTelError.Text = "✓ Numéro valide"
-            $lblTelError.ForeColor = [System.Drawing.Color]::Green
-        } else {
-            $lblTelError.Text = "✗ Numéro invalide. 10 chiffres commençant par 0 ou +33"
-            $lblTelError.ForeColor = $CouleurOrange
-        }
-    })
-
-    $txtEmail.Add_TextChanged({
-        $val = $txtEmail.Text.Trim()
-        if ([string]::IsNullOrWhiteSpace($val)) {
-            $lblEmailError.Text = ""
-        } elseif ($val -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') {
-            $lblEmailError.Text = "Format email invalide"
-        } else {
-            $lblEmailError.Text = "✓"
-            $lblEmailError.ForeColor = [System.Drawing.Color]::Green
-        }
-    })
-
-    # ============================================
-    # VARIABLE SCRIPT POUR RÉCUPÉRER LES DONNÉES
-    # ============================================
-    $script:donneesFormulaire = $null
-
-    # VALIDATION FINALE
-    $BtnValider.Add_Click({
-        $valid = $true
-        
-        $nom = $txtNom.Text.Trim()
-        if ([string]::IsNullOrWhiteSpace($nom)) {
-            $lblNomError.Text = "Champ obligatoire"
-            $valid = $false
-        } elseif ($nom.Length -lt 2) {
-            $lblNomError.Text = "Minimum 2 caractères"
-            $valid = $false
-        } else {
-            $lblNomError.Text = ""
-        }
-        
-        $prenom = $txtPrenom.Text.Trim()
-        if ([string]::IsNullOrWhiteSpace($prenom)) {
-            $lblPrenomError.Text = "Champ obligatoire"
-            $valid = $false
-        } elseif ($prenom.Length -lt 2) {
-            $lblPrenomError.Text = "Minimum 2 caractères"
-            $valid = $false
-        } else {
-            $lblPrenomError.Text = ""
-        }
-        
-        $telephoneRaw = $txtTel.Text.Trim()
-        if (-not [string]::IsNullOrWhiteSpace($telephoneRaw)) {
-            if (-not (Test-TelephoneFrancais -Telephone $telephoneRaw)) {
-                $lblTelError.Text = "Numéro invalide"
-                $valid = $false
-            }
-        }
-        
-        $emailRaw = $txtEmail.Text.Trim()
-        if (-not [string]::IsNullOrWhiteSpace($emailRaw)) {
-            if ($emailRaw -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') {
-                $lblEmailError.Text = "Email invalide"
-                $valid = $false
-            }
-        }
-        
-        if (-not $valid) {
-            return
-        }
-        
-        $telephoneFinal = $null
-        if (-not [string]::IsNullOrWhiteSpace($telephoneRaw)) {
-            $telephoneFinal = Format-TelephoneStockage -Telephone $telephoneRaw
-        }
-        
-        # Vérifier que vehiculeIds existe et l'index est valide
-        $vehiculeId = 0
-        if ($script:vehiculeIds -and $cmbVehicule.SelectedIndex -ge 0 -and $cmbVehicule.SelectedIndex -lt $script:vehiculeIds.Count) {
-            $vehiculeId = $script:vehiculeIds[$cmbVehicule.SelectedIndex]
-            if ($vehiculeId -eq $null) { $vehiculeId = 0 }
-        }
-        
-        $emailFinal = $txtEmail.Text.Trim()
-        if ([string]::IsNullOrWhiteSpace($emailFinal)) { $emailFinal = $null }
-        
-        # CRÉATION DES DONNÉES DANS LA VARIABLE SCRIPT
-        $script:donneesFormulaire = @{
+    $btnOk.Add_Click({
+        $result = [PSCustomObject]@{
             nom = $txtNom.Text.Trim()
             prenom = $txtPrenom.Text.Trim()
-            telephone = $telephoneFinal
-            email = $emailFinal
-            date_entree = $dtpDateEntree.Value.ToString("yyyy-MM-dd")
-            type_contrat = if ($cmbContrat.SelectedItem) { 
-                $cmbContrat.SelectedItem.ToString() 
-            } else { 
-                "CDI" 
-            }
+            telephone = $txtTel.Text.Trim()
+            email = $txtEmail.Text.Trim()
+            type_contrat = $cmbContrat.SelectedItem.ToString()
             base_heures_semaine = [int]$numHeures.Value
-            poste = if ($cmbPoste.SelectedItem) { 
-                $cmbPoste.SelectedItem.ToString() 
-            } else { 
-                "Collecteur" 
-            }
-            vehicule_id = $vehiculeId
+            poste = $cmbPoste.SelectedItem.ToString()
+            date_entree = $dtEntree.Value
+            date_sortie = if ($dtSortie.Checked) { $dtSortie.Value } else { $null }
         }
-        
         $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
         $form.Close()
     })
 
-    $result = $form.ShowDialog()
-
-    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-        return $script:donneesFormulaire
+    $form.ShowDialog() | Out-Null
+    
+    if ($form.DialogResult -eq [System.Windows.Forms.DialogResult]::OK) {
+        return $result
     }
     return $null
 }

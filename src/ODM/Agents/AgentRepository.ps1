@@ -1,135 +1,92 @@
-# AgentRepository.ps1 - CRUD Agent avec SQLite
+# AgentRepository.ps1 - Logique métier (ne duplique pas Database.ps1)
 
 . "$PSScriptRoot\..\..\Database\Database.ps1"
 
-function Add-Agent {
-    param($Nom, $Prenom, $Telephone, $Email, $DateEntree, $TypeContrat, $BaseHeuresSemaine = 35, $VehiculeId = $null, $Poste = "Collecteur")
-    
-    $conn = Open-Connection
-    try {
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = @"
-INSERT INTO Agent (nom, prenom, telephone, email, date_entree, type_contrat, base_heures_semaine, poste, actif)
-VALUES (@nom, @prenom, @tel, @email, @date_entree, @type_contrat, @base_heures, @poste, 1)
-"@
-        $cmd.Parameters.AddWithValue("@nom", $Nom) | Out-Null
-        $cmd.Parameters.AddWithValue("@prenom", $Prenom) | Out-Null
-        $cmd.Parameters.AddWithValue("@tel", $Telephone) | Out-Null
-        $cmd.Parameters.AddWithValue("@email", $Email) | Out-Null
-        $cmd.Parameters.AddWithValue("@date_entree", $DateEntree) | Out-Null
-        $cmd.Parameters.AddWithValue("@type_contrat", $TypeContrat) | Out-Null
-        $cmd.Parameters.AddWithValue("@base_heures", $BaseHeuresSemaine) | Out-Null
-        $cmd.Parameters.AddWithValue("@poste", $Poste) | Out-Null
-        
-        $cmd.ExecuteNonQuery()
-        $cmd.CommandText = "SELECT last_insert_rowid()"
-        return $cmd.ExecuteScalar()
-    } finally {
-        Close-Connection $conn
-    }
+# ============================================================
+# VALIDATIONS
+# ============================================================
+
+function Test-NomValide {
+    param($Nom)
+    if ([string]::IsNullOrWhiteSpace($Nom)) { return $false }
+    return $Nom.Length -ge 2
 }
 
-function Update-Agent {
-    param($Id, $Nom, $Prenom, $Telephone, $Email, $DateEntree, $DateSortie = $null, $TypeContrat, $BaseHeuresSemaine, $VehiculeId = $null, $Poste)
-    
-    $conn = Open-Connection
-    try {
-        $actif = if ($DateSortie) { 0 } else { 1 }
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = @"
-UPDATE Agent 
-SET nom = @nom, prenom = @prenom, telephone = @tel, email = @email, 
-    date_entree = @date_entree, date_sortie = @date_sortie, type_contrat = @type_contrat, 
-    base_heures_semaine = @base_heures, vehicule_id = @vehicule_id, poste = @poste, actif = @actif
-WHERE id_agent = @id
-"@
-        $cmd.Parameters.AddWithValue("@id", $Id) | Out-Null
-        $cmd.Parameters.AddWithValue("@nom", $Nom) | Out-Null
-        $cmd.Parameters.AddWithValue("@prenom", $Prenom) | Out-Null
-        $cmd.Parameters.AddWithValue("@tel", $Telephone) | Out-Null
-        $cmd.Parameters.AddWithValue("@email", $Email) | Out-Null
-        $cmd.Parameters.AddWithValue("@date_entree", $DateEntree) | Out-Null
-        $cmd.Parameters.AddWithValue("@date_sortie", $DateSortie) | Out-Null
-        $cmd.Parameters.AddWithValue("@type_contrat", $TypeContrat) | Out-Null
-        $cmd.Parameters.AddWithValue("@base_heures", $BaseHeuresSemaine) | Out-Null
-        $cmd.Parameters.AddWithValue("@vehicule_id", $VehiculeId) | Out-Null
-        $cmd.Parameters.AddWithValue("@poste", $Poste) | Out-Null
-        $cmd.Parameters.AddWithValue("@actif", $actif) | Out-Null
-        
-        return $cmd.ExecuteNonQuery()
-    } finally {
-        Close-Connection $conn
-    }
+function Test-PrenomValide {
+    param($Prenom)
+    if ([string]::IsNullOrWhiteSpace($Prenom)) { return $false }
+    return $Prenom.Length -ge 2
 }
 
-function Remove-Agent {
-    param($Id)
-    
-    $conn = Open-Connection
-    try {
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = "DELETE FROM Agent WHERE id_agent = @id"
-        return $cmd.ExecuteNonQuery()
-    } finally {
-        Close-Connection $conn
-    }
+function Test-TelephoneValide {
+    param($Telephone)
+    if ([string]::IsNullOrWhiteSpace($Telephone)) { return $true }
+    $clean = $Telephone -replace '[^0-9+]', ''
+    if ($clean -match '^0[1-9][0-9]{8}$') { return $true }
+    if ($clean -match '^\+33[1-9][0-9]{8}$') { return $true }
+    return $false
 }
 
-function Get-AgentById {
-    param($Id)
+function Test-EmailValide {
+    param($Email)
+    if ([string]::IsNullOrWhiteSpace($Email)) { return $true }
+    return $Email -match '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+}
+
+# ============================================================
+# AJOUT AVEC VALIDATION
+# ============================================================
+
+function Add-AgentWithValidation {
+    param($Nom, $Prenom, $Telephone, $Email, $DateEntree, $DateSortie, $TypeContrat, $BaseHeuresSemaine = 35, $VehiculeId = $null, $Poste = "Collecteur")
     
-    $conn = Open-Connection
-    try {
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = "SELECT * FROM Agent WHERE id_agent = @id"
-        $cmd.Parameters.AddWithValue("@id", $Id) | Out-Null
-        $reader = $cmd.ExecuteReader()
-        if ($reader.Read()) {
-            return [PSCustomObject]@{
-                id = $reader["id_agent"]
-                nom = $reader["nom"]
-                prenom = $reader["prenom"]
-                telephone = $reader["telephone"]
-                email = $reader["email"]
-                date_entree = $reader["date_entree"]
-                date_sortie = $reader["date_sortie"]
-                type_contrat = $reader["type_contrat"]
-                base_heures_semaine = $reader["base_heures_semaine"]
-                poste = $reader["poste"]
-                vehicule_id = $reader["vehicule_id"]
-                actif = $reader["actif"]
-            }
+    # Validations
+    if (-not (Test-NomValide $Nom)) { throw "Nom invalide (min 2 caractères)" }
+    if (-not (Test-PrenomValide $Prenom)) { throw "Prénom invalide (min 2 caractères)" }
+    if (-not (Test-TelephoneValide $Telephone)) { throw "Téléphone invalide" }
+    if (-not (Test-EmailValide $Email)) { throw "Email invalide" }
+    
+    # Appel à la base
+    return Add-Agent -Nom $Nom -Prenom $Prenom -Telephone $Telephone -Email $Email -DateEntree $DateEntree -DateSortie $DateSortie -TypeContrat $TypeContrat -BaseHeuresSemaine $BaseHeuresSemaine -VehiculeId $VehiculeId -Poste $Poste
+}
+
+# ============================================================
+# RECHERCHES
+# ============================================================
+
+function Search-Agents {
+    param($Nom = "", $Prenom = "", $Poste = "")
+    
+    $agents = Get-Agents
+    if ($Nom) { $agents = $agents | Where-Object { $_.nom -like "*$Nom*" } }
+    if ($Prenom) { $agents = $agents | Where-Object { $_.prenom -like "*$Prenom*" } }
+    if ($Poste) { $agents = $agents | Where-Object { $_.poste -eq $Poste } }
+    return $agents
+}
+
+# ============================================================
+# STATISTIQUES
+# ============================================================
+
+function Get-AgentsStatistics {
+    $agents = Get-Agents
+    return [PSCustomObject]@{
+        Total = $agents.Count
+        ParPoste = $agents | Group-Object poste | ForEach-Object { 
+            [PSCustomObject]@{ Poste = $_.Name; Count = $_.Count }
         }
-        return $null
-    } finally {
-        Close-Connection $conn
+        Actifs = ($agents | Where-Object { $_.actif -eq 1 }).Count
+        Inactifs = ($agents | Where-Object { $_.actif -eq 0 }).Count
     }
 }
 
-function Get-Agents {
-    $conn = Open-Connection
-    try {
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = "SELECT id_agent, nom, prenom, telephone, email, date_entree, date_sortie, type_contrat, base_heures_semaine, poste, actif FROM Agent WHERE actif = 1 ORDER BY nom, prenom"
-        $reader = $cmd.ExecuteReader()
-        $agents = @()
-        while ($reader.Read()) {
-            $agents += [PSCustomObject]@{
-                id = $reader["id_agent"]
-                nom = $reader["nom"]
-                prenom = $reader["prenom"]
-                telephone = $reader["telephone"]
-                email = $reader["email"]
-                date_entree = $reader["date_entree"]
-                date_sortie = $reader["date_sortie"]
-                type_contrat = $reader["type_contrat"]
-                base_heures_semaine = $reader["base_heures_semaine"]
-                poste = $reader["poste"]
-                actif = $reader["actif"]
-            }
-        }
-        return $agents
-    } finally {
-        Close-Connection $conn
-    }
+# ============================================================
+# EXPORT
+# ============================================================
+
+function Export-AgentsToCsv {
+    param($Path)
+    $agents = Get-Agents
+    $agents | Export-Csv -Path $Path -NoTypeInformation -Encoding UTF8
+    Write-Host "✅ Agents exportés vers $Path" -ForegroundColor Green
 }

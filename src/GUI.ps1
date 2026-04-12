@@ -1,6 +1,4 @@
-# ============================================
-# GUI.ps1 - VERSION PROPRE
-# ============================================
+# GUI.ps1 - Version simplifiée
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . "$scriptDir\Framework\Components.ps1"
@@ -14,7 +12,6 @@ function Start-GUI {
     [System.Windows.Forms.Application]::EnableVisualStyles()
 
     . "$PSScriptRoot\Config.ps1"
-
     . "$PSScriptRoot\ODM\ConventionNommage\ConventionNommage.ps1"
     . "$PSScriptRoot\ODM\Agents\AgentPanel.ps1"
     . "$PSScriptRoot\ODM\Agents\AgentRepository.ps1"
@@ -62,9 +59,9 @@ function Start-GUI {
     $panelTournees.Dock = "Fill"
     $panelTournees.Name = "TourneesPanel"
     $panelTournees.Visible = $false
-                    $affectationContainer.Controls.Add($panelDate)
+    $affectationContainer.Controls.Add($panelDate)
     $affectationContainer.Controls.Add($panelTournees)
-        $tabAffectation.Controls.Add($affectationContainer)
+    $tabAffectation.Controls.Add($affectationContainer)
     $tabControl.TabPages.Add($tabAffectation)
     $form.Tag = $affectationContainer
 
@@ -72,9 +69,21 @@ function Start-GUI {
     $tabAgents = New-Object System.Windows.Forms.TabPage
     $tabAgents.Text = "Agents"
     $tabAgents.BackColor = $script:CouleurGrisFond
+    
     $agentsPanel = Show-AgentsPanel
-    $agentsPanel.Dock = "Fill"
-    $tabAgents.Controls.Add($agentsPanel)
+    if ($agentsPanel) {
+        $agentsPanel.Dock = "Fill"
+        $tabAgents.Controls.Add($agentsPanel)
+        Write-Host "[GUI] Onglet Agents ajouté" -ForegroundColor Green
+    } else {
+        Write-Host "[GUI] Erreur: Show-AgentsPanel a retourné null" -ForegroundColor Red
+        $lblError = New-Object System.Windows.Forms.Label
+        $lblError.Text = "Erreur de chargement du panneau des agents"
+        $lblError.Dock = "Fill"
+        $lblError.TextAlign = "MiddleCenter"
+        $lblError.ForeColor = [System.Drawing.Color]::Red
+        $tabAgents.Controls.Add($lblError)
+    }
     $tabControl.TabPages.Add($tabAgents)
 
     # ONGLET 4 : Vehicules
@@ -82,18 +91,19 @@ function Start-GUI {
     $tabVehicules.Text = "Données véhicules"
     $tabVehicules.BackColor = $script:CouleurGrisFond
     $vehiculesPanel = Show-VehiculesPanel -Vehicules (Get-Vehicules)
-    $vehiculesPanel.Dock = "Fill"
-    $tabVehicules.Controls.Add($vehiculesPanel)
+    if ($vehiculesPanel) {
+        $vehiculesPanel.Dock = "Fill"
+        $tabVehicules.Controls.Add($vehiculesPanel)
+    }
     $tabControl.TabPages.Add($tabVehicules)
 
     $form.Controls.Add($tabControl)
 
-    # Forcer le focus sur le champ texte après affichage
     $form.Add_Shown({
         Start-Sleep -Milliseconds 100
-        $txtBox = $realPanel.Controls | Where-Object { $_ -is [System.Windows.Forms.TextBox] }
-        if ($txtBox) {
-            $txtBox.Focus()
+        if ($realPanel) {
+            $txtBox = $realPanel.Controls | Where-Object { $_ -is [System.Windows.Forms.TextBox] }
+            if ($txtBox) { $txtBox.Focus() }
         }
     })
 
@@ -129,5 +139,4 @@ function Show-PDFViewer {
     $form.Controls.Add($btnClose)
     $form.ShowDialog()
 }
-
 

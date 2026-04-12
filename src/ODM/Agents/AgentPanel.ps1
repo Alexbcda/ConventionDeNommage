@@ -1,206 +1,127 @@
-. "$PSScriptRoot\..\..\Database\Database.ps1"
-# AgentPanel.ps1 - Interface de gestion des agents
+# AgentPanel.ps1
 
-. "$PSScriptRoot\AgentRepository.ps1"
+. "$PSScriptRoot\..\..\Database\Database.ps1"
 . "$PSScriptRoot\AgentForm.ps1"
-. "$PSScriptRoot\..\..\Common\Styles.ps1"
 
 function Show-AgentsPanel {
+    Write-Host "[AgentPanel] Démarrage..." -ForegroundColor Cyan
+    
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
-    $panel = New-Object System.Windows.Forms.Panel
-    $panel.Dock = "Fill"
-    $panel.BackColor = $CouleurGrisFond
-    $panel.Padding = New-Object System.Windows.Forms.Padding(20)
+    # Création du panel
+    $mainPanel = New-Object System.Windows.Forms.Panel
+    $mainPanel.Dock = "Fill"
+    $mainPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
 
-    Write-Host "[PANEL] ========== AGENTS PANEL ==========" -ForegroundColor Cyan
-
-    # ============================================
-    # TITRE
-    # ============================================
+    # Titre
     $lblTitle = New-Object System.Windows.Forms.Label
     $lblTitle.Text = "Gestion des agents"
-    $lblTitle.Font = $script:PoliceTitre1
-    $lblTitle.ForeColor = $script:CouleurOrange
+    $lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
+    $lblTitle.ForeColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
     $lblTitle.Location = New-Object System.Drawing.Point(20, 20)
-    $lblTitle.Size = New-Object System.Drawing.Size(600, 50)
-    $panel.Controls.Add($lblTitle)
+    $lblTitle.Size = New-Object System.Drawing.Size(300, 40)
+    $mainPanel.Controls.Add($lblTitle)
 
-    # ============================================
-    # BOUTON AJOUTER
-    # ============================================
+    # Bouton Ajouter
     $btnAjouter = New-Object System.Windows.Forms.Button
-    $btnAjouter.Text = "➕ AJOUTER UN AGENT"
-    $btnAjouter.Size = New-Object System.Drawing.Size(200, 45)
+    $btnAjouter.Text = "+ AJOUTER UN AGENT"
     $btnAjouter.Location = New-Object System.Drawing.Point(900, 20)
-    $btnAjouter.BackColor = [System.Drawing.Color]::White
+    $btnAjouter.Size = New-Object System.Drawing.Size(180, 40)
+    $btnAjouter.BackColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
+    $btnAjouter.ForeColor = [System.Drawing.Color]::White
     $btnAjouter.FlatStyle = "Flat"
-    $btnAjouter.FlatAppearance.BorderColor = $CouleurOrange
-    $btnAjouter.FlatAppearance.BorderSize = 2
-    $btnAjouter.ForeColor = $CouleurGrisFonce
-    $btnAjouter.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $btnAjouter.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $mainPanel.Controls.Add($btnAjouter)
 
-    $btnAjouter.Add_MouseEnter({
-        $this.FlatAppearance.BorderColor = $CouleurOrangeClair
-        $this.BackColor = $CouleurOrange
-        $this.ForeColor = [System.Drawing.Color]::White
-    })
-
-    $btnAjouter.Add_MouseLeave({
-        $this.FlatAppearance.BorderColor = $CouleurOrange
-        $this.BackColor = [System.Drawing.Color]::White
-        $this.ForeColor = $CouleurGrisFonce
-    })
-    $panel.Controls.Add($btnAjouter)
-
-    # ============================================
-    # DATAGRIDVIEW
-    # ============================================
-    $global:dgvAgents = New-Object System.Windows.Forms.DataGridView
-    $global:dgvAgents.Location = New-Object System.Drawing.Point(20, 80)
-    $global:dgvAgents.Size = New-Object System.Drawing.Size(1100, 450)
-    $global:dgvAgents.BackgroundColor = [System.Drawing.Color]::White
-    $global:dgvAgents.AllowUserToAddRows = $false
-    $global:dgvAgents.AllowUserToDeleteRows = $false
-    $global:dgvAgents.RowHeadersVisible = $false
-    $global:dgvAgents.SelectionMode = "FullRowSelect"
-    $global:dgvAgents.BorderStyle = "FixedSingle"
-    
-    $global:dgvAgents.DefaultCellStyle.SelectionBackColor = $CouleurSelection
-    $global:dgvAgents.DefaultCellStyle.SelectionForeColor = [System.Drawing.Color]::White
+    # DataGridView
+    $grid = New-Object System.Windows.Forms.DataGridView
+    $grid.Location = New-Object System.Drawing.Point(20, 80)
+    $grid.Size = New-Object System.Drawing.Size(1060, 500)
+    $grid.AllowUserToAddRows = $false
+    $grid.RowHeadersVisible = $false
+    $grid.BackgroundColor = [System.Drawing.Color]::White
+    $grid.SelectionMode = "FullRowSelect"
+    $grid.BorderStyle = "FixedSingle"
 
     # Colonnes
-    $global:dgvAgents.Columns.Add("Nom", "Nom") | Out-Null
-    $global:dgvAgents.Columns.Add("Prenom", "Prénom") | Out-Null
-    $global:dgvAgents.Columns.Add("Telephone", "Téléphone") | Out-Null
-    $global:dgvAgents.Columns.Add("Email", "Email") | Out-Null
-    $global:dgvAgents.Columns.Add("Contrat", "Contrat") | Out-Null
-    $global:dgvAgents.Columns.Add("Vehicule", "Véhicule attitré") | Out-Null
-    $global:dgvAgents.Columns.Add("Modifier", "Modifier") | Out-Null
-    $global:dgvAgents.Columns.Add("Supprimer", "Supprimer") | Out-Null
+    $grid.Columns.Add("Nom", "Nom") | Out-Null
+    $grid.Columns.Add("Prenom", "Prénom") | Out-Null
+    $grid.Columns.Add("Tel", "Téléphone") | Out-Null
+    $grid.Columns.Add("Email", "Email") | Out-Null
+    $grid.Columns.Add("Contrat", "Contrat") | Out-Null
+    $grid.Columns.Add("Heures", "H/semaine") | Out-Null
+    $grid.Columns.Add("Poste", "Poste") | Out-Null
+    $grid.Columns.Add("Edit", "") | Out-Null
+    $grid.Columns.Add("Delete", "") | Out-Null
 
-    $global:dgvAgents.Columns[0].Width = 150
-    $global:dgvAgents.Columns[1].Width = 150
-    $global:dgvAgents.Columns[2].Width = 120
-    $global:dgvAgents.Columns[3].Width = 200
-    $global:dgvAgents.Columns[4].Width = 100
-    $global:dgvAgents.Columns[5].Width = 150
-    $global:dgvAgents.Columns[6].Width = 70
-    $global:dgvAgents.Columns[7].Width = 70
+    $grid.Columns[0].Width = 120
+    $grid.Columns[1].Width = 120
+    $grid.Columns[2].Width = 100
+    $grid.Columns[3].Width = 180
+    $grid.Columns[4].Width = 80
+    $grid.Columns[5].Width = 80
+    $grid.Columns[6].Width = 120
+    $grid.Columns[7].Width = 50
+    $grid.Columns[8].Width = 50
 
-    $panel.Controls.Add($global:dgvAgents)
+    $mainPanel.Controls.Add($grid)
 
-    # ============================================
-    # FONCTION DE RAFRAÎCHISSEMENT
-    # ============================================
-    $global:RefreshAgentsGrid = {
-        Write-Host "[REFRESH] Rafraîchissement de la grille agents..." -ForegroundColor Yellow
-        $liste = Get-Agents
-        $listeTriee = $liste | Sort-Object -Property nom, prenom
-        $global:dgvAgents.Rows.Clear()
+    # Refresh
+    function RefreshGrid {
+        $grid.Rows.Clear()
+        $agents = Get-Agents
         $i = 0
-        foreach ($a in $listeTriee) {
-            $row = $global:dgvAgents.Rows.Add()
-            $global:dgvAgents.Rows[$row].Cells[0].Value = $a.nom
-            $global:dgvAgents.Rows[$row].Cells[1].Value = $a.prenom
-            $global:dgvAgents.Rows[$row].Cells[2].Value = $a.telephone
-            $global:dgvAgents.Rows[$row].Cells[3].Value = $a.email
-            $global:dgvAgents.Rows[$row].Cells[4].Value = $a.type_contrat
-            $global:dgvAgents.Rows[$row].Cells[5].Value = if ($a.vehicule_parc) { "$($a.vehicule_parc) - $($a.vehicule_immat)" } else { "(Aucun)" }
-            $global:dgvAgents.Rows[$row].Cells[6].Value = "✏️"
-            $global:dgvAgents.Rows[$row].Cells[7].Value = "🗑️"
-            $global:dgvAgents.Rows[$row].Tag = $a.id
-            
-            if ($i % 2 -eq 1) {
-                $global:dgvAgents.Rows[$row].DefaultCellStyle.BackColor = $CouleurLigneAlternee
-            }
+        foreach ($a in $agents) {
+            $grid.Rows.Add()
+            $grid.Rows[$i].Cells[0].Value = $a.nom
+            $grid.Rows[$i].Cells[1].Value = $a.prenom
+            $grid.Rows[$i].Cells[2].Value = $a.telephone
+            $grid.Rows[$i].Cells[3].Value = $a.email
+            $grid.Rows[$i].Cells[4].Value = $a.type_contrat
+            $grid.Rows[$i].Cells[5].Value = $a.base_heures_semaine
+            $grid.Rows[$i].Cells[6].Value = $a.poste
+            $grid.Rows[$i].Cells[7].Value = "✏️"
+            $grid.Rows[$i].Cells[8].Value = "🗑️"
+            $grid.Rows[$i].Tag = $a.id
             $i++
         }
-        Write-Host "[REFRESH] Terminé - $($liste.Count) agents affichés" -ForegroundColor Green
+        Write-Host "[AgentPanel] $i agents" -ForegroundColor Gray
     }
 
-    # Remplissage initial
-    & $global:RefreshAgentsGrid
+    RefreshGrid
 
-    # ============================================
-    # ÉVÉNEMENT AJOUTER
-    # ============================================
+    # Événements
     $btnAjouter.Add_Click({
-        Write-Host "[PANEL] Clic sur Ajouter" -ForegroundColor Cyan
         $nouveau = Show-AgentForm -Mode "Ajouter"
         if ($nouveau) {
-            Write-Host "[PANEL] Création de l'agent..." -ForegroundColor Yellow
-            $resultat = Add-Agent -Nom $nouveau.nom -Prenom $nouveau.prenom -Telephone $nouveau.telephone -Email $nouveau.email -DateEntree $nouveau.date_entree -TypeContrat $nouveau.type_contrat -BaseHeuresSemaine $nouveau.base_heures_semaine -VehiculeId $nouveau.vehicule_id
-            if ($resultat) {
-                Write-Host "[PANEL] Agent créé, rafraîchissement..." -ForegroundColor Green
-                & $global:RefreshAgentsGrid
-            } else {
-                Write-Host "[PANEL] Erreur lors de la création" -ForegroundColor Red
-                [System.Windows.Forms.MessageBox]::Show("Erreur lors de l'ajout de l'agent", "Erreur", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
-            }
+            Add-Agent -Nom $nouveau.nom -Prenom $nouveau.prenom -Telephone $nouveau.telephone -Email $nouveau.email -DateEntree $nouveau.date_entree -DateSortie $nouveau.date_sortie -TypeContrat $nouveau.type_contrat -BaseHeuresSemaine $nouveau.base_heures_semaine -Poste $nouveau.poste
+            RefreshGrid
         }
     })
 
-    # ============================================
-    # ÉVÉNEMENT MODIFIER/SUPPRIMER
-    # ============================================
-    $global:dgvAgents.Add_CellClick({
-        if ($_.RowIndex -ge 0 -and ($_.ColumnIndex -eq 6 -or $_.ColumnIndex -eq 7)) {
-            $row = $global:dgvAgents.Rows[$_.RowIndex]
-            $id = $row.Tag
+    $grid.Add_CellClick({
+        if ($_.RowIndex -ge 0) {
+            $id = [int]$grid.Rows[$_.RowIndex].Tag
             
-            if ($_.ColumnIndex -eq 6) {
-                Write-Host "[PANEL] Modification de l'agent ID: $id" -ForegroundColor Cyan
+            if ($_.ColumnIndex -eq 7) {
                 $agent = Get-AgentById -Id $id
-                
-                $agentHash = @{
-                    id = $agent.id
-                    nom = $agent.nom
-                    prenom = $agent.prenom
-                    telephone = $agent.telephone
-                    email = $agent.email
-                    date_entree = $agent.date_entree
-                    date_sortie = $agent.date_sortie
-                    type_contrat = $agent.type_contrat
-                    base_heures_semaine = $agent.base_heures_semaine
-                    vehicule_id = $agent.vehicule_id
-                }
-                
-                $modifie = Show-AgentForm -Mode "Modifier" -Agent $agentHash
-                if ($modifie) {
-                    Write-Host "[PANEL] Sauvegarde des modifications..." -ForegroundColor Yellow
-                    $resultat = Update-Agent -Id $id -Nom $modifie.nom -Prenom $modifie.prenom -Telephone $modifie.telephone -Email $modifie.email -DateEntree $modifie.date_entree -DateSortie $null -TypeContrat $modifie.type_contrat -BaseHeuresSemaine $modifie.base_heures_semaine -VehiculeId $modifie.vehicule_id -Poste $modifie.poste
-                    if ($resultat) {
-                        Write-Host "[PANEL] Agent modifié, rafraîchissement..." -ForegroundColor Green
-                        & $global:RefreshAgentsGrid
-                    } else {
-                        Write-Host "[PANEL] Erreur lors de la modification" -ForegroundColor Red
-                        [System.Windows.Forms.MessageBox]::Show("Erreur lors de la modification de l'agent", "Erreur", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
-                    }
+                $modif = Show-AgentForm -Mode "Modifier" -Agent $agent
+                if ($modif) {
+                    Update-Agent -Id $id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -VehiculeId $null -Poste $modif.poste
+                    RefreshGrid
                 }
             }
-            elseif ($_.ColumnIndex -eq 7) {
-                $nomComplet = "$($row.Cells[0].Value) $($row.Cells[1].Value)"
-                $confirm = [System.Windows.Forms.MessageBox]::Show("Supprimer l'agent $nomComplet ?`n`nTous ses véhicules seront libérés.", "Confirmation", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
-                if ($confirm -eq [System.Windows.Forms.DialogResult]::Yes) {
-                    Write-Host "[PANEL] Suppression de l'agent ID: $id" -ForegroundColor Yellow
-                    $resultat = Remove-Agent -Id $id
-                    if ($resultat) {
-                        Write-Host "[PANEL] Agent supprimé, rafraîchissement..." -ForegroundColor Green
-                        & $global:RefreshAgentsGrid
-                    } else {
-                        Write-Host "[PANEL] Erreur lors de la suppression" -ForegroundColor Red
-                        [System.Windows.Forms.MessageBox]::Show("Erreur lors de la suppression de l'agent", "Erreur", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
-                    }
+            
+            if ($_.ColumnIndex -eq 8) {
+                $confirm = [System.Windows.Forms.MessageBox]::Show("Supprimer cet agent ?", "Confirmation", "YesNo")
+                if ($confirm -eq "Yes") {
+                    Remove-Agent -Id $id
+                    RefreshGrid
                 }
             }
         }
     })
 
-    return $panel
+    Write-Host "[AgentPanel] Panel retourné" -ForegroundColor Green
+    return $mainPanel
 }
-
-
-
