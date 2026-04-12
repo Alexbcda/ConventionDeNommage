@@ -3,13 +3,92 @@
 . "$PSScriptRoot\..\..\Database\Database.ps1"
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
 
+# Fonction pour nettoyer le téléphone (enlever espaces et caractères)
+function Clean-Telephone {
+    param($Telephone)
+    if ([string]::IsNullOrWhiteSpace($Telephone)) { return "" }
+    # Garde uniquement les chiffres et le +
+    return ($Telephone -replace '[^0-9+]', '')
+}
+
+# Fonction pour valider le téléphone français (tous les indicatifs 01-09)
+function Test-TelephoneFrancais {
+    param($Telephone)
+    
+    if ([string]::IsNullOrWhiteSpace($Telephone)) { return $true } # Champ optionnel
+    
+    $clean = Clean-Telephone -Telephone $Telephone
+    
+    # Format 10 chiffres commençant par 0 (01,02,03,04,05,06,07,08,09)
+    if ($clean -match '^0[1-9][0-9]{8}$') {
+        return $true
+    }
+    
+    # Format +33 suivi de 9 chiffres (commençant par 1-9)
+    if ($clean -match '^\+33[1-9][0-9]{8}$') {
+        return $true
+    }
+    
+    return $false
+}
+
+# Fonction pour formater le téléphone pour stockage
+function Format-TelephoneStockage {
+    param($Telephone)
+    
+    if ([string]::IsNullOrWhiteSpace($Telephone)) { return $null }
+    
+    $clean = Clean-Telephone -Telephone $Telephone
+    
+    # Si format +33..., garder tel quel
+    if ($clean -match '^\+33[1-9][0-9]{8}$') {
+        return $clean
+    }
+    
+    # Si format 0XXXXXXXXX, formater en XX XX XX XX XX
+    if ($clean -match '^0([1-9])([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})$') {
+        return "0$($Matches[1]) $($Matches[2]) $($Matches[3]) $($Matches[4]) $($Matches[5])"
+    }
+    
+    return $clean
+}
+
+# Fonction pour formater l'affichage dans le champ texte
+function Format-TelephoneAffichage {
+    param($Telephone)
+    
+    if ([string]::IsNullOrWhiteSpace($Telephone)) { return "" }
+    
+    # Si c'est un format +33...
+    if ($Telephone -match '^\+33[1-9][0-9]{8}$') {
+        # Formater pour affichage: +33 X XX XX XX XX
+        if ($Telephone -match '^\+33([1-9])([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})$') {
+            return "+33 $($Matches[1]) $($Matches[2]) $($Matches[3]) $($Matches[4]) $($Matches[5])"
+        }
+        return $Telephone
+    }
+    
+    # Si c'est un format 0X XX XX XX XX
+    if ($Telephone -match '^0[1-9] [0-9]{2} [0-9]{2} [0-9]{2} [0-9]{2}$') {
+        return $Telephone
+    }
+    
+    # Si c'est un format 0XXXXXXXXX compact
+    if ($Telephone -match '^0[1-9][0-9]{8}$') {
+        $num = $Telephone
+        return "$($num.Substring(0,2)) $($num.Substring(2,2)) $($num.Substring(4,2)) $($num.Substring(6,2)) $($num.Substring(8,2))"
+    }
+    
+    return $Telephone
+}
+
 function Show-AgentForm {
     param(
         [string]$Mode = "Ajouter",
         [hashtable]$Agent = $null
     )
 
-    Write-Host "[FORM] ========== FORMULAIRE AGENT OUVERT ==========" -ForegroundColor Magenta
+    Write-Host "[FORM] ========== FORMULAIRE AGENT ==========" -ForegroundColor Magenta
     Write-Host "[FORM] Mode: $Mode" -ForegroundColor Magenta
 
     Add-Type -AssemblyName System.Windows.Forms
@@ -27,7 +106,6 @@ function Show-AgentForm {
     $yPos = 20
     $labelWidth = 150
     $fieldWidth = 350
-    $checkWidth = 30
     $leftMargin = 30
     $fieldLeft = $leftMargin + $labelWidth
 
@@ -93,24 +171,44 @@ function Show-AgentForm {
     $txtTel = New-Object System.Windows.Forms.TextBox
     $txtTel.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
     $txtTel.Size = New-Object System.Drawing.Size($fieldWidth, 25)
-    $txtTel.MaxLength = 14
+    $txtTel.MaxLength = 25
     if ($Agent -and $Agent.telephone) { 
-        $tel = $Agent.telephone
-        if ($tel -match '^(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$') {
-            $txtTel.Text = "$1 $2 $3 $4 $5"
-        } else {
-            $txtTel.Text = $tel
-        }
+        $txtTel.Text = Format-TelephoneAffichage -Telephone $Agent.telephone
     }
     $form.Controls.Add($txtTel)
     
     $lblTelError = New-Object System.Windows.Forms.Label
-    $lblTelError.Text = ""
-    $lblTelError.ForeColor = $CouleurOrange
+    $lblTelError.Text = "Ex: 0123456789 ou 01 23 45 67 89 ou +33 1 23 45 67 89"
+    $lblTelError.ForeColor = [System.Drawing.Color]::Gray
     $lblTelError.Font = New-Object System.Drawing.Font("Segoe UI", 8)
     $lblTelError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
     $lblTelError.Size = New-Object System.Drawing.Size($fieldWidth, 15)
     $form.Controls.Add($lblTelError)
+    $yPos += 55
+
+    # ============================================
+    # EMAIL
+    # ============================================
+    $lblEmail = New-Object System.Windows.Forms.Label
+    $lblEmail.Text = "Email :"
+    $lblEmail.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
+    $lblEmail.Size = New-Object System.Drawing.Size($labelWidth, 25)
+    $form.Controls.Add($lblEmail)
+
+    $txtEmail = New-Object System.Windows.Forms.TextBox
+    $txtEmail.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
+    $txtEmail.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+    $txtEmail.MaxLength = 100
+    if ($Agent) { $txtEmail.Text = $Agent.email }
+    $form.Controls.Add($txtEmail)
+    
+    $lblEmailError = New-Object System.Windows.Forms.Label
+    $lblEmailError.Text = ""
+    $lblEmailError.ForeColor = $CouleurOrange
+    $lblEmailError.Font = New-Object System.Drawing.Font("Segoe UI", 8)
+    $lblEmailError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
+    $lblEmailError.Size = New-Object System.Drawing.Size($fieldWidth, 15)
+    $form.Controls.Add($lblEmailError)
     $yPos += 55
 
     # ============================================
@@ -175,6 +273,28 @@ function Show-AgentForm {
     $yPos += 55
 
     # ============================================
+    # POSTE
+    # ============================================
+    $lblPoste = New-Object System.Windows.Forms.Label
+    $lblPoste.Text = "Poste * :"
+    $lblPoste.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
+    $lblPoste.Size = New-Object System.Drawing.Size($labelWidth, 25)
+    $form.Controls.Add($lblPoste)
+
+    $cmbPoste = New-Object System.Windows.Forms.ComboBox
+    $cmbPoste.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
+    $cmbPoste.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+    $cmbPoste.DropDownStyle = "DropDownList"
+    $cmbPoste.Items.AddRange(@(Get-PostesListe))
+    if ($Agent -and $Agent.poste) {
+        $cmbPoste.SelectedItem = $Agent.poste
+    } else {
+        $cmbPoste.SelectedIndex = 0
+    }
+    $form.Controls.Add($cmbPoste)
+    $yPos += 55
+
+    # ============================================
     # VÉHICULE ATTITRÉ
     # ============================================
     $lblVehicule = New-Object System.Windows.Forms.Label
@@ -216,7 +336,7 @@ function Show-AgentForm {
         $script:vehiculeIds += $null
         
         foreach ($v in $tousVehicules) {
-            $displayText = "$($v.numero_parc) - $($v.immatriculation)"
+            $displayText = "$($v.numero_parc) - $($v.immatriculation) - $($v.marque) $($v.modele)"
             $cmbVehicule.Items.Add($displayText) | Out-Null
             $script:vehiculeIds += $v.id
         }
@@ -230,168 +350,119 @@ function Show-AgentForm {
     Load-VehiculesList
 
     # ============================================
-    # VALIDATION DOUBLONS (SQLite)
-    # ============================================
-    function Test-DoublonEmail {
-        param($Email)
-        if ([string]::IsNullOrWhiteSpace($Email)) { return $false }
-        
-        $conn = Open-Connection
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = "SELECT id_agent FROM Agent WHERE email = @email"
-        $cmd.Parameters.AddWithValue("@email", $Email.ToLower()) | Out-Null
-        $existing = $cmd.ExecuteScalar()
-        $conn.Close()
-        
-        if ($Mode -eq "Modifier" -and $Agent -and $existing -eq $Agent.id) {
-            return $false
-        }
-        return ($existing -ne $null)
-    }
-    
-    function Test-DoublonTel {
-        param($Telephone)
-        if ([string]::IsNullOrWhiteSpace($Telephone)) { return $false }
-        
-        $conn = Open-Connection
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = "SELECT id_agent FROM Agent WHERE telephone = @tel"
-        $cmd.Parameters.AddWithValue("@tel", $Telephone) | Out-Null
-        $existing = $cmd.ExecuteScalar()
-        $conn.Close()
-        
-        if ($Mode -eq "Modifier" -and $Agent -and $existing -eq $Agent.id) {
-            return $false
-        }
-        return ($existing -ne $null)
-    }
-
-    # ============================================
     # VALIDATION EN TEMPS RÉEL
     # ============================================
+    
     $txtTel.Add_TextChanged({
-        $val = $txtTel.Text.Trim() -replace '[^0-9]', ''
-        if (-not [string]::IsNullOrWhiteSpace($val) -and $val.Length -ne 10) {
-            $lblTelError.Text = "10 chiffres requis"
-        } elseif (Test-DoublonTel -Telephone $val) {
-            $lblTelError.Text = "Ce numéro existe déjà !"
+        $val = $txtTel.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($val)) {
+            $lblTelError.Text = "Optionnel - Ex: 0123456789 ou 01 23 45 67 89 ou +33 1 23 45 67 89"
+            $lblTelError.ForeColor = [System.Drawing.Color]::Gray
+        } elseif (Test-TelephoneFrancais -Telephone $val) {
+            $lblTelError.Text = "✓ Numéro valide"
+            $lblTelError.ForeColor = [System.Drawing.Color]::Green
         } else {
-            $lblTelError.Text = ""
+            $lblTelError.Text = "✗ Numéro invalide. 10 chiffres commençant par 0 ou +33"
+            $lblTelError.ForeColor = $CouleurOrange
         }
     })
 
     $txtEmail.Add_TextChanged({
         $val = $txtEmail.Text.Trim()
-        if (-not [string]::IsNullOrWhiteSpace($val)) {
-            if ($val -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') {
-                $lblEmailError.Text = "Format email invalide"
-            } elseif (Test-DoublonEmail -Email $val) {
-                $lblEmailError.Text = "Cet email existe déjà !"
-            } else {
-                $lblEmailError.Text = ""
-            }
+        if ([string]::IsNullOrWhiteSpace($val)) {
+            $lblEmailError.Text = ""
+        } elseif ($val -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') {
+            $lblEmailError.Text = "Format email invalide"
+        } else {
+            $lblEmailError.Text = "✓"
+            $lblEmailError.ForeColor = [System.Drawing.Color]::Green
         }
     })
 
     # ============================================
-    # ÉVÉNEMENT VALIDER
+    # VALIDATION FINALE
     # ============================================
     $BtnValider.Add_Click({
-        $erreurs = @()
         $valid = $true
         
+        # Nom
         $nom = $txtNom.Text.Trim()
         if ([string]::IsNullOrWhiteSpace($nom)) {
             $lblNomError.Text = "Champ obligatoire"
-            $erreurs += "Nom"
             $valid = $false
         } elseif ($nom.Length -lt 2) {
             $lblNomError.Text = "Minimum 2 caractères"
-            $erreurs += "Nom"
             $valid = $false
         } else {
             $lblNomError.Text = ""
         }
         
+        # Prénom
         $prenom = $txtPrenom.Text.Trim()
         if ([string]::IsNullOrWhiteSpace($prenom)) {
             $lblPrenomError.Text = "Champ obligatoire"
-            $erreurs += "Prénom"
             $valid = $false
         } elseif ($prenom.Length -lt 2) {
             $lblPrenomError.Text = "Minimum 2 caractères"
-            $erreurs += "Prénom"
             $valid = $false
         } else {
             $lblPrenomError.Text = ""
         }
         
-        $telephone = $txtTel.Text.Trim() -replace '[^0-9]', ''
-        if (-not [string]::IsNullOrWhiteSpace($telephone) -and $telephone.Length -ne 10) {
-            $lblTelError.Text = "10 chiffres requis"
-            $erreurs += "Téléphone"
-            $valid = $false
-        } elseif (Test-DoublonTel -Telephone $telephone) {
-            $lblTelError.Text = "Numéro déjà existant"
-            $erreurs += "Téléphone"
-            $valid = $false
-        }
-        
-        $email = $txtEmail.Text.Trim().ToLower()
-        if (-not [string]::IsNullOrWhiteSpace($email)) {
-            if ($email -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') {
-                $lblEmailError.Text = "Format email invalide"
-                $erreurs += "Email"
-                $valid = $false
-            } elseif (Test-DoublonEmail -Email $email) {
-                $lblEmailError.Text = "Email déjà existant"
-                $erreurs += "Email"
+        # Téléphone
+        $telephoneRaw = $txtTel.Text.Trim()
+        if (-not [string]::IsNullOrWhiteSpace($telephoneRaw)) {
+            if (-not (Test-TelephoneFrancais -Telephone $telephoneRaw)) {
+                $lblTelError.Text = "Numéro invalide"
                 $valid = $false
             }
         }
         
-        $vehiculeId = $script:vehiculeIds[$cmbVehicule.SelectedIndex]
+        # Email
+        $emailRaw = $txtEmail.Text.Trim()
+        if (-not [string]::IsNullOrWhiteSpace($emailRaw)) {
+            if ($emailRaw -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') {
+                $lblEmailError.Text = "Email invalide"
+                $valid = $false
+            }
+        }
         
         if (-not $valid) {
-            Write-Host "[FORM] Erreurs: $($erreurs -join ', ')" -ForegroundColor Red
             return
         }
         
-        Write-Host "[FORM] Validation reussie" -ForegroundColor Green
-        $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
-        $form.Close()
-    })
-
-    # ============================================
-    # AFFICHAGE
-    # ============================================
-    $result = $form.ShowDialog()
-
-    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        # Stocker le téléphone
+        $telephoneFinal = $null
+        if (-not [string]::IsNullOrWhiteSpace($telephoneRaw)) {
+            $telephoneFinal = Format-TelephoneStockage -Telephone $telephoneRaw
+        }
+        
         $vehiculeId = $script:vehiculeIds[$cmbVehicule.SelectedIndex]
         if ($vehiculeId -eq $null) { $vehiculeId = 0 }
         
-        $telephoneClean = $txtTel.Text.Trim() -replace '[^0-9]', ''
-        if ([string]::IsNullOrWhiteSpace($telephoneClean)) { $telephoneClean = $null }
-        
-        $emailClean = $txtEmail.Text.Trim().ToLower()
-        if ([string]::IsNullOrWhiteSpace($emailClean)) { $emailClean = $null }
+        $emailFinal = $txtEmail.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($emailFinal)) { $emailFinal = $null }
         
         $donnees = @{
             nom = $txtNom.Text.Trim()
             prenom = $txtPrenom.Text.Trim()
-            telephone = $telephoneClean
-            email = $emailClean
+            telephone = $telephoneFinal
+            email = $emailFinal
             date_entree = $dtpDateEntree.Value.ToString("yyyy-MM-dd")
             type_contrat = $cmbContrat.SelectedItem.ToString()
             base_heures_semaine = [int]$numHeures.Value
+            poste = $cmbPoste.SelectedItem.ToString()
             vehicule_id = $vehiculeId
         }
         
-        Write-Host "[FORM] Donnees retournees: $($donnees | ConvertTo-Json -Compress)" -ForegroundColor Green
-        Write-Host "[FORM] ========== FIN FORMULAIRE ==========" -ForegroundColor Magenta
+        $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $form.Close()
+    })
+
+    $result = $form.ShowDialog()
+
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
         return $donnees
     }
     return $null
 }
-
