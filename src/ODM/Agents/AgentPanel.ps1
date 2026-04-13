@@ -1,49 +1,47 @@
-# AgentPanel.ps1
+# AgentPanel.ps1 - VERSION SANS LOGS
 
 . "$PSScriptRoot\..\..\Database\Database.ps1"
 . "$PSScriptRoot\AgentForm.ps1"
 
 function Show-AgentsPanel {
-    Write-Host "[AgentPanel] Démarrage..." -ForegroundColor Cyan
     
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
-    # Création du panel
     $mainPanel = New-Object System.Windows.Forms.Panel
     $mainPanel.Dock = "Fill"
     $mainPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $mainPanel.Padding = New-Object System.Windows.Forms.Padding(20)
 
-    # Titre
     $lblTitle = New-Object System.Windows.Forms.Label
     $lblTitle.Text = "Gestion des agents"
     $lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
     $lblTitle.ForeColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
     $lblTitle.Location = New-Object System.Drawing.Point(20, 20)
-    $lblTitle.Size = New-Object System.Drawing.Size(300, 40)
+    $lblTitle.Size = New-Object System.Drawing.Size(400, 50)
     $mainPanel.Controls.Add($lblTitle)
 
-    # Bouton Ajouter
     $btnAjouter = New-Object System.Windows.Forms.Button
     $btnAjouter.Text = "+ AJOUTER UN AGENT"
     $btnAjouter.Location = New-Object System.Drawing.Point(900, 20)
-    $btnAjouter.Size = New-Object System.Drawing.Size(180, 40)
+    $btnAjouter.Size = New-Object System.Drawing.Size(200, 45)
     $btnAjouter.BackColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
     $btnAjouter.ForeColor = [System.Drawing.Color]::White
     $btnAjouter.FlatStyle = "Flat"
+    $btnAjouter.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnAjouter.Cursor = [System.Windows.Forms.Cursors]::Hand
     $mainPanel.Controls.Add($btnAjouter)
 
-    # DataGridView
     $grid = New-Object System.Windows.Forms.DataGridView
     $grid.Location = New-Object System.Drawing.Point(20, 80)
-    $grid.Size = New-Object System.Drawing.Size(1060, 500)
+    $grid.Size = New-Object System.Drawing.Size(1100, 500)
     $grid.AllowUserToAddRows = $false
     $grid.RowHeadersVisible = $false
     $grid.BackgroundColor = [System.Drawing.Color]::White
     $grid.SelectionMode = "FullRowSelect"
     $grid.BorderStyle = "FixedSingle"
+    $grid.AutoSizeColumnsMode = "Fill"
 
-    # Colonnes
     $grid.Columns.Add("Nom", "Nom") | Out-Null
     $grid.Columns.Add("Prenom", "Prénom") | Out-Null
     $grid.Columns.Add("Tel", "Téléphone") | Out-Null
@@ -61,12 +59,11 @@ function Show-AgentsPanel {
     $grid.Columns[4].Width = 80
     $grid.Columns[5].Width = 80
     $grid.Columns[6].Width = 120
-    $grid.Columns[7].Width = 50
-    $grid.Columns[8].Width = 50
+    $grid.Columns[7].Width = 60
+    $grid.Columns[8].Width = 60
 
     $mainPanel.Controls.Add($grid)
 
-    # Refresh
     function RefreshGrid {
         $grid.Rows.Clear()
         $agents = Get-Agents
@@ -85,12 +82,10 @@ function Show-AgentsPanel {
             $grid.Rows[$i].Tag = $a.id
             $i++
         }
-        Write-Host "[AgentPanel] $i agents" -ForegroundColor Gray
     }
 
     RefreshGrid
 
-    # Événements
     $btnAjouter.Add_Click({
         $nouveau = Show-AgentForm -Mode "Ajouter"
         if ($nouveau) {
@@ -107,7 +102,7 @@ function Show-AgentsPanel {
                 $agent = Get-AgentById -Id $id
                 $modif = Show-AgentForm -Mode "Modifier" -Agent $agent
                 if ($modif) {
-                    Update-Agent -Id $id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -VehiculeId $null -Poste $modif.poste
+                    Update-Agent -Id $id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -Poste $modif.poste
                     RefreshGrid
                 }
             }
@@ -122,6 +117,5 @@ function Show-AgentsPanel {
         }
     })
 
-    Write-Host "[AgentPanel] Panel retourné" -ForegroundColor Green
     return $mainPanel
 }
