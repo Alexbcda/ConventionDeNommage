@@ -9,15 +9,31 @@
 $script:DebugAgentsUI = $false
 
 function Refresh-AgentsGrid {
-    param([Parameter(Mandatory=$true)] $Grid)
+    <#
+    Refresh-AgentsGrid
+    - Charge les agents selon le mode historique
+    - Centralise la logique d'affichage et le style des lignes
+    #>
+    param(
+        [Parameter(Mandatory=$true)] $Grid,
+        [bool]$IncludeHistorique = $false
+    )
 
     Write-Log "[AgentsUI] RefreshGrid begin" "INFO"
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     try {
         if (-not $Grid) { throw "Grid is null" }
         $null = $Grid.Rows.Clear()
-        $agents = Get-Agents
+
+        # Optimisation: une seule lecture DB selon le mode
+        $agents = if ($IncludeHistorique) { Get-AllAgents } else { Get-Agents }
         Write-Log "[AgentsUI] RefreshGrid loaded agents" "INFO" @{ count = $agents.Count }
+
+        $baseFont = if ($Grid.DefaultCellStyle.Font) { $Grid.DefaultCellStyle.Font } else { $Grid.Font }
+        $boldFont = New-Object System.Drawing.Font($baseFont, ([System.Drawing.FontStyle]::Bold))
+        $normalFont = New-Object System.Drawing.Font($baseFont, ([System.Drawing.FontStyle]::Regular))
+        $inactiveColor = [System.Drawing.Color]::FromArgb(150, 150, 150)
+
         $i = 0
         foreach ($a in $agents) {
             $null = $Grid.Rows.Add()
@@ -34,6 +50,16 @@ function Refresh-AgentsGrid {
             $Grid.Rows[$i].Cells[10].Value = "✏️"
             $Grid.Rows[$i].Cells[11].Value = "🗑️"
             $Grid.Rows[$i].Tag = $a.id
+
+            # Style visuel: Actifs en gras, Inactifs en gris clair
+            $isActif = ([int]$a.actif -eq 1)
+            if ($isActif) {
+                $Grid.Rows[$i].DefaultCellStyle.Font = $boldFont
+                # On garde la couleur par défaut
+            } else {
+                $Grid.Rows[$i].DefaultCellStyle.Font = $normalFont
+                $Grid.Rows[$i].DefaultCellStyle.ForeColor = $inactiveColor
+            }
             $i++
         }
         # Tri visuel (en plus du ORDER BY côté SQL)
@@ -68,6 +94,23 @@ function Show-AgentsPanel {
     $lblTitle.Size = New-Object System.Drawing.Size(400, 50)
     $mainPanel.Controls.Add($lblTitle)
 
+    # ===== Option historique (actifs + inactifs) =====
+    $lblHistorique = New-Object System.Windows.Forms.Label
+    $lblHistorique.Text = "Afficher l’historique des agents"
+    $lblHistorique.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Regular)
+    $lblHistorique.ForeColor = [System.Drawing.Color]::FromArgb(60, 60, 60)
+    $lblHistorique.Location = New-Object System.Drawing.Point(20, 62)
+    $lblHistorique.Size = New-Object System.Drawing.Size(260, 20)
+    $mainPanel.Controls.Add($lblHistorique)
+
+    $chkHistoriqueAgents = New-Object System.Windows.Forms.CheckBox
+    $chkHistoriqueAgents.Name = "chkHistoriqueAgents"
+    $chkHistoriqueAgents.Location = New-Object System.Drawing.Point(285, 63)
+    $chkHistoriqueAgents.Size = New-Object System.Drawing.Size(20, 20)
+    $chkHistoriqueAgents.Checked = $false
+    $chkHistoriqueAgents.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $mainPanel.Controls.Add($chkHistoriqueAgents)
+
     $btnAjouter = New-Object System.Windows.Forms.Button
     $btnAjouter.Text = "+ AJOUTER UN AGENT"
     $btnAjouter.Location = New-Object System.Drawing.Point(900, 20)
@@ -78,7 +121,7 @@ function Show-AgentsPanel {
 
     $grid = New-Object System.Windows.Forms.DataGridView
     $grid.Name = "AgentsGrid"
-    $grid.Location = New-Object System.Drawing.Point(20, 80)
+    $grid.Location = New-Object System.Drawing.Point(20, 95)
     $grid.Size = New-Object System.Drawing.Size(1100, 500)
     $grid.AllowUserToAddRows = $false
     $grid.RowHeadersVisible = $false
@@ -115,7 +158,14 @@ function Show-AgentsPanel {
     $grid.Columns[11].Width = 90
 
     $mainPanel.Controls.Add($grid)
-    Refresh-AgentsGrid -Grid $grid
+    Refresh-AgentsGrid -Grid $grid -IncludeHistorique $chkHistoriqueAgents.Checked
+
+    $chkHistoriqueAgents.Add_CheckedChanged({
+        $mode = if ($this.Checked) { "ON" } else { "OFF" }
+        Write-Log "[AgentsUI] Historique mode $mode" "INFO"
+        $g = $this.Parent.Controls["AgentsGrid"]
+        Refresh-AgentsGrid -Grid $g -IncludeHistorique $this.Checked
+    })
 
     $btnAjouter.Add_Click({
         # $mainPanel peut être $null dans certains contextes d'event; utiliser le bouton comme point d'ancrage.
@@ -156,7 +206,8 @@ function Show-AgentsPanel {
                 [System.Windows.Forms.MessageBox]::Show(("Ajout OK (id={0})" -f $newId), "Agents", "OK", "Information") | Out-Null
             }
             $g = $this.Parent.Controls["AgentsGrid"]
-            Refresh-AgentsGrid -Grid $g
+            $chk = $this.Parent.Controls["chkHistoriqueAgents"]
+            Refresh-AgentsGrid -Grid $g -IncludeHistorique $chk.Checked
         } catch {
             Write-Log "[AgentsUI] Add agent failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
             [System.Windows.Forms.MessageBox]::Show(
@@ -189,7 +240,8 @@ function Show-AgentsPanel {
             $modif = Show-AgentForm -Mode "Modifier" -Agent $agent -Owner $owner
             if ($modif) {
                 Update-Agent -Id $id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -Poste $modif.poste | Out-Null
-                Refresh-AgentsGrid -Grid $sender
+                $chk = $sender.Parent.Controls["chkHistoriqueAgents"]
+                Refresh-AgentsGrid -Grid $sender -IncludeHistorique $chk.Checked
             }
             return
         }
@@ -198,7 +250,8 @@ function Show-AgentsPanel {
             $confirm = [System.Windows.Forms.MessageBox]::Show("Supprimer cet agent ?", "Confirmation", "YesNo")
             if ($confirm -eq "Yes") {
                 Remove-Agent -Id $id | Out-Null
-                Refresh-AgentsGrid -Grid $sender
+                $chk = $sender.Parent.Controls["chkHistoriqueAgents"]
+                Refresh-AgentsGrid -Grid $sender -IncludeHistorique $chk.Checked
             }
             return
         }

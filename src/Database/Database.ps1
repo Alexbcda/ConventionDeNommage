@@ -357,6 +357,49 @@ ORDER BY a.nom, a.prenom
     } finally { Close-Connection $conn }
 }
 
+function Get-AllAgents {
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+SELECT
+  a.id_agent, a.nom, a.prenom, a.telephone, a.email,
+  a.date_entree, a.date_sortie, a.type_contrat,
+  a.base_heures_semaine, a.poste, a.actif, a.vehicule_id,
+  v.numero_parc AS numero_parc
+FROM Agent a
+LEFT JOIN Vehicule v ON v.id_vehicule = a.vehicule_id
+ORDER BY a.nom, a.prenom
+"@
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $reader = $cmd.ExecuteReader()
+        $agents = @()
+        while ($reader.Read()) {
+            $agents += [PSCustomObject]@{
+                id = $reader["id_agent"]
+                nom = $reader["nom"]
+                prenom = $reader["prenom"]
+                telephone = $reader["telephone"]
+                email = $reader["email"]
+                date_entree = FromDbDate $reader["date_entree"]
+                date_sortie = FromDbDate $reader["date_sortie"]
+                type_contrat = $reader["type_contrat"]
+                base_heures_semaine = $reader["base_heures_semaine"]
+                poste = $reader["poste"]
+                actif = $reader["actif"]
+                vehicule_id = $reader["vehicule_id"]
+                numero_parc = $reader["numero_parc"]
+            }
+        }
+        $sw.Stop()
+        Write-Log "[DB] Get-AllAgents" "INFO" @{ count = $agents.Count; elapsed_ms = $sw.ElapsedMilliseconds }
+        return $agents
+    } catch {
+        Write-Log "[DB] Get-AllAgents failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    } finally { Close-Connection $conn }
+}
+
 function Get-Vehicules {
     $conn = Open-Connection
     try {
