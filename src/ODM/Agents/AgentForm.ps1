@@ -3,6 +3,7 @@
 . "$PSScriptRoot\..\..\Database\Database.ps1"
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
 . "$PSScriptRoot\..\..\Core\Logger.ps1"
+. "$PSScriptRoot\..\..\Common\Validation.ps1"
 
 function Show-AgentForm {
     param(
@@ -26,6 +27,78 @@ function Show-AgentForm {
     $left = 30
     $labelW = 150
     $fieldW = 350
+    $errorColor = [System.Drawing.Color]::FromArgb(180, 0, 0)
+    $errorFont = New-Object System.Drawing.Font("Arial", 8, [System.Drawing.FontStyle]::Regular)
+
+    $script:__telUpdating = $false
+
+    function Add-ErrorLabel {
+        param([int]$x, [int]$yPos)
+        $lbl = New-Object System.Windows.Forms.Label
+        $lbl.AutoSize = $false
+        $lbl.Size = New-Object System.Drawing.Size($fieldW, 18)
+        $lbl.Location = New-Object System.Drawing.Point($x, ($yPos + 24))
+        $lbl.ForeColor = $errorColor
+        $lbl.Font = $errorFont
+        $lbl.Text = ""
+        $form.Controls.Add($lbl)
+        return $lbl
+    }
+
+    function Set-FieldError {
+        param(
+            [System.Windows.Forms.Label]$Label,
+            [string]$Message
+        )
+        if (-not $Label) { return }
+        $Label.Text = $Message
+        $Label.Visible = -not [string]::IsNullOrWhiteSpace($Message)
+    }
+
+    function Get-TelError {
+        param([string]$Text)
+        $digits = Normalize-Telephone $Text
+        if ([string]::IsNullOrWhiteSpace($digits)) { return "" } # tel optionnel
+        if ($digits.Length -ne 10) { return "Téléphone invalide: 10 chiffres requis." }
+        return ""
+    }
+
+    function Get-EmailError {
+        param([string]$Text)
+        if (Test-Email $Text) { return "" }
+        return "Email invalide (ex: prenom.nom@domaine.fr)."
+    }
+
+    function Validate-All {
+        param([switch]$FocusFirstInvalid)
+        $hasError = $false
+
+        # Nom / Prénom (strict)
+        $nom = $txtNom.Text.Trim()
+        $prenom = $txtPrenom.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($nom) -or $nom.Length -lt 2) {
+            $hasError = $true
+            if ($FocusFirstInvalid) { $txtNom.Focus() }
+            return $false
+        }
+        if ([string]::IsNullOrWhiteSpace($prenom) -or $prenom.Length -lt 2) {
+            $hasError = $true
+            if ($FocusFirstInvalid) { $txtPrenom.Focus() }
+            return $false
+        }
+
+        # Téléphone / Email
+        Set-FieldError -Label $lblTelError -Message (Get-TelError $txtTel.Text)
+        Set-FieldError -Label $lblEmailError -Message (Get-EmailError $txtEmail.Text)
+        if ($lblTelError.Visible -or $lblEmailError.Visible) { $hasError = $true }
+
+        if ($hasError -and $FocusFirstInvalid) {
+            if ($lblTelError.Visible) { $txtTel.Focus(); return $false }
+            if ($lblEmailError.Visible) { $txtEmail.Focus(); return $false }
+        }
+
+        return (-not $hasError)
+    }
 
     function Add-Label($text) {
         $lbl = New-Object System.Windows.Forms.Label
@@ -57,11 +130,13 @@ function Show-AgentForm {
     # TEL
     Add-Label "Téléphone :"
     $txtTel = Add-TextBox $(if ($Agent -and $Agent.telephone) { $Agent.telephone } else { "" })
+    $lblTelError = Add-ErrorLabel -x ($left + $labelW) -yPos $y
     $y += 40
 
     # EMAIL
     Add-Label "Email :"
     $txtEmail = Add-TextBox $(if ($Agent -and $Agent.email) { $Agent.email } else { "" })
+    $lblEmailError = Add-ErrorLabel -x ($left + $labelW) -yPos $y
     $y += 40
 
     # CONTRAT
@@ -171,11 +246,27 @@ function Show-AgentForm {
                 return
             }
 
+            if (-not (Validate-All -FocusFirstInvalid)) {
+                Write-Log "[AgentForm] Validation failed: tel/email" "WARN" @{
+                    tel = $txtTel.Text; email = $txtEmail.Text
+                }
+                return
+            }
+
+            $telDigits = Normalize-Telephone $txtTel.Text
+            if (-not [string]::IsNullOrWhiteSpace($telDigits) -and -not (Test-Telephone $telDigits)) {
+                # Double safety (strict)
+                Set-FieldError -Label $lblTelError -Message "Téléphone invalide: 10 chiffres requis."
+                $txtTel.Focus()
+                return
+            }
+
             $result = [PSCustomObject]@{
                 nom = $nom
                 prenom = $prenom
-                telephone = $txtTel.Text.Trim()
-                email = $txtEmail.Text.Trim()
+                # Stockage nettoyé (digits-only) pour éviter les formats variables
+                telephone = $telDigits
+                email = (Normalize-Email $txtEmail.Text)
                 type_contrat = $cmbContrat.SelectedItem.ToString()
                 base_heures_semaine = [int]$numHeures.Value
                 poste = $cmbPoste.SelectedItem.ToString()
@@ -196,6 +287,40 @@ function Show-AgentForm {
             ) | Out-Null
             return
         }
+    })
+
+    # ===== Validation temps réel =====
+
+    $txtTel.Add_TextChanged({
+        if ($script:__telUpdating) { return }
+        try {
+            $script:__telUpdating = $true
+
+            $digits = Normalize-Telephone $txtTel.Text
+            if ($digits.Length -gt 10) { $digits = $digits.Substring(0, 10) }
+
+            $formatted = Format-Telephone $digits
+            if ($txtTel.Text -ne $formatted) {
+                $txtTel.Text = $formatted
+                $txtTel.SelectionStart = $txtTel.Text.Length
+            }
+
+            Set-FieldError -Label $lblTelError -Message (Get-TelError $txtTel.Text)
+        } finally {
+            $script:__telUpdating = $false
+        }
+    })
+
+    $txtTel.Add_Leave({
+        # Normalise une dernière fois en sortie de champ
+        $digits = Normalize-Telephone $txtTel.Text
+        if ($digits.Length -gt 10) { $digits = $digits.Substring(0, 10) }
+        $txtTel.Text = Format-Telephone $digits
+        Set-FieldError -Label $lblTelError -Message (Get-TelError $txtTel.Text)
+    })
+
+    $txtEmail.Add_TextChanged({
+        Set-FieldError -Label $lblEmailError -Message (Get-EmailError $txtEmail.Text)
     })
 
     if ($Owner) {
