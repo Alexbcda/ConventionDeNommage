@@ -29,37 +29,36 @@ function Refresh-AgentsGrid {
         $agents = if ($IncludeHistorique) { Get-AllAgents } else { Get-Agents }
         Write-Log "[AgentsUI] RefreshGrid loaded agents" "INFO" @{ count = $agents.Count }
 
-        $baseFont = if ($Grid.DefaultCellStyle.Font) { $Grid.DefaultCellStyle.Font } else { $Grid.Font }
-        $boldFont = New-Object System.Drawing.Font($baseFont, ([System.Drawing.FontStyle]::Bold))
+        # [AgentsUI] Active agents set to normal font (no bold)
+        # Style texte: actifs en police normale, inactifs en gris clair (placeholder)
+        $baseFont = $script:PoliceNormal
+        if (-not $baseFont) { $baseFont = (if ($Grid.DefaultCellStyle.Font) { $Grid.DefaultCellStyle.Font } else { $Grid.Font }) }
         $normalFont = New-Object System.Drawing.Font($baseFont, ([System.Drawing.FontStyle]::Regular))
         $inactiveColor = [System.Drawing.Color]::FromArgb(150, 150, 150)
 
         $i = 0
         foreach ($a in $agents) {
             $null = $Grid.Rows.Add()
-            $Grid.Rows[$i].Cells[0].Value = $a.nom
-            $Grid.Rows[$i].Cells[1].Value = $a.prenom
-            $Grid.Rows[$i].Cells[2].Value = $a.telephone
-            $Grid.Rows[$i].Cells[3].Value = $a.email
-            $Grid.Rows[$i].Cells[4].Value = $a.poste
-            $Grid.Rows[$i].Cells[5].Value = $a.type_contrat
-            $Grid.Rows[$i].Cells[6].Value = $a.base_heures_semaine
-            $Grid.Rows[$i].Cells[7].Value = if ($a.date_entree) { ([datetime]$a.date_entree).ToString("dd/MM/yyyy") } else { "" }
-            $Grid.Rows[$i].Cells[8].Value = if ($a.date_sortie) { ([datetime]$a.date_sortie).ToString("dd/MM/yyyy") } else { "" }
-            $Grid.Rows[$i].Cells[9].Value = if ($a.numero_parc -and $a.numero_parc -ne [System.DBNull]::Value) { $a.numero_parc } else { "" }
-            $Grid.Rows[$i].Cells[10].Value = "✏️"
-            $Grid.Rows[$i].Cells[11].Value = "🗑️"
+            $Grid.Rows[$i].Cells[$Grid.Columns["Nom"].Index].Value = $a.nom
+            $Grid.Rows[$i].Cells[$Grid.Columns["Prenom"].Index].Value = $a.prenom
+            $Grid.Rows[$i].Cells[$Grid.Columns["Tel"].Index].Value = $a.telephone
+            $Grid.Rows[$i].Cells[$Grid.Columns["Email"].Index].Value = $a.email
+            $Grid.Rows[$i].Cells[$Grid.Columns["Parc"].Index].Value = if ($a.numero_parc -and $a.numero_parc -ne [System.DBNull]::Value) { $a.numero_parc } else { "" }
+            $Grid.Rows[$i].Cells[$Grid.Columns["Contrat"].Index].Value = $a.type_contrat
+            $Grid.Rows[$i].Cells[$Grid.Columns["Heures"].Index].Value = $a.base_heures_semaine
+            $Grid.Rows[$i].Cells[$Grid.Columns["Edit"].Index].Value = "✏️"
+            $Grid.Rows[$i].Cells[$Grid.Columns["Delete"].Index].Value = "🗑️"
             $Grid.Rows[$i].Tag = $a.id
 
-            # Style visuel: Actifs en gras, Inactifs en gris clair
+            # Style visuel: Actifs = normal, Inactifs = gris clair (désactivé)
             $isActif = ([int]$a.actif -eq 1)
-            if ($isActif) {
-                $Grid.Rows[$i].DefaultCellStyle.Font = $boldFont
-                # On garde la couleur par défaut
-            } else {
-                $Grid.Rows[$i].DefaultCellStyle.Font = $normalFont
+            $Grid.Rows[$i].DefaultCellStyle.Font = $normalFont
+            if (-not $isActif) {
                 $Grid.Rows[$i].DefaultCellStyle.ForeColor = $inactiveColor
             }
+
+            # Appliquer couleur alternée via helper existant (si dispo)
+            try { Apply-AlternateRowColor -Grid $Grid -RowIndex $i -Row $i } catch {}
             $i++
         }
         # Tri visuel (en plus du ORDER BY côté SQL)
@@ -99,13 +98,14 @@ function Show-AgentsPanel {
     $lblHistorique.Text = "Afficher l’historique des agents"
     $lblHistorique.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Regular)
     $lblHistorique.ForeColor = [System.Drawing.Color]::FromArgb(60, 60, 60)
-    $lblHistorique.Location = New-Object System.Drawing.Point(20, 62)
+    # [AgentsUI] UI spacing adjusted +15px for history mode
+    $lblHistorique.Location = New-Object System.Drawing.Point(20, 77)
     $lblHistorique.Size = New-Object System.Drawing.Size(260, 20)
     $mainPanel.Controls.Add($lblHistorique)
 
     $chkHistoriqueAgents = New-Object System.Windows.Forms.CheckBox
     $chkHistoriqueAgents.Name = "chkHistoriqueAgents"
-    $chkHistoriqueAgents.Location = New-Object System.Drawing.Point(285, 63)
+    $chkHistoriqueAgents.Location = New-Object System.Drawing.Point(285, 78)
     $chkHistoriqueAgents.Size = New-Object System.Drawing.Size(20, 20)
     $chkHistoriqueAgents.Checked = $false
     $chkHistoriqueAgents.Cursor = [System.Windows.Forms.Cursors]::Hand
@@ -121,41 +121,69 @@ function Show-AgentsPanel {
 
     $grid = New-Object System.Windows.Forms.DataGridView
     $grid.Name = "AgentsGrid"
-    $grid.Location = New-Object System.Drawing.Point(20, 95)
-    $grid.Size = New-Object System.Drawing.Size(1100, 500)
+    # [UI] DataGridView fixed to responsive Fill layout
+    $grid.Location = New-Object System.Drawing.Point(20, 110)
+    # Taille de départ raisonnable (ne doit pas dépasser la fenêtre); Anchor gère le responsive ensuite
+    $grid.Size = New-Object System.Drawing.Size(1100, 560)
+    $grid.Anchor = "Top,Bottom,Left,Right"
     $grid.AllowUserToAddRows = $false
     $grid.RowHeadersVisible = $false
     $grid.BackgroundColor = [System.Drawing.Color]::White
     $grid.SelectionMode = "FullRowSelect"
     $grid.BorderStyle = "FixedSingle"
-    $grid.AutoSizeColumnsMode = "Fill"
+    # Scroll horizontal activé (resize manuel)
+    $grid.ScrollBars = [System.Windows.Forms.ScrollBars]::Both
+    # Mode sans autosize pour permettre le redimensionnement manuel
+    $grid.AutoSizeColumnsMode = "None"
+    $grid.AutoGenerateColumns = $false
+    $grid.AllowUserToResizeColumns = $true
     Set-GridStyle -Grid $grid
 
-    $grid.Columns.Add("Nom", "Nom") | Out-Null
-    $grid.Columns.Add("Prenom", "Prénom") | Out-Null
-    $grid.Columns.Add("Tel", "Téléphone") | Out-Null
-    $grid.Columns.Add("Email", "Email") | Out-Null
-    $grid.Columns.Add("Poste", "Poste") | Out-Null
-    $grid.Columns.Add("Contrat", "Contrat") | Out-Null
-    $grid.Columns.Add("Heures", "Base horaire") | Out-Null
-    $grid.Columns.Add("Entree", "Date entrée") | Out-Null
-    $grid.Columns.Add("Sortie", "Date sortie") | Out-Null
-    $grid.Columns.Add("Parc", "N° parc") | Out-Null
-    $grid.Columns.Add("Edit", "Modifier") | Out-Null
-    $grid.Columns.Add("Delete", "Supprimer") | Out-Null
+    # Réduire le flickering (propriété non publique)
+    try {
+        $prop = $grid.GetType().GetProperty("DoubleBuffered", [System.Reflection.BindingFlags] "Instance,NonPublic")
+        if ($prop) { $prop.SetValue($grid, $true, $null) }
+    } catch {}
 
-    $grid.Columns[0].Width = 110
-    $grid.Columns[1].Width = 110
-    $grid.Columns[2].Width = 110
-    $grid.Columns[3].Width = 190
-    $grid.Columns[4].Width = 140
-    $grid.Columns[5].Width = 90
-    $grid.Columns[6].Width = 90
-    $grid.Columns[7].Width = 95
-    $grid.Columns[8].Width = 95
-    $grid.Columns[9].Width = 80
-    $grid.Columns[10].Width = 80
-    $grid.Columns[11].Width = 90
+    # Lignes alternées: pair = gris clair, impair = orange très léger (teinte douce existante)
+    $grid.DefaultCellStyle.BackColor = $script:CouleurGrisClair
+    $grid.AlternatingRowsDefaultCellStyle.BackColor = $script:CouleurLigneAlternee
+    $grid.DefaultCellStyle.SelectionBackColor = $script:CouleurSelection
+    $grid.DefaultCellStyle.SelectionForeColor = $script:CouleurBlanc
+    $grid.ColumnHeadersHeightSizeMode = "AutoSize"
+    $grid.ColumnHeadersDefaultCellStyle.WrapMode = [System.Windows.Forms.DataGridViewTriState]::False
+
+    # [UI] Manual column selection enabled for clean AgentPanel view
+    # Colonnes explicitement autorisées (ordre contrôlé)
+    $grid.Columns.Clear()
+    $null = $grid.Columns.Add("Nom", "Nom")
+    $null = $grid.Columns.Add("Prenom", "Prénom")
+    $null = $grid.Columns.Add("Tel", "Téléphone")
+    $null = $grid.Columns.Add("Email", "Email")
+    $null = $grid.Columns.Add("Parc", "N° parc")
+    $null = $grid.Columns.Add("Contrat", "Type de contrat")
+    $null = $grid.Columns.Add("Heures", "Base heures")
+    $null = $grid.Columns.Add("Edit", "Modifier")
+    $null = $grid.Columns.Add("Delete", "Supprimer")
+
+    # Largeurs par défaut (l'utilisateur peut ensuite redimensionner à la souris)
+    $grid.Columns["Nom"].Width = 150
+    $grid.Columns["Prenom"].Width = 120
+    $grid.Columns["Tel"].Width = 110
+    $grid.Columns["Email"].Width = 120
+    $grid.Columns["Parc"].Width = 90
+    $grid.Columns["Contrat"].Width = 130
+    $grid.Columns["Heures"].Width = 100
+    $grid.Columns["Edit"].Width = 90
+    $grid.Columns["Delete"].Width = 90  
+
+    # Actions: centrées et compactes
+    $grid.Columns["Edit"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleCenter
+    $grid.Columns["Delete"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleCenter
+
+    # Email: ne pas wrap, tronquage visuel si trop long
+    $grid.Columns["Email"].DefaultCellStyle.WrapMode = [System.Windows.Forms.DataGridViewTriState]::False
+    $grid.Columns["Email"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleLeft
 
     $mainPanel.Controls.Add($grid)
     Refresh-AgentsGrid -Grid $grid -IncludeHistorique $chkHistoriqueAgents.Checked
@@ -234,7 +262,10 @@ function Show-AgentsPanel {
 
         $id = [int]$row.Tag
 
-        if ($e.ColumnIndex -eq 10) {
+        $editCol = $sender.Columns["Edit"].Index
+        $delCol = $sender.Columns["Delete"].Index
+
+        if ($e.ColumnIndex -eq $editCol) {
             $agent = Get-AgentById -Id $id
             $owner = $sender.FindForm()
             $modif = Show-AgentForm -Mode "Modifier" -Agent $agent -Owner $owner
@@ -246,7 +277,7 @@ function Show-AgentsPanel {
             return
         }
 
-        if ($e.ColumnIndex -eq 11) {
+        if ($e.ColumnIndex -eq $delCol) {
             $confirm = [System.Windows.Forms.MessageBox]::Show("Supprimer cet agent ?", "Confirmation", "YesNo")
             if ($confirm -eq "Yes") {
                 Remove-Agent -Id $id | Out-Null
@@ -269,7 +300,11 @@ function Show-AgentsPanel {
         if ($e.RowIndex -ge $sender.Rows.Count) { return }
 
         # Colonnes actions: laisser le comportement existant du simple clic
-        if ($e.ColumnIndex -in 10, 11) { return }
+        try {
+            $editCol = $sender.Columns["Edit"].Index
+            $delCol = $sender.Columns["Delete"].Index
+            if ($e.ColumnIndex -in @($editCol, $delCol)) { return }
+        } catch {}
 
         $row = $sender.Rows[$e.RowIndex]
         if (-not $row) { return }

@@ -31,6 +31,9 @@ function Show-AgentForm {
     $errorFont = New-Object System.Drawing.Font("Arial", 8, [System.Drawing.FontStyle]::Regular)
 
     $script:__telUpdating = $false
+    $script:__telAllowFormatted = $false
+    $script:__nomUpdating = $false
+    $script:__prenomUpdating = $false
 
     function Add-ErrorLabel {
         param([int]$x, [int]$yPos)
@@ -57,16 +60,41 @@ function Show-AgentForm {
 
     function Get-TelError {
         param([string]$Text)
-        $digits = Normalize-Telephone $Text
-        if ([string]::IsNullOrWhiteSpace($digits)) { return "" } # tel optionnel
-        if ($digits.Length -ne 10) { return "Téléphone invalide: 10 chiffres requis." }
+        $formatted = Format-Telephone $Text
+        if ($formatted -eq "") { return "" } # tel optionnel
+        if ($null -eq $formatted) { return "Le numéro doit contenir 10 chiffres" }
         return ""
     }
 
     function Get-EmailError {
         param([string]$Text)
+        if ([string]::IsNullOrWhiteSpace($Text)) { return "" } # optionnel
         if (Test-Email $Text) { return "" }
-        return "Email invalide (ex: prenom.nom@domaine.fr)."
+        return "Adresse email invalide"
+    }
+
+    function Get-SecurityError {
+        param([string]$Text)
+        if (Test-SecuriteInput $Text) { return "" }
+        return "Caractères interdits détectés"
+    }
+
+    function Get-NomError {
+        $sec = Get-SecurityError $txtNom.Text
+        if ($sec) { return $sec }
+        $n = $txtNom.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($n)) { return "Nom obligatoire" }
+        if ($n.Length -lt 2) { return "Nom obligatoire (min 2 caractères)" }
+        return ""
+    }
+
+    function Get-PrenomError {
+        $sec = Get-SecurityError $txtPrenom.Text
+        if ($sec) { return $sec }
+        $p = $txtPrenom.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($p)) { return "Prénom obligatoire" }
+        if ($p.Length -lt 2) { return "Prénom obligatoire (min 2 caractères)" }
+        return ""
     }
 
     function Validate-All {
@@ -74,30 +102,35 @@ function Show-AgentForm {
         $hasError = $false
 
         # Nom / Prénom (strict)
-        $nom = $txtNom.Text.Trim()
-        $prenom = $txtPrenom.Text.Trim()
-        if ([string]::IsNullOrWhiteSpace($nom) -or $nom.Length -lt 2) {
+        Set-FieldError -Label $lblNomError -Message (Get-NomError)
+        Set-FieldError -Label $lblPrenomError -Message (Get-PrenomError)
+        if ($lblNomError.Visible) {
             $hasError = $true
             if ($FocusFirstInvalid) { $txtNom.Focus() }
-            return $false
         }
-        if ([string]::IsNullOrWhiteSpace($prenom) -or $prenom.Length -lt 2) {
+        if ($lblPrenomError.Visible) {
             $hasError = $true
-            if ($FocusFirstInvalid) { $txtPrenom.Focus() }
-            return $false
+            if ($FocusFirstInvalid -and -not $lblNomError.Visible) { $txtPrenom.Focus() }
         }
 
         # Téléphone / Email
         Set-FieldError -Label $lblTelError -Message (Get-TelError $txtTel.Text)
         Set-FieldError -Label $lblEmailError -Message (Get-EmailError $txtEmail.Text)
-        if ($lblTelError.Visible -or $lblEmailError.Visible) { $hasError = $true }
+        if ($lblNomError.Visible -or $lblPrenomError.Visible -or $lblTelError.Visible -or $lblEmailError.Visible) { $hasError = $true }
 
         if ($hasError -and $FocusFirstInvalid) {
+            if ($lblNomError.Visible) { $txtNom.Focus(); return $false }
+            if ($lblPrenomError.Visible) { $txtPrenom.Focus(); return $false }
             if ($lblTelError.Visible) { $txtTel.Focus(); return $false }
             if ($lblEmailError.Visible) { $txtEmail.Focus(); return $false }
         }
 
         return (-not $hasError)
+    }
+
+    function Update-SubmitState {
+        # Désactiver VALIDER si une erreur existe (UX)
+        $btnOk.Enabled = Validate-All
     }
 
     function Add-Label($text) {
@@ -120,16 +153,19 @@ function Show-AgentForm {
     # NOM
     Add-Label "Nom * :"
     $txtNom = Add-TextBox $(if ($Agent -and $Agent.nom) { $Agent.nom } else { "" })
+    $lblNomError = Add-ErrorLabel -x ($left + $labelW) -yPos $y
     $y += 40
 
     # PRENOM
     Add-Label "Prénom * :"
     $txtPrenom = Add-TextBox $(if ($Agent -and $Agent.prenom) { $Agent.prenom } else { "" })
+    $lblPrenomError = Add-ErrorLabel -x ($left + $labelW) -yPos $y
     $y += 40
 
     # TEL
     Add-Label "Téléphone :"
     $txtTel = Add-TextBox $(if ($Agent -and $Agent.telephone) { $Agent.telephone } else { "" })
+    $txtTel.MaxLength = 10
     $lblTelError = Add-ErrorLabel -x ($left + $labelW) -yPos $y
     $y += 40
 
@@ -230,21 +266,24 @@ function Show-AgentForm {
 
     $btnOk.Add_Click({
         try {
-            $nom = $txtNom.Text.Trim()
-            $prenom = $txtPrenom.Text.Trim()
+            # Sécurité: nettoyage UI supplémentaire
+            $txtNom.Text = Sanitize-TextInput $txtNom.Text
+            $txtPrenom.Text = Sanitize-TextInput $txtPrenom.Text
+            $txtEmail.Text = Sanitize-TextInput $txtEmail.Text
 
-            if ([string]::IsNullOrWhiteSpace($nom) -or $nom.Length -lt 2) {
-                Write-Log "[AgentForm] Validation failed: nom" "WARN" @{ nom = $nom }
-                [System.Windows.Forms.MessageBox]::Show("Nom obligatoire (min 2 caractères).", "Validation", "OK", "Warning") | Out-Null
-                $txtNom.Focus()
+            if (-not (Test-SecuriteInput $txtNom.Text) -or -not (Test-SecuriteInput $txtPrenom.Text) -or -not (Test-SecuriteInput $txtEmail.Text) -or -not (Test-SecuriteInput $txtTel.Text)) {
+                Set-FieldError -Label $lblNomError -Message (Get-SecurityError $txtNom.Text)
+                Set-FieldError -Label $lblPrenomError -Message (Get-SecurityError $txtPrenom.Text)
+                Set-FieldError -Label $lblEmailError -Message (Get-SecurityError $txtEmail.Text)
+                Set-FieldError -Label $lblTelError -Message (Get-SecurityError $txtTel.Text)
                 return
             }
-            if ([string]::IsNullOrWhiteSpace($prenom) -or $prenom.Length -lt 2) {
-                Write-Log "[AgentForm] Validation failed: prenom" "WARN" @{ prenom = $prenom }
-                [System.Windows.Forms.MessageBox]::Show("Prénom obligatoire (min 2 caractères).", "Validation", "OK", "Warning") | Out-Null
-                $txtPrenom.Focus()
-                return
-            }
+
+            # [AgentForm] Nom/Prenom normalization applied
+            $nom = Format-Nom $txtNom.Text
+            $prenom = Format-Prenom $txtPrenom.Text
+            $txtNom.Text = $nom
+            $txtPrenom.Text = $prenom
 
             if (-not (Validate-All -FocusFirstInvalid)) {
                 Write-Log "[AgentForm] Validation failed: tel/email" "WARN" @{
@@ -253,19 +292,30 @@ function Show-AgentForm {
                 return
             }
 
-            $telDigits = Normalize-Telephone $txtTel.Text
-            if (-not [string]::IsNullOrWhiteSpace($telDigits) -and -not (Test-Telephone $telDigits)) {
-                # Double safety (strict)
-                Set-FieldError -Label $lblTelError -Message "Téléphone invalide: 10 chiffres requis."
+            Write-Host "[AgentForm] Sécurité input OK"
+
+            $telFormatted = Format-Telephone $txtTel.Text
+            if ($null -eq $telFormatted) {
+                Set-FieldError -Label $lblTelError -Message "Le numéro doit contenir 10 chiffres"
                 $txtTel.Focus()
                 return
+            }
+            if ($telFormatted -ne "") {
+                $script:__telAllowFormatted = $true
+                $txtTel.MaxLength = 14
+                $txtTel.Text = $telFormatted
+                Write-Host "[AgentForm] Validation téléphone OK"
+                $script:__telAllowFormatted = $false
+            }
+            if (-not [string]::IsNullOrWhiteSpace($txtEmail.Text)) {
+                Write-Host "[AgentForm] Validation email OK"
             }
 
             $result = [PSCustomObject]@{
                 nom = $nom
                 prenom = $prenom
-                # Stockage nettoyé (digits-only) pour éviter les formats variables
-                telephone = $telDigits
+                # Stockage au format standard "XX XX XX XX XX" (ou vide si optionnel)
+                telephone = $telFormatted
                 email = (Normalize-Email $txtEmail.Text)
                 type_contrat = $cmbContrat.SelectedItem.ToString()
                 base_heures_semaine = [int]$numHeures.Value
@@ -291,37 +341,70 @@ function Show-AgentForm {
 
     # ===== Validation temps réel =====
 
-    $txtTel.Add_TextChanged({
-        if ($script:__telUpdating) { return }
+    $txtNom.Add_TextChanged({
+        if ($script:__nomUpdating) { return }
         try {
-            $script:__telUpdating = $true
-
-            $digits = Normalize-Telephone $txtTel.Text
-            if ($digits.Length -gt 10) { $digits = $digits.Substring(0, 10) }
-
-            $formatted = Format-Telephone $digits
-            if ($txtTel.Text -ne $formatted) {
-                $txtTel.Text = $formatted
-                $txtTel.SelectionStart = $txtTel.Text.Length
+            $script:__nomUpdating = $true
+            $formatted = Format-Nom $txtNom.Text
+            if ($txtNom.Text -ne $formatted) {
+                $txtNom.Text = $formatted
+                $txtNom.SelectionStart = $txtNom.Text.Length
             }
-
-            Set-FieldError -Label $lblTelError -Message (Get-TelError $txtTel.Text)
+            Set-FieldError -Label $lblNomError -Message (Get-NomError)
+            Update-SubmitState
         } finally {
-            $script:__telUpdating = $false
+            $script:__nomUpdating = $false
         }
     })
 
-    $txtTel.Add_Leave({
-        # Normalise une dernière fois en sortie de champ
+    $txtPrenom.Add_TextChanged({
+        if ($script:__prenomUpdating) { return }
+        try {
+            $script:__prenomUpdating = $true
+            $formatted = Format-Prenom $txtPrenom.Text
+            if ($txtPrenom.Text -ne $formatted) {
+                $txtPrenom.Text = $formatted
+                $txtPrenom.SelectionStart = $txtPrenom.Text.Length
+            }
+            Set-FieldError -Label $lblPrenomError -Message (Get-PrenomError)
+            Update-SubmitState
+        } finally {
+            $script:__prenomUpdating = $false
+        }
+    })
+
+    # Téléphone: blocage de toute saisie non numérique (KeyPress) + validation temps réel
+    $txtTel.Add_KeyPress({
+        param($sender, $e)
+        # Autoriser contrôles (Backspace, Ctrl+C/V, etc.)
+        if ($e.Control) { return }
+        if ($e.KeyChar -eq [char]8) { return } # backspace
+        if (-not [char]::IsDigit($e.KeyChar)) {
+            $e.Handled = $true
+        }
+    })
+
+    $txtTel.Add_TextChanged({
+        if ($script:__telAllowFormatted) { return }
+        # Sécurité: s'assurer qu'il n'y a que des chiffres même si collage
         $digits = Normalize-Telephone $txtTel.Text
-        if ($digits.Length -gt 10) { $digits = $digits.Substring(0, 10) }
-        $txtTel.Text = Format-Telephone $digits
+        if ($digits.Length -gt 10) { $digits = $digits.Substring(0,10) }
+        if ($txtTel.Text -ne $digits) {
+            $pos = $txtTel.SelectionStart
+            $txtTel.Text = $digits
+            $txtTel.SelectionStart = [Math]::Min($pos, $txtTel.Text.Length)
+        }
         Set-FieldError -Label $lblTelError -Message (Get-TelError $txtTel.Text)
+        Update-SubmitState
     })
 
     $txtEmail.Add_TextChanged({
         Set-FieldError -Label $lblEmailError -Message (Get-EmailError $txtEmail.Text)
+        Update-SubmitState
     })
+
+    # Etat initial du bouton
+    Update-SubmitState
 
     if ($Owner) {
         $form.ShowDialog($Owner) | Out-Null
