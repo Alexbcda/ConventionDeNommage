@@ -1,13 +1,10 @@
 # ODMViewer.ps1 - Gestionnaire d'onglets pour l'ODM
 
 function Show-ODMViewer {
-    param(
-        [array]$Collecteurs,
-        [array]$Vehicules
-    )
+    param([array]$Vehicules)
     
     Write-Host "[ODM] ========== ODMViewer DÉMARRAGE ==========" -ForegroundColor Cyan
-    Write-Host "[ODM] Collecteurs: $($Collecteurs.Count), Véhicules: $($Vehicules.Count)" -ForegroundColor Cyan
+    Write-Host "[ODM] Véhicules: $($Vehicules.Count)" -ForegroundColor Cyan
     
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
@@ -17,7 +14,7 @@ function Show-ODMViewer {
     $mainPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
     
     # Charger les modules
-    . "$PSScriptRoot\Collecteurs\CollecteursPanel.ps1"
+    . "$PSScriptRoot\Agents\AgentPanel.ps1"
     . "$PSScriptRoot\Vehicules\VehiculesPanel.ps1"
     . "$PSScriptRoot\AffectationPanel.ps1"
     
@@ -25,13 +22,13 @@ function Show-ODMViewer {
     $tabControl = New-Object System.Windows.Forms.TabControl
     $tabControl.Dock = "Fill"
     
-    # Onglet Collecteurs
-    $tabCollecteurs = New-Object System.Windows.Forms.TabPage
-    $tabCollecteurs.Text = "Collecteurs"
-    $collecteursPanel = Show-CollecteursPanel -Collecteurs $Collecteurs
-    $collecteursPanel.Dock = "Fill"
-    $tabCollecteurs.Controls.Add($collecteursPanel)
-    $tabControl.TabPages.Add($tabCollecteurs)
+    # Onglet Agents
+    $tabAgents = New-Object System.Windows.Forms.TabPage
+    $tabAgents.Text = "Agents"
+    $agentsPanel = Show-AgentsPanel
+    $agentsPanel.Dock = "Fill"
+    $tabAgents.Controls.Add($agentsPanel)
+    $tabControl.TabPages.Add($tabAgents)
     
     # Onglet Véhicules
     $tabVehicules = New-Object System.Windows.Forms.TabPage
@@ -44,7 +41,7 @@ function Show-ODMViewer {
     # Onglet Affectation - UN SEUL
     $tabAffectation = New-Object System.Windows.Forms.TabPage
     $tabAffectation.Text = "Affectation"
-    $affectationPanel = Show-AffectationPanel -Collecteurs $Collecteurs -Vehicules $Vehicules
+    $affectationPanel = Show-AffectationPanel -Agents $Agents -Vehicules $Vehicules
     $affectationPanel.Dock = "Fill"
     $tabAffectation.Controls.Add($affectationPanel)
     $tabControl.TabPages.Add($tabAffectation)
@@ -54,3 +51,5 @@ function Show-ODMViewer {
     Write-Host "[ODM] ========== ODMViewer TERMINÉ ==========" -ForegroundColor Green
     return $mainPanel
 }
+
+

@@ -1,3 +1,4 @@
+. "$PSScriptRoot\..\..\Database\Database.ps1"
 # VehiculesPanel.ps1 - Interface de gestion des véhicules
 
 function Show-VehiculesPanel {
@@ -19,11 +20,11 @@ function Show-VehiculesPanel {
 
     # Titre
     $lblTitle = New-Object System.Windows.Forms.Label
-    $lblTitle.Text = "GESTION DES VÉHICULES"
-    $lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
-    $lblTitle.ForeColor = [System.Drawing.Color]::FromArgb(39, 39, 39)
+    $lblTitle.Text = "Gestion des véhicules"
+    $lblTitle.Font = $script:PoliceTitre1
+    $lblTitle.ForeColor = $script:CouleurOrange
     $lblTitle.Location = New-Object System.Drawing.Point(20, 20)
-    $lblTitle.Size = New-Object System.Drawing.Size(400, 35)
+    $lblTitle.Size = New-Object System.Drawing.Size(600, 50)
     $panel.Controls.Add($lblTitle)
 
     # Bouton AJOUTER
@@ -206,3 +207,5 @@ function Show-VehiculesPanel {
 
     return $panel
 }
+
+

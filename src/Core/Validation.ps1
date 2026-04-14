@@ -37,7 +37,7 @@ function Test-VehiculeDisponible {
     param(
         [string]$NumeroParc,
         [array]$Vehicules,
-        [array]$Collecteurs
+        [array]$Agents
     )
     
     if ([string]::IsNullOrWhiteSpace($NumeroParc)) { return $true } # Peut être vide
@@ -46,8 +46,8 @@ function Test-VehiculeDisponible {
     $vehicule = $Vehicules | Where-Object { $_.immatriculation -eq $NumeroParc -or $_.id -eq $NumeroParc }
     if (-not $vehicule) { return $false }
     
-    # Vérifier si le véhicule est déjà affecté à un autre collecteur
-    $affecte = $Collecteurs | Where-Object { $_.vehiculeDefaut -eq $NumeroParc -or $_.vehiculeDefaut -eq $vehicule.immatriculation }
+    # Vérifier si le véhicule est déjà affecté à un autre agent
+    $affecte = $Agents | Where-Object { $_.vehiculeDefaut -eq $NumeroParc -or $_.vehiculeDefaut -eq $vehicule.immatriculation }
     return $affecte.Count -eq 0
 }
 
@@ -55,16 +55,17 @@ function Get-VehiculeInfo {
     param(
         [string]$NumeroParc,
         [array]$Vehicules,
-        [array]$Collecteurs
+        [array]$Agents
     )
     
     $vehicule = $Vehicules | Where-Object { $_.immatriculation -eq $NumeroParc -or $_.id -eq $NumeroParc }
     if (-not $vehicule) { return $null }
     
-    $affecte = $Collecteurs | Where-Object { $_.vehiculeDefaut -eq $NumeroParc -or $_.vehiculeDefaut -eq $vehicule.immatriculation }
+    $affecte = $Agents | Where-Object { $_.vehiculeDefaut -eq $NumeroParc -or $_.vehiculeDefaut -eq $vehicule.immatriculation }
     
     return @{
         Vehicule = $vehicule
         AffecteA = $affecte
     }
 }
+
