@@ -257,5 +257,54 @@ function Show-AgentsPanel {
         }
     })
 
+    # Double-clic sur une ligne: ouvrir le formulaire de modification
+    # Ne casse pas le clic sur les colonnes Modifier/Supprimer (on ignore ces colonnes au double-clic).
+    $grid.Add_CellDoubleClick({
+        param($sender, $e)
+
+        if (-not $sender) { return }
+        if (-not $e) { return }
+        if ($e.RowIndex -lt 0) { return }
+        if ($e.ColumnIndex -lt 0) { return }
+        if ($e.RowIndex -ge $sender.Rows.Count) { return }
+
+        # Colonnes actions: laisser le comportement existant du simple clic
+        if ($e.ColumnIndex -in 10, 11) { return }
+
+        $row = $sender.Rows[$e.RowIndex]
+        if (-not $row) { return }
+        if ($null -eq $row.Tag) { return }
+
+        # Bonus: surligner la ligne
+        try {
+            $sender.ClearSelection()
+            $row.Selected = $true
+        } catch {}
+
+        $id = [int]$row.Tag
+        Write-Log "[AgentsUI] Double-click edit agent ID = $id" "INFO"
+
+        try {
+            $agent = Get-AgentById -Id $id
+            if (-not $agent) { return }
+
+            $owner = $sender.FindForm()
+            $modif = Show-AgentForm -Mode "Modifier" -Agent $agent -Owner $owner
+            if ($modif) {
+                Update-Agent -Id $id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -Poste $modif.poste | Out-Null
+                $chk = $sender.Parent.Controls["chkHistoriqueAgents"]
+                Refresh-AgentsGrid -Grid $sender -IncludeHistorique $chk.Checked
+            }
+        } catch {
+            Write-Log "[AgentsUI] Double-click edit failed" "ERROR" @{ id = $id; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+            [System.Windows.Forms.MessageBox]::Show(
+                ("Erreur lors de la modification de l'agent:`n`n{0}" -f $_.Exception.Message),
+                "Erreur",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+        }
+    })
+
     return $mainPanel
 }
