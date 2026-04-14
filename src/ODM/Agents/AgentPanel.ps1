@@ -1,7 +1,54 @@
 # AgentPanel.ps1 - VERSION SANS LOGS
 
 . "$PSScriptRoot\..\..\Database\Database.ps1"
+. "$PSScriptRoot\AgentRepository.ps1"
 . "$PSScriptRoot\AgentForm.ps1"
+. "$PSScriptRoot\..\..\Common\Styles.ps1"
+. "$PSScriptRoot\..\..\Core\Logger.ps1"
+
+$script:DebugAgentsUI = $false
+
+function Refresh-AgentsGrid {
+    param([Parameter(Mandatory=$true)] $Grid)
+
+    Write-Log "[AgentsUI] RefreshGrid begin" "INFO"
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        if (-not $Grid) { throw "Grid is null" }
+        $null = $Grid.Rows.Clear()
+        $agents = Get-Agents
+        Write-Log "[AgentsUI] RefreshGrid loaded agents" "INFO" @{ count = $agents.Count }
+        $i = 0
+        foreach ($a in $agents) {
+            $null = $Grid.Rows.Add()
+            $Grid.Rows[$i].Cells[0].Value = $a.nom
+            $Grid.Rows[$i].Cells[1].Value = $a.prenom
+            $Grid.Rows[$i].Cells[2].Value = $a.telephone
+            $Grid.Rows[$i].Cells[3].Value = $a.email
+            $Grid.Rows[$i].Cells[4].Value = $a.poste
+            $Grid.Rows[$i].Cells[5].Value = $a.type_contrat
+            $Grid.Rows[$i].Cells[6].Value = $a.base_heures_semaine
+            $Grid.Rows[$i].Cells[7].Value = if ($a.date_entree) { ([datetime]$a.date_entree).ToString("dd/MM/yyyy") } else { "" }
+            $Grid.Rows[$i].Cells[8].Value = if ($a.date_sortie) { ([datetime]$a.date_sortie).ToString("dd/MM/yyyy") } else { "" }
+            $Grid.Rows[$i].Cells[9].Value = if ($a.numero_parc -and $a.numero_parc -ne [System.DBNull]::Value) { $a.numero_parc } else { "" }
+            $Grid.Rows[$i].Cells[10].Value = "✏️"
+            $Grid.Rows[$i].Cells[11].Value = "🗑️"
+            $Grid.Rows[$i].Tag = $a.id
+            $i++
+        }
+        # Tri visuel (en plus du ORDER BY côté SQL)
+        if ($Grid.Columns.Contains("Nom")) {
+            $Grid.Sort($Grid.Columns["Nom"], [System.ComponentModel.ListSortDirection]::Ascending)
+        }
+        $Grid.Refresh()
+    } catch {
+        Write-Log "[AgentsUI] RefreshGrid failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    } finally {
+        $sw.Stop()
+        Write-Log "[AgentsUI] RefreshGrid end" "INFO" @{ rows = $(if ($Grid) { $Grid.Rows.Count } else { $null }); elapsed_ms = $sw.ElapsedMilliseconds }
+    }
+}
 
 function Show-AgentsPanel {
     
@@ -25,14 +72,12 @@ function Show-AgentsPanel {
     $btnAjouter.Text = "+ AJOUTER UN AGENT"
     $btnAjouter.Location = New-Object System.Drawing.Point(900, 20)
     $btnAjouter.Size = New-Object System.Drawing.Size(200, 45)
-    $btnAjouter.BackColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
-    $btnAjouter.ForeColor = [System.Drawing.Color]::White
-    $btnAjouter.FlatStyle = "Flat"
-    $btnAjouter.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    Set-BtnAjouterStyle -BtnAjouter $btnAjouter
     $btnAjouter.Cursor = [System.Windows.Forms.Cursors]::Hand
     $mainPanel.Controls.Add($btnAjouter)
 
     $grid = New-Object System.Windows.Forms.DataGridView
+    $grid.Name = "AgentsGrid"
     $grid.Location = New-Object System.Drawing.Point(20, 80)
     $grid.Size = New-Object System.Drawing.Size(1100, 500)
     $grid.AllowUserToAddRows = $false
@@ -41,79 +86,121 @@ function Show-AgentsPanel {
     $grid.SelectionMode = "FullRowSelect"
     $grid.BorderStyle = "FixedSingle"
     $grid.AutoSizeColumnsMode = "Fill"
+    Set-GridStyle -Grid $grid
 
     $grid.Columns.Add("Nom", "Nom") | Out-Null
     $grid.Columns.Add("Prenom", "Prénom") | Out-Null
     $grid.Columns.Add("Tel", "Téléphone") | Out-Null
     $grid.Columns.Add("Email", "Email") | Out-Null
-    $grid.Columns.Add("Contrat", "Contrat") | Out-Null
-    $grid.Columns.Add("Heures", "H/semaine") | Out-Null
     $grid.Columns.Add("Poste", "Poste") | Out-Null
-    $grid.Columns.Add("Edit", "") | Out-Null
-    $grid.Columns.Add("Delete", "") | Out-Null
+    $grid.Columns.Add("Contrat", "Contrat") | Out-Null
+    $grid.Columns.Add("Heures", "Base horaire") | Out-Null
+    $grid.Columns.Add("Entree", "Date entrée") | Out-Null
+    $grid.Columns.Add("Sortie", "Date sortie") | Out-Null
+    $grid.Columns.Add("Parc", "N° parc") | Out-Null
+    $grid.Columns.Add("Edit", "Modifier") | Out-Null
+    $grid.Columns.Add("Delete", "Supprimer") | Out-Null
 
-    $grid.Columns[0].Width = 120
-    $grid.Columns[1].Width = 120
-    $grid.Columns[2].Width = 100
-    $grid.Columns[3].Width = 180
-    $grid.Columns[4].Width = 80
-    $grid.Columns[5].Width = 80
-    $grid.Columns[6].Width = 120
-    $grid.Columns[7].Width = 60
-    $grid.Columns[8].Width = 60
+    $grid.Columns[0].Width = 110
+    $grid.Columns[1].Width = 110
+    $grid.Columns[2].Width = 110
+    $grid.Columns[3].Width = 190
+    $grid.Columns[4].Width = 140
+    $grid.Columns[5].Width = 90
+    $grid.Columns[6].Width = 90
+    $grid.Columns[7].Width = 95
+    $grid.Columns[8].Width = 95
+    $grid.Columns[9].Width = 80
+    $grid.Columns[10].Width = 80
+    $grid.Columns[11].Width = 90
 
     $mainPanel.Controls.Add($grid)
-
-    function RefreshGrid {
-        $grid.Rows.Clear()
-        $agents = Get-Agents
-        $i = 0
-        foreach ($a in $agents) {
-            $grid.Rows.Add()
-            $grid.Rows[$i].Cells[0].Value = $a.nom
-            $grid.Rows[$i].Cells[1].Value = $a.prenom
-            $grid.Rows[$i].Cells[2].Value = $a.telephone
-            $grid.Rows[$i].Cells[3].Value = $a.email
-            $grid.Rows[$i].Cells[4].Value = $a.type_contrat
-            $grid.Rows[$i].Cells[5].Value = $a.base_heures_semaine
-            $grid.Rows[$i].Cells[6].Value = $a.poste
-            $grid.Rows[$i].Cells[7].Value = "✏️"
-            $grid.Rows[$i].Cells[8].Value = "🗑️"
-            $grid.Rows[$i].Tag = $a.id
-            $i++
-        }
-    }
-
-    RefreshGrid
+    Refresh-AgentsGrid -Grid $grid
 
     $btnAjouter.Add_Click({
-        $nouveau = Show-AgentForm -Mode "Ajouter"
-        if ($nouveau) {
-            Add-Agent -Nom $nouveau.nom -Prenom $nouveau.prenom -Telephone $nouveau.telephone -Email $nouveau.email -DateEntree $nouveau.date_entree -DateSortie $nouveau.date_sortie -TypeContrat $nouveau.type_contrat -BaseHeuresSemaine $nouveau.base_heures_semaine -Poste $nouveau.poste
-            RefreshGrid
+        # $mainPanel peut être $null dans certains contextes d'event; utiliser le bouton comme point d'ancrage.
+        try {
+            Write-Log "[AgentsUI] Click add agent" "INFO"
+            if ($script:DebugAgentsUI) {
+                [System.Windows.Forms.MessageBox]::Show("Click: ouverture du formulaire Agent", "Debug", "OK", "Information") | Out-Null
+            }
+            $owner = $this.FindForm()
+            $nouveau = Show-AgentForm -Mode "Ajouter" -Owner $owner
+            if (-not $nouveau) {
+                Write-Log "[AgentsUI] Add agent cancelled (form returned null)" "INFO"
+                return
+            }
+
+            if ($script:DebugAgentsUI) {
+                [System.Windows.Forms.MessageBox]::Show(
+                    ("Form OK:`nnom={0}`nprenom={1}`nentree={2:dd/MM/yyyy}`nsortie={3}" -f $nouveau.nom, $nouveau.prenom, $nouveau.date_entree, $nouveau.date_sortie),
+                    "Debug",
+                    "OK",
+                    "Information"
+                ) | Out-Null
+            }
+            Write-Log "[AgentsUI] Form data ready" "INFO" $nouveau
+            $newId = Add-AgentWithValidation -Nom $nouveau.nom -Prenom $nouveau.prenom -Telephone $nouveau.telephone -Email $nouveau.email -DateEntree $nouveau.date_entree -DateSortie $nouveau.date_sortie -TypeContrat $nouveau.type_contrat -BaseHeuresSemaine $nouveau.base_heures_semaine -Poste $nouveau.poste
+            Write-Log "[AgentsUI] Add-AgentWithValidation returned" "INFO" @{ id = $newId }
+            try {
+                $created = Get-AgentById -Id $newId
+                if ($created) {
+                    Write-Log "[AgentsUI] Created agent loaded from DB" "INFO" @{ id = $created.id; actif = $created.actif }
+                } else {
+                    Write-Log "[AgentsUI] Created agent not found after insert" "WARN" @{ id = $newId }
+                }
+            } catch {
+                Write-Log "[AgentsUI] Post-insert Get-AgentById failed" "ERROR" @{ id = $newId; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+            }
+            if ($script:DebugAgentsUI) {
+                [System.Windows.Forms.MessageBox]::Show(("Ajout OK (id={0})" -f $newId), "Agents", "OK", "Information") | Out-Null
+            }
+            $g = $this.Parent.Controls["AgentsGrid"]
+            Refresh-AgentsGrid -Grid $g
+        } catch {
+            Write-Log "[AgentsUI] Add agent failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+            [System.Windows.Forms.MessageBox]::Show(
+                ("Erreur lors de l'ajout de l'agent:`n`n{0}" -f $_.Exception.Message),
+                "Erreur",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
         }
     })
 
     $grid.Add_CellClick({
-        if ($_.RowIndex -ge 0) {
-            $id = [int]$grid.Rows[$_.RowIndex].Tag
-            
-            if ($_.ColumnIndex -eq 7) {
-                $agent = Get-AgentById -Id $id
-                $modif = Show-AgentForm -Mode "Modifier" -Agent $agent
-                if ($modif) {
-                    Update-Agent -Id $id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -Poste $modif.poste
-                    RefreshGrid
-                }
+        param($sender, $e)
+
+        if (-not $sender) { return }
+        if (-not $e) { return }
+        if ($e.RowIndex -lt 0) { return }
+        if ($e.ColumnIndex -lt 0) { return }
+        if ($e.RowIndex -ge $sender.Rows.Count) { return }
+
+        $row = $sender.Rows[$e.RowIndex]
+        if (-not $row) { return }
+        if ($null -eq $row.Tag) { return }
+
+        $id = [int]$row.Tag
+
+        if ($e.ColumnIndex -eq 10) {
+            $agent = Get-AgentById -Id $id
+            $owner = $sender.FindForm()
+            $modif = Show-AgentForm -Mode "Modifier" -Agent $agent -Owner $owner
+            if ($modif) {
+                Update-Agent -Id $id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -Poste $modif.poste | Out-Null
+                Refresh-AgentsGrid -Grid $sender
             }
-            
-            if ($_.ColumnIndex -eq 8) {
-                $confirm = [System.Windows.Forms.MessageBox]::Show("Supprimer cet agent ?", "Confirmation", "YesNo")
-                if ($confirm -eq "Yes") {
-                    Remove-Agent -Id $id
-                    RefreshGrid
-                }
+            return
+        }
+
+        if ($e.ColumnIndex -eq 11) {
+            $confirm = [System.Windows.Forms.MessageBox]::Show("Supprimer cet agent ?", "Confirmation", "YesNo")
+            if ($confirm -eq "Yes") {
+                Remove-Agent -Id $id | Out-Null
+                Refresh-AgentsGrid -Grid $sender
             }
+            return
         }
     })
 

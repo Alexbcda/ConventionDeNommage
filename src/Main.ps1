@@ -11,12 +11,20 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "[MAIN] Chargement des styles..." -ForegroundColor Gray
 . "$scriptPath\Config.ps1"
 . "$scriptPath\Common\Styles.ps1"
+. "$scriptPath\Core\Logger.ps1"
+Write-Log "[MAIN] Application start" "INFO" @{ scriptPath = $scriptPath }
 
 # ============================================
 # 1.5 INITIALISATION DE LA BASE SQLITE
 # ============================================
 . "$scriptPath\Database\Database.ps1"
-Initialize-Database
+try {
+    $ok = Initialize-Database
+    Write-Log "[MAIN] Initialize-Database result" "INFO" @{ ok = $ok }
+} catch {
+    Write-Log "[MAIN] Initialize-Database failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+    throw
+}
 
 # ============================================
 # 2. CHARGEMENT DE LA NOUVELLE ARCHITECTURE

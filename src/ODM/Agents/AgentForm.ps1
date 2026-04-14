@@ -2,11 +2,13 @@
 
 . "$PSScriptRoot\..\..\Database\Database.ps1"
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
+. "$PSScriptRoot\..\..\Core\Logger.ps1"
 
 function Show-AgentForm {
     param(
         [string]$Mode = "Ajouter",
-        [pscustomobject]$Agent = $null
+        [pscustomobject]$Agent = $null,
+        [System.Windows.Forms.IWin32Window]$Owner = $null
     )
 
     Add-Type -AssemblyName System.Windows.Forms
@@ -16,7 +18,7 @@ function Show-AgentForm {
     $form.Text = "$Mode un agent"
     $form.Size = New-Object System.Drawing.Size(650, 650)
     $form.StartPosition = "CenterParent"
-    $form.BackColor = $CouleurGrisFond
+    $form.BackColor = $script:CouleurGrisFond
     $form.FormBorderStyle = "FixedDialog"
     $form.MaximizeBox = $false
 
@@ -110,7 +112,9 @@ function Show-AgentForm {
     Add-Label "Date entrée :"
     $dtEntree = New-Object System.Windows.Forms.DateTimePicker
     $dtEntree.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
-    $dtEntree.Format = "Short"
+    # Format explicite pour éviter les saisies ambiguës (ex: "01 avril 2026" peut être rejeté et revenir à aujourd'hui)
+    $dtEntree.Format = [System.Windows.Forms.DateTimePickerFormat]::Custom
+    $dtEntree.CustomFormat = "dd/MM/yyyy"
     if ($Agent -and $Agent.date_entree) {
         $dtEntree.Value = $Agent.date_entree
     }
@@ -123,6 +127,7 @@ function Show-AgentForm {
     $dtSortie.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
     $dtSortie.Format = "Short"
     $dtSortie.ShowCheckBox = $true
+    $dtSortie.Checked = $false
     if ($Agent -and $Agent.date_sortie) {
         $dtSortie.Checked = $true
         $dtSortie.Value = $Agent.date_sortie
@@ -132,44 +137,79 @@ function Show-AgentForm {
 
     # BOUTONS
     $btnOk = New-Object System.Windows.Forms.Button
-    $btnOk.Text = "OK"
+    $btnOk.Text = "VALIDER"
     $btnOk.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
-    $btnOk.BackColor = $CouleurCertificat
-    $btnOk.ForeColor = $CouleurBlanc
-    $btnOk.FlatStyle = "Flat"
+    Set-BtnValiderStyle -BtnValider $btnOk
     $form.Controls.Add($btnOk)
+    $form.AcceptButton = $btnOk
 
     $btnCancel = New-Object System.Windows.Forms.Button
-    $btnCancel.Text = "Annuler"
+    $btnCancel.Text = "QUITTER"
     $btnCancel.Location = New-Object System.Drawing.Point(($left + $labelW + 120), $y)
-    $btnCancel.BackColor = $CouleurGrisFonce
-    $btnCancel.ForeColor = $CouleurBlanc
-    $btnCancel.FlatStyle = "Flat"
+    Set-BtnQuitterStyle -BtnQuitter $btnCancel
     $btnCancel.Add_Click({ $form.Close() })
     $form.Controls.Add($btnCancel)
 
-    $result = $null
+    # Stocker le résultat sur le Form pour éviter les soucis de scope dans les handlers WinForms
+    $form.Tag = $null
 
     $btnOk.Add_Click({
-        $result = [PSCustomObject]@{
-            nom = $txtNom.Text.Trim()
-            prenom = $txtPrenom.Text.Trim()
-            telephone = $txtTel.Text.Trim()
-            email = $txtEmail.Text.Trim()
-            type_contrat = $cmbContrat.SelectedItem.ToString()
-            base_heures_semaine = [int]$numHeures.Value
-            poste = $cmbPoste.SelectedItem.ToString()
-            date_entree = $dtEntree.Value
-            date_sortie = if ($dtSortie.Checked) { $dtSortie.Value } else { $null }
+        try {
+            $nom = $txtNom.Text.Trim()
+            $prenom = $txtPrenom.Text.Trim()
+
+            if ([string]::IsNullOrWhiteSpace($nom) -or $nom.Length -lt 2) {
+                Write-Log "[AgentForm] Validation failed: nom" "WARN" @{ nom = $nom }
+                [System.Windows.Forms.MessageBox]::Show("Nom obligatoire (min 2 caractères).", "Validation", "OK", "Warning") | Out-Null
+                $txtNom.Focus()
+                return
+            }
+            if ([string]::IsNullOrWhiteSpace($prenom) -or $prenom.Length -lt 2) {
+                Write-Log "[AgentForm] Validation failed: prenom" "WARN" @{ prenom = $prenom }
+                [System.Windows.Forms.MessageBox]::Show("Prénom obligatoire (min 2 caractères).", "Validation", "OK", "Warning") | Out-Null
+                $txtPrenom.Focus()
+                return
+            }
+
+            $result = [PSCustomObject]@{
+                nom = $nom
+                prenom = $prenom
+                telephone = $txtTel.Text.Trim()
+                email = $txtEmail.Text.Trim()
+                type_contrat = $cmbContrat.SelectedItem.ToString()
+                base_heures_semaine = [int]$numHeures.Value
+                poste = $cmbPoste.SelectedItem.ToString()
+                date_entree = $dtEntree.Value
+                date_sortie = if ($dtSortie.Checked) { $dtSortie.Value } else { $null }
+            }
+            $form.Tag = $result
+            Write-Log "[AgentForm] Submit OK" "INFO" $result
+            $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+            $form.Close()
+        } catch {
+            Write-Log "[AgentForm] Submit failed (exception in click handler)" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+            [System.Windows.Forms.MessageBox]::Show(
+                ("Erreur dans le formulaire:`n`n{0}" -f $_.Exception.Message),
+                "Erreur",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+            return
         }
-        $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
-        $form.Close()
     })
 
-    $form.ShowDialog() | Out-Null
+    if ($Owner) {
+        $form.ShowDialog($Owner) | Out-Null
+    } else {
+        $form.ShowDialog() | Out-Null
+    }
     
     if ($form.DialogResult -eq [System.Windows.Forms.DialogResult]::OK) {
-        return $result
+        $out = $form.Tag
+        Write-Log "[AgentForm] Returning result" "INFO" @{ mode = $Mode; ok = $true; isNull = ($null -eq $out) }
+        return $out
     }
+
+    Write-Log "[AgentForm] Returning null" "INFO" @{ mode = $Mode; ok = $false; dialogResult = $form.DialogResult.ToString() }
     return $null
 }
