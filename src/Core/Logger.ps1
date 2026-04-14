@@ -2,14 +2,39 @@
 
 $script:logFile = Join-Path $PSScriptRoot "..\Logs\app.log"
 
+function Ensure-LogPath {
+    try {
+        $dir = Split-Path -Parent $script:logFile
+        if (-not (Test-Path $dir)) {
+            $null = New-Item -Path $dir -ItemType Directory -Force
+        }
+    } catch {}
+}
+
+function Format-LogData {
+    param($Data)
+    if ($null -eq $Data) { return "" }
+    try {
+        if ($Data -is [string]) { return $Data }
+        return ($Data | ConvertTo-Json -Compress -Depth 6)
+    } catch {
+        try { return ($Data | Out-String).Trim() } catch { return "" }
+    }
+}
+
 function Write-Log {
     param(
         [string]$Message,
-        [string]$Level = "INFO"
+        [string]$Level = "INFO",
+        $Data = $null
     )
     
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logEntry = "[$timestamp] [$Level] $Message"
+    Ensure-LogPath
+    # Ne pas utiliser Get-Date: une fonction Get-Date du projet peut masquer la cmdlet.
+    $timestamp = [datetime]::Now.ToString("yyyy-MM-dd HH:mm:ss")
+    $dataText = Format-LogData $Data
+    $suffix = if ([string]::IsNullOrWhiteSpace($dataText)) { "" } else { " | data=$dataText" }
+    $logEntry = "[$timestamp] [$Level] [pid=$PID] $Message$suffix"
     
     # Afficher dans la console (si console disponible)
     try {
@@ -27,4 +52,8 @@ function Clear-Log {
     Write-Log "Log effacé" "INFO"
 }
 
-Export-ModuleMember -Function Write-Log, Clear-Log
+try {
+    Export-ModuleMember -Function Write-Log, Clear-Log
+} catch {
+    # Logger.ps1 est souvent dot-sourcé (pas importé comme module) : on ignore l'export.
+}

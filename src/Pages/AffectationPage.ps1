@@ -7,7 +7,7 @@ function New-AffectationPage {
     $panel.AutoScroll = $true
     
     $title = New-Object System.Windows.Forms.Label
-    $title.Text = "👥 Étape 3/3 - Affectation collecteurs & véhicules"
+    $title.Text = "👥 Étape 3/3 - Affectation agents & véhicules"
     $title.Font = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
     $title.ForeColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
     $title.Location = New-Object System.Drawing.Point(50, 30)
@@ -43,7 +43,7 @@ function New-AffectationPage {
             return
         }
         
-        $collecteurs = Get-CollecteursList
+        $agents = Get-agentsList
         $vehicules = Get-VehiculesList
         $affectations = Get-Affectations
         $yPos = 10
@@ -56,7 +56,7 @@ function New-AffectationPage {
             $card.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
             
             $lblColl = New-Object System.Windows.Forms.Label
-            $lblColl.Text = "Collecteur :"
+            $lblColl.Text = "Agent :"
             $lblColl.Location = New-Object System.Drawing.Point(20, 35)
             $lblColl.Size = New-Object System.Drawing.Size(80, 25)
             $card.Controls.Add($lblColl)
@@ -65,7 +65,7 @@ function New-AffectationPage {
             $cmbColl.Location = New-Object System.Drawing.Point(110, 33)
             $cmbColl.Size = New-Object System.Drawing.Size(250, 25)
             $cmbColl.DropDownStyle = "DropDownList"
-            foreach ($c in $collecteurs) { $cmbColl.Items.Add($c) }
+            foreach ($c in $agents) { $cmbColl.Items.Add($c) }
             if ($cmbColl.Items.Count -gt 0) { $cmbColl.SelectedIndex = 0 }
             $card.Controls.Add($cmbColl)
             
@@ -84,8 +84,8 @@ function New-AffectationPage {
             $card.Controls.Add($cmbVeh)
             
             $saved = $affectations[$i]
-            if ($saved -and $saved.Collecteur) {
-                $idx = $cmbColl.Items.IndexOf($saved.Collecteur)
+            if ($saved -and $saved.Agent) {
+                $idx = $cmbColl.Items.IndexOf($saved.Agent)
                 if ($idx -ge 0) { $cmbColl.SelectedIndex = $idx }
             }
             if ($saved -and $saved.Vehicule) {
@@ -97,14 +97,14 @@ function New-AffectationPage {
                 $box = $this.Parent
                 $num = [int]($box.Text -replace 'Tournée n°', '')
                 $vehBox = $box.Controls | Where-Object { $_ -is [System.Windows.Forms.ComboBox] -and $_ -ne $this }
-                Set-Affectation -TourneeId $num -Collecteur $this.SelectedItem -Vehicule $vehBox.SelectedItem
+                Set-Affectation -TourneeId $num -Agent $this.SelectedItem -Vehicule $vehBox.SelectedItem
             }.GetNewClosure())
             
             $cmbVeh.Add_SelectedIndexChanged({
                 $box = $this.Parent
                 $num = [int]($box.Text -replace 'Tournée n°', '')
                 $collBox = $box.Controls | Where-Object { $_ -is [System.Windows.Forms.ComboBox] -and $_ -ne $this }
-                Set-Affectation -TourneeId $num -Collecteur $collBox.SelectedItem -Vehicule $this.SelectedItem
+                Set-Affectation -TourneeId $num -Agent $collBox.SelectedItem -Vehicule $this.SelectedItem
             }.GetNewClosure())
             
             $dynamicContainer.Controls.Add($card)
@@ -113,7 +113,7 @@ function New-AffectationPage {
         
         $btnValidate = New-Button -Text "✓ VALIDER TOUTES LES AFFECTATIONS" -X 250 -Y ($yPos + 10) -Width 280 -Height 45 -Type "primary" -OnClick {
             $affectations = Get-Affectations
-            $count = ($affectations.Keys | Where-Object { $affectations[$_].Collecteur }).Count
+            $count = ($affectations.Keys | Where-Object { $affectations[$_].Agent }).Count
             $date = Get-Date
             Show-Modal -Title "Succès" -Message "✅ $count affectations sauvegardées pour le $date"
         }

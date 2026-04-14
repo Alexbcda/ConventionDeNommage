@@ -25,3 +25,6 @@ desktop.ini
 
 # Dossier Git
 .git/
+Output/*.exe
+Launcher.vbs
+setup.iss

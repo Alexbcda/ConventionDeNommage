@@ -1,5 +1,5 @@
 # ============================================
-# STYLES.PS1 - VERSION CORRIGEE (MouseOverBackColor)
+# STYLES.PS1 - VERSION CORRIGEE
 # ============================================
 
 # COULEURS
@@ -29,10 +29,15 @@ function Set-BtnBorderStyle {
     param(
         $Button,
         [string]$Text,
-        [System.Drawing.Color]$BorderColor,
+        $BorderColor,
         [int]$Width = 100,
         [int]$Height = 40
     )
+    
+    # Valeur par défaut si BorderColor est null
+    if ($BorderColor -eq $null) {
+        $BorderColor = $script:CouleurOrange
+    }
     
     $Button.Text = $Text
     $Button.Size = New-Object System.Drawing.Size($Width, $Height)
@@ -45,13 +50,19 @@ function Set-BtnBorderStyle {
     $Button.ForeColor = $script:CouleurGrisFonce
     $Button.Font = $script:PoliceBouton
     $Button.Cursor = [System.Windows.Forms.Cursors]::Hand
-    
-    $null = $Button.Add_MouseEnter({
-        $this.BackColor = $BorderColor
+
+    # ✅ STOCKAGE SAFE
+    $Button.Tag = $BorderColor
+
+    # ✅ EVENTS SAFE
+    $Button.Add_MouseEnter({
+        if ($this.Tag -ne $null) {
+            $this.BackColor = $this.Tag
+        }
         $this.ForeColor = $script:CouleurBlanc
     })
-    
-    $null = $Button.Add_MouseLeave({
+
+    $Button.Add_MouseLeave({
         $this.BackColor = $script:CouleurBlanc
         $this.ForeColor = $script:CouleurGrisFonce
     })
@@ -133,4 +144,4 @@ $script:TailleFenetreHauteur = 800
 $script:TailleFenetreMiniLargeur = 1000
 $script:TailleFenetreMiniHauteur = 650
 
-Write-Host "[STYLES] Version corrigee (MouseOverBackColor)" -ForegroundColor Green
+Write-Host "[STYLES] Version corrigee" -ForegroundColor Green
