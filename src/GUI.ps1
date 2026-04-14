@@ -3,7 +3,6 @@
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . "$scriptDir\Framework\Components.ps1"
 . "$scriptDir\Common\Styles.ps1"
-. "$scriptDir\Core\Logger.ps1"
 
 function Start-GUI {
     param([string]$FichierPDF)
@@ -11,8 +10,6 @@ function Start-GUI {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     [System.Windows.Forms.Application]::EnableVisualStyles()
-
-    Write-Log "[GUI] Start-GUI" "INFO" @{ FichierPDF = $FichierPDF }
 
     . "$PSScriptRoot\Config.ps1"
     . "$PSScriptRoot\ODM\ConventionNommage\ConventionNommage.ps1"
@@ -70,17 +67,14 @@ function Start-GUI {
 
     # ONGLET 3 : Agents
     $tabAgents = New-Object System.Windows.Forms.TabPage
-    $tabAgents.Text = "Agents"
+    $tabAgents.Text = "Données agents"
     $tabAgents.BackColor = $script:CouleurGrisFond
     
-    $agentsPanelResult = Show-AgentsPanel
-    $agentsPanel = $agentsPanelResult | Where-Object { $_ -is [System.Windows.Forms.Panel] } | Select-Object -Last 1
+    $agentsPanel = Show-AgentsPanel
     if ($agentsPanel) {
         $agentsPanel.Dock = "Fill"
         $tabAgents.Controls.Add($agentsPanel)
-        Write-Host "[GUI] Onglet Agents ajouté" -ForegroundColor Green
     } else {
-        Write-Host "[GUI] Erreur: Show-AgentsPanel a retourné null" -ForegroundColor Red
         $lblError = New-Object System.Windows.Forms.Label
         $lblError.Text = "Erreur de chargement du panneau des agents"
         $lblError.Dock = "Fill"
