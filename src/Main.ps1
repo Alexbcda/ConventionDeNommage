@@ -44,7 +44,7 @@ Write-Host "[MAIN] Chargement de la nouvelle architecture..." -ForegroundColor G
 Write-Host "[MAIN] Chargement des modules métier..." -ForegroundColor Gray
 . "$scriptPath\ODM\ConventionNommage\ConventionNommage.ps1"
 . "$scriptPath\ODM\Agents\AgentRepository.ps1"
-. "$scriptPath\ODM\Vehicules\VehiculesManager.ps1"
+. "$scriptPath\ODM\Vehicules\VehiculesRepository.ps1"
 
 # ============================================
 # 4. CHARGEMENT DE LA GUI

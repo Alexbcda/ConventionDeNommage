@@ -3,11 +3,10 @@
 # Objet véhicule (données liste / DB, propriétés snake_case côté repository) :
 #   id: string|number ; numero_parc ; immatriculation ; numero_chassis ; actif: 0|1 ; …
 
-. "$PSScriptRoot\..\..\Database\Database.ps1"
-. "$PSScriptRoot\VehiculesManager.ps1"
-. "$PSScriptRoot\VehiculesForm.ps1"
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
 . "$PSScriptRoot\..\..\Core\Logger.ps1"
+. "$PSScriptRoot\VehiculesRepository.ps1"
+. "$PSScriptRoot\VehiculesForm.ps1"
 
 $script:DebugVehiculesUI = $false
 
@@ -108,9 +107,9 @@ function Show-VehiculesPanel {
 
     # ===== TITRE =====
     $lblTitle = New-Object System.Windows.Forms.Label
-    $lblTitle.Text = "Gestion des véhicules"
-    $lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
-    $lblTitle.ForeColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
+    $lblTitle.Text = $script:TitrePanelVehicules
+    $lblTitle.Font = $script:PoliceTitreGestionFenetre
+    $lblTitle.ForeColor = $script:CouleurOrange
     $lblTitle.Location = New-Object System.Drawing.Point(20, 20)
     $lblTitle.Size = New-Object System.Drawing.Size(400, 50)
     $mainPanel.Controls.Add($lblTitle)
@@ -118,8 +117,8 @@ function Show-VehiculesPanel {
     # ===== Option historique (actifs + inactifs) — même ordre que AgentPanel =====
     $lblHistorique = New-Object System.Windows.Forms.Label
     $lblHistorique.Text = "Afficher l’historique des véhicules"
-    $lblHistorique.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Regular)
-    $lblHistorique.ForeColor = [System.Drawing.Color]::FromArgb(60, 60, 60)
+    $lblHistorique.Font = $script:PoliceLabelSecondaireFenetre
+    $lblHistorique.ForeColor = $script:CouleurTexteSecondairePanel
     $lblHistorique.Location = New-Object System.Drawing.Point(20, 77)
     $lblHistorique.Size = New-Object System.Drawing.Size(260, 20)
     $mainPanel.Controls.Add($lblHistorique)
@@ -239,7 +238,7 @@ function Show-VehiculesPanel {
 
             Write-Log "[VehiculesUI] Form data ready" "INFO" $nouveau
             
-            $newId = Add-Vehicule `
+            $newId = Add-VehiculeWithValidation `
                 -NumeroParc $nouveau.numeroParc `
                 -Immatriculation $nouveau.immatriculation `
                 -NumeroChassis $nouveau.numeroChassis `
@@ -251,7 +250,7 @@ function Show-VehiculesPanel {
                 -DateSortie $nouveau.dateSortie `
                 -DateFinControleTechnique $nouveau.dateFinControleTechnique
             
-            Write-Log "[VehiculesUI] Add-Vehicule returned" "INFO" @{ id = $newId }
+            Write-Log "[VehiculesUI] Add-VehiculeWithValidation returned" "INFO" @{ id = $newId }
             
             if ($script:DebugVehiculesUI) {
                 [System.Windows.Forms.MessageBox]::Show(("Ajout OK (id={0})" -f $newId), "Véhicules", "OK", "Information") | Out-Null

@@ -1,4 +1,19 @@
-# Services/AffectationService.ps1
+# Services/AffectationService.ps1 — état en mémoire uniquement (pas de SQL ici).
+# Entrées limitées pour éviter abus (taille / tournées).
+
+function Limit-AffectationDisplayString {
+    param(
+        [AllowNull()] [string]$Value,
+        [int]$MaxLen = 400
+    )
+    if ($null -eq $Value) { return "" }
+    $s = $Value.Trim()
+    if ($s.Length -eq 0) { return "" }
+    if ($s.Length -gt $MaxLen) { $s = $s.Substring(0, $MaxLen) }
+    # Retire contrôles et délimiteurs dangereux pour chaînes affichées / exportées
+    $s = $s -replace '[\x00-\x08\x0B\x0C\x0E-\x1F<>]', ''
+    return $s
+}
 
 function Load-InitialData {
     $agents = Get-Agents
@@ -13,6 +28,8 @@ function Get-Date { return Get-State -Key "Date" }
 
 function Set-NbTournees {
     param([int]$Nb)
+    if ($Nb -lt 1) { $Nb = 1 }
+    if ($Nb -gt 500) { $Nb = 500 }
     Set-State -Key "NbTournees" -Value $Nb
     $affectations = @{}
     for ($i = 1; $i -le $Nb; $i++) { $affectations[$i] = @{ Agent = $null; Vehicule = $null } }
@@ -23,6 +40,11 @@ function Get-NbTournees { return Get-State -Key "NbTournees" }
 
 function Set-Affectation {
     param([int]$TourneeId, [string]$Agent, [string]$Vehicule)
+    if ($TourneeId -lt 1 -or $TourneeId -gt 500) {
+        throw "Identifiant de tournée invalide."
+    }
+    $Agent = Limit-AffectationDisplayString $Agent
+    $Vehicule = Limit-AffectationDisplayString $Vehicule
     $affectations = Get-State -Key "Affectations"
     if (-not $affectations) { $affectations = @{} }
     $affectations[$TourneeId] = @{ Agent = $Agent; Vehicule = $Vehicule; TourneeId = $TourneeId }
