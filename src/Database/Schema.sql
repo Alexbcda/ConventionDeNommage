@@ -15,19 +15,29 @@ CREATE TABLE IF NOT EXISTS Agent (
     actif INTEGER DEFAULT 1
 );
 
+-- Migration incrémentale : ajout des dates métier sur Vehicule existant
+-- Format base de données : YYYY-MM-DD
+ALTER TABLE Vehicule ADD COLUMN date_entree TEXT;
+ALTER TABLE Vehicule ADD COLUMN date_sortie TEXT;
+ALTER TABLE Vehicule ADD COLUMN date_fin_controle_technique TEXT;
+
+-- Schéma final attendu pour la table Vehicule
 CREATE TABLE IF NOT EXISTS Vehicule (
     id_vehicule INTEGER PRIMARY KEY AUTOINCREMENT,
-    numero_parc TEXT,
+    numero_parc TEXT NOT NULL,
     immatriculation TEXT NOT NULL UNIQUE,
     numero_chassis TEXT,
     marque TEXT,
     modele TEXT,
     date_mise_circulation TEXT,
     date_controle TEXT,
+    date_entree TEXT,
+    date_sortie TEXT,
     capacite INTEGER,
     conducteur_id INTEGER,
     alerte TEXT,
     date_alerte TEXT,
+    date_fin_controle_technique TEXT,
     actif INTEGER DEFAULT 1
 );
 

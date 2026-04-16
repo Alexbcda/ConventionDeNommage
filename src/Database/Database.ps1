@@ -78,6 +78,82 @@ function Ensure-SqliteLoaded {
     return $true
 }
 
+function Test-SqliteColumnExists {
+    param(
+        [Parameter(Mandatory=$true)] $Connection,
+        [Parameter(Mandatory=$true)] [string]$TableName,
+        [Parameter(Mandatory=$true)] [string]$ColumnName
+    )
+
+    $cmd = $Connection.CreateCommand()
+    $cmd.CommandText = "PRAGMA table_info($TableName)"
+    $reader = $cmd.ExecuteReader()
+    try {
+        while ($reader.Read()) {
+            if ([string]$reader["name"] -eq $ColumnName) { return $true }
+        }
+        return $false
+    } finally {
+        if ($reader) { $reader.Close() }
+    }
+}
+
+function Add-SqliteColumnIfMissing {
+    param(
+        [Parameter(Mandatory=$true)] $Connection,
+        [Parameter(Mandatory=$true)] [string]$TableName,
+        [Parameter(Mandatory=$true)] [string]$ColumnName,
+        [Parameter(Mandatory=$true)] [string]$ColumnDefinition
+    )
+
+    if (Test-SqliteColumnExists -Connection $Connection -TableName $TableName -ColumnName $ColumnName) {
+        return $false
+    }
+
+    $cmd = $Connection.CreateCommand()
+    $cmd.CommandText = "ALTER TABLE $TableName ADD COLUMN $ColumnName $ColumnDefinition"
+    $null = $cmd.ExecuteNonQuery()
+    Write-Log "[DB] Added missing column" "INFO" @{ table = $TableName; column = $ColumnName; definition = $ColumnDefinition }
+    return $true
+}
+
+function Update-VehiculeActifFromDates {
+    param([Parameter(Mandatory=$true)] $Connection)
+
+    $cmd = $Connection.CreateCommand()
+    $cmd.CommandText = @"
+UPDATE Vehicule
+SET actif = CASE
+    WHEN date_sortie IS NULL OR TRIM(date_sortie) = '' THEN 1
+    ELSE 0
+END
+"@
+    $rows = $cmd.ExecuteNonQuery()
+    Write-Log "[DB] Synced Vehicule.actif from date_sortie" "INFO" @{ rows = $rows }
+}
+
+function Invoke-DatabaseMigrations {
+    $conn = Open-Connection
+    try {
+        $null = Add-SqliteColumnIfMissing -Connection $conn -TableName "Vehicule" -ColumnName "date_entree" -ColumnDefinition "TEXT"
+        $null = Add-SqliteColumnIfMissing -Connection $conn -TableName "Vehicule" -ColumnName "date_sortie" -ColumnDefinition "TEXT"
+        $null = Add-SqliteColumnIfMissing -Connection $conn -TableName "Vehicule" -ColumnName "date_fin_controle_technique" -ColumnDefinition "TEXT"
+
+        # Données : numéro de parc obligatoire — compléter les lignes historiques vides (avant contrainte métier côté app)
+        $cmdFixParc = $conn.CreateCommand()
+        $cmdFixParc.CommandText = @"
+UPDATE Vehicule
+SET numero_parc = TRIM(immatriculation)
+WHERE numero_parc IS NULL OR TRIM(numero_parc) = ''
+"@
+        $null = $cmdFixParc.ExecuteNonQuery()
+
+        Update-VehiculeActifFromDates -Connection $conn
+    } finally {
+        Close-Connection $conn
+    }
+}
+
 function Initialize-Database {
     if (-not (Test-Path $script:DllPath)) {
         Write-Host "❌ DLL manquante" -ForegroundColor Red
@@ -98,6 +174,8 @@ function Initialize-Database {
         Write-Host "✅ Base créée" -ForegroundColor Green
         Write-Log "[DB] Database created" "INFO" @{ dbPath = $script:DbPath }
     }
+
+    Invoke-DatabaseMigrations
     return $true
 }
 
@@ -401,10 +479,21 @@ ORDER BY a.nom, a.prenom
 }
 
 function Get-Vehicules {
+    <#
+    Véhicules actifs uniquement (actif = 1). Propriétés alignées usage grille / formulaires.
+    Typage logique véhicule : id (number), numero_parc, immatriculation, numero_chassis, actif (1|0), etc.
+    #>
     $conn = Open-Connection
     try {
         $cmd = $conn.CreateCommand()
-        $cmd.CommandText = "SELECT id_vehicule, numero_parc, immatriculation, marque, modele, capacite, conducteur_id, actif FROM Vehicule WHERE actif = 1 ORDER BY numero_parc"
+        $cmd.CommandText = @"
+SELECT id_vehicule, numero_parc, immatriculation, numero_chassis, marque, modele,
+       date_mise_circulation, date_controle, date_entree, date_sortie,
+       date_fin_controle_technique, capacite, conducteur_id, actif
+FROM Vehicule
+WHERE actif = 1
+ORDER BY numero_parc
+"@
         $reader = $cmd.ExecuteReader()
         $vehicules = @()
         while ($reader.Read()) {
@@ -412,8 +501,52 @@ function Get-Vehicules {
                 id = $reader["id_vehicule"]
                 numero_parc = $reader["numero_parc"]
                 immatriculation = $reader["immatriculation"]
+                numero_chassis = $reader["numero_chassis"]
                 marque = $reader["marque"]
                 modele = $reader["modele"]
+                date_mise_circulation = $reader["date_mise_circulation"]
+                date_controle = $reader["date_controle"]
+                date_entree = $reader["date_entree"]
+                date_sortie = $reader["date_sortie"]
+                date_fin_controle_technique = $reader["date_fin_controle_technique"]
+                capacite = $reader["capacite"]
+                conducteur_id = $reader["conducteur_id"]
+                actif = $reader["actif"]
+            }
+        }
+        return $vehicules
+    } finally { Close-Connection $conn }
+}
+
+function Get-AllVehicules {
+    <#
+    Tous les véhicules (actifs et inactifs / historique), même schéma que Get-Vehicules.
+    #>
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+SELECT id_vehicule, numero_parc, immatriculation, numero_chassis, marque, modele,
+       date_mise_circulation, date_controle, date_entree, date_sortie,
+       date_fin_controle_technique, capacite, conducteur_id, actif
+FROM Vehicule
+ORDER BY numero_parc
+"@
+        $reader = $cmd.ExecuteReader()
+        $vehicules = @()
+        while ($reader.Read()) {
+            $vehicules += [PSCustomObject]@{
+                id = $reader["id_vehicule"]
+                numero_parc = $reader["numero_parc"]
+                immatriculation = $reader["immatriculation"]
+                numero_chassis = $reader["numero_chassis"]
+                marque = $reader["marque"]
+                modele = $reader["modele"]
+                date_mise_circulation = $reader["date_mise_circulation"]
+                date_controle = $reader["date_controle"]
+                date_entree = $reader["date_entree"]
+                date_sortie = $reader["date_sortie"]
+                date_fin_controle_technique = $reader["date_fin_controle_technique"]
                 capacite = $reader["capacite"]
                 conducteur_id = $reader["conducteur_id"]
                 actif = $reader["actif"]

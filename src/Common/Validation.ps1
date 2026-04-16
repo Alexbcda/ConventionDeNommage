@@ -73,6 +73,35 @@ function Test-SecuriteInput {
     return $true
 }
 
+<#
+Numéro de parc véhicule : obligatoire côté métier, format restreint (pas d’injection SQL / XSS).
+#>
+function Test-NumeroParcVehicule {
+    param([string]$Value)
+    if ($null -eq $Value) { return $false }
+    $t = $Value.Trim()
+    if ($t.Length -eq 0 -or $t.Length -gt 50) { return $false }
+    if (-not (Test-SecuriteInput $t)) { return $false }
+    if ($t -notmatch '^[A-Za-z0-9._\- ]+$') { return $false }
+    return $true
+}
+
+function Get-NumeroParcError {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return "Le numéro de parc est obligatoire." }
+    if (-not (Test-NumeroParcVehicule $Value)) { return "Numéro de parc invalide (caractères ou longueur max 50)." }
+    return ""
+}
+
+<#
+Date stockée au format strict YYYY-MM-DD (couche BDD / API interne).
+#>
+function Test-YyyyMmDdDate {
+    param([string]$DateStr)
+    if ([string]::IsNullOrWhiteSpace($DateStr)) { return $true }
+    return ($DateStr -match '^\d{4}-\d{2}-\d{2}$')
+}
+
 function Normalize-Whitespace {
     param([string]$Text)
     if ($null -eq $Text) { return "" }
