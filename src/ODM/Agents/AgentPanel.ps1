@@ -86,9 +86,9 @@ function Show-AgentsPanel {
     $mainPanel.Padding = New-Object System.Windows.Forms.Padding(20)
 
     $lblTitle = New-Object System.Windows.Forms.Label
-    $lblTitle.Text = "Gestion des agents"
-    $lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
-    $lblTitle.ForeColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
+    $lblTitle.Text = $script:TitrePanelAgents
+    $lblTitle.Font = $script:PoliceTitreGestionFenetre
+    $lblTitle.ForeColor = $script:CouleurOrange
     $lblTitle.Location = New-Object System.Drawing.Point(20, 20)
     $lblTitle.Size = New-Object System.Drawing.Size(400, 50)
     $mainPanel.Controls.Add($lblTitle)
@@ -96,8 +96,8 @@ function Show-AgentsPanel {
     # ===== Option historique (actifs + inactifs) =====
     $lblHistorique = New-Object System.Windows.Forms.Label
     $lblHistorique.Text = "Afficher l’historique des agents"
-    $lblHistorique.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Regular)
-    $lblHistorique.ForeColor = [System.Drawing.Color]::FromArgb(60, 60, 60)
+    $lblHistorique.Font = $script:PoliceLabelSecondaireFenetre
+    $lblHistorique.ForeColor = $script:CouleurTexteSecondairePanel
     # [AgentsUI] UI spacing adjusted +15px for history mode
     $lblHistorique.Location = New-Object System.Drawing.Point(20, 77)
     $lblHistorique.Size = New-Object System.Drawing.Size(260, 20)

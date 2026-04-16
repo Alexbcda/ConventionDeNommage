@@ -19,7 +19,7 @@ function Start-GUI {
     . "$PSScriptRoot\ODM\Agents\AgentPanel.ps1"
     . "$PSScriptRoot\ODM\Agents\AgentRepository.ps1"
     . "$PSScriptRoot\ODM\Vehicules\VehiculesPanel.ps1"
-    . "$PSScriptRoot\ODM\Vehicules\VehiculesManager.ps1"
+    . "$PSScriptRoot\ODM\Vehicules\VehiculesRepository.ps1"
     . "$PSScriptRoot\ODM\Affectations\Date.ps1"
     . "$PSScriptRoot\ODM\Affectations\DatePanel.ps1"
     . "$PSScriptRoot\ODM\Affectations\AffectationNbTournees.ps1"
