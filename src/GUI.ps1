@@ -70,7 +70,7 @@ function Start-GUI {
 
     # ONGLET 3 : Agents
     $tabAgents = New-Object System.Windows.Forms.TabPage
-    $tabAgents.Text = "Agents"
+    $tabAgents.Text = "Données agents"
     $tabAgents.BackColor = $script:CouleurGrisFond
     
     $agentsPanelResult = Show-AgentsPanel

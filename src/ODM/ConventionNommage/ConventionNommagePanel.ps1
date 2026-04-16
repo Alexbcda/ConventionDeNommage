@@ -1,4 +1,4 @@
-﻿# ConventionNommagePanel.ps1 - VERSION ULTRA SIMPLIFIEE
+# ConventionNommagePanel.ps1 - VERSION FINALE
 
 function Show-ConventionNommagePanel {
     param([string]$FichierPDF)
@@ -42,56 +42,74 @@ function Show-ConventionNommagePanel {
     $panel.Controls.Add($btnFT)
 
     $lblDate = New-Object System.Windows.Forms.Label
-    $lblDate.Text = "Date (JJ/MM/AAAA) :"
+    $lblDate.Text = "Date :"
     $lblDate.Font = $script:PoliceNormal
     $lblDate.Location = New-Object System.Drawing.Point(0, 240)
-    $lblDate.Size = New-Object System.Drawing.Size(150, 30)
+    $lblDate.Size = New-Object System.Drawing.Size(50, 30)
     $panel.Controls.Add($lblDate)
 
-    $dtDate = New-Object System.Windows.Forms.DateTimePicker
-    $dtDate.Location = New-Object System.Drawing.Point(160, 240)
-    $dtDate.Size = New-Object System.Drawing.Size(170, 30)
-    $dtDate.Font = $script:PoliceNormal
-    $dtDate.Format = [System.Windows.Forms.DateTimePickerFormat]::Custom
-    $dtDate.CustomFormat = "dd.MM.yyyy"
-    # Ne pas utiliser Get-Date ici: une fonction Get-Date du projet peut masquer la cmdlet.
-    $dtDate.Value = [datetime]::Now
-    $panel.Controls.Add($dtDate)
+    $datePicker = New-Object System.Windows.Forms.DateTimePicker
+    $datePicker.Location = New-Object System.Drawing.Point(60, 240)
+    $datePicker.Size = New-Object System.Drawing.Size(180, 30)
+    $datePicker.Format = "Short"
+    $datePicker.Font = $script:PoliceNormal
+    $datePicker.Value = (Get-Date).AddDays(-1)
+    $panel.Controls.Add($datePicker)
 
-    $btnCert.Add_Click({
+    # Mode forcé - label avec Name pour le retrouver
+    $lblModeForce = New-Object System.Windows.Forms.Label
+    $lblModeForce.Name = "lblModeForce"
+    $lblModeForce.Text = ""
+    $lblModeForce.Font = $script:PoliceNormal
+    $lblModeForce.ForeColor = $script:CouleurOrange
+    $lblModeForce.Location = New-Object System.Drawing.Point(260, 245)
+    $lblModeForce.Size = New-Object System.Drawing.Size(250, 25)
+    $lblModeForce.Visible = $false
+    $panel.Controls.Add($lblModeForce)
+
+    # Événement fiable avec $this.Parent.Controls
+    $datePicker.Add_ValueChanged({
+        $label = $this.Parent.Controls | Where-Object { $_.Name -eq "lblModeForce" }
+        if ($label) {
+            $label.Text = "Mode forcé : " + $this.Value.ToString("dd/MM/yyyy")
+            $label.Visible = $true
+        }
+    })
+
+    $null = $btnCert.Add_Click({
         $c = $txtCollecte.Text.Trim()
         if ([string]::IsNullOrWhiteSpace($c)) { 
             [System.Windows.Forms.MessageBox]::Show("Veuillez saisir le point de collecte")
             return 
         }
-        $d = $dtDate.Value.ToString("dd.MM.yyyy")
-        $n = "Certificat de Destruction-$c-du $d.pdf"
+        $d = $datePicker.Value
+        $n = "Certificat de Destruction-$c-du $($d.ToString('dd.MM.yyyy')).pdf"
         Rename-Item -Path $FichierPDF -NewName $n -Force
         [System.Windows.Forms.MessageBox]::Show("✅ Fichier renommé : $n")
         $panel.FindForm().Close()
     })
 
-    $btnPlan.Add_Click({
+    $null = $btnPlan.Add_Click({
         $c = $txtCollecte.Text.Trim()
         if ([string]::IsNullOrWhiteSpace($c)) { 
             [System.Windows.Forms.MessageBox]::Show("Veuillez saisir le point de collecte")
             return 
         }
-        $dateFormatted = $dtDate.Value.ToString("yyyyMMdd")
-        $n = "$dateFormatted-$c.pdf"
+        $d = $datePicker.Value
+        $n = "$($d.ToString('yyyyMMdd'))-$c.pdf"
         Rename-Item -Path $FichierPDF -NewName $n -Force
         [System.Windows.Forms.MessageBox]::Show("✅ Fichier renommé : $n")
         $panel.FindForm().Close()
     })
 
-    $btnFT.Add_Click({
+    $null = $btnFT.Add_Click({
         $c = $txtCollecte.Text.Trim()
         if ([string]::IsNullOrWhiteSpace($c)) { 
             [System.Windows.Forms.MessageBox]::Show("Veuillez saisir le point de collecte")
             return 
         }
-        $d = $dtDate.Value.ToString("dd.MM.yyyy")
-        $n = "$c-du $d.pdf"
+        $d = $datePicker.Value
+        $n = "$c-du $($d.ToString('dd.MM.yyyy')).pdf"
         Rename-Item -Path $FichierPDF -NewName $n -Force
         [System.Windows.Forms.MessageBox]::Show("✅ Fichier renommé : $n")
         $panel.FindForm().Close()
@@ -100,5 +118,5 @@ function Show-ConventionNommagePanel {
     $txtCollecte.Select()
     $txtCollecte.Focus()
 
-    return $panel
+    return ,$panel
 }

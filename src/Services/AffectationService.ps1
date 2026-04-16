@@ -41,7 +41,7 @@ function Get-AgentsList {
 function Get-VehiculesList {
     $vehicules = Get-State -Key "Vehicules"
     if ($vehicules.Count -eq 0) { return @("Véhicule A", "Véhicule B", "Véhicule C") }
-    $parcs = @(); foreach ($v in $vehicules) { if ($v.numeroParc) { $parcs += $v.numeroParc } }
+    $parcs = @(); foreach ($v in $vehicules) { if ($v.numero_parc) { $parcs += $v.numero_parc } }
     return $parcs
 }
 
