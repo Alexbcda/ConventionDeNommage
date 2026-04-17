@@ -24,6 +24,13 @@ $script:PoliceTitre3 = New-Object System.Drawing.Font("Arial", 12, [System.Drawi
 $script:PoliceNormal = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Regular)
 $script:PoliceBouton = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
 
+# Titres / textes secondaires des panneaux de gestion (Agents, Véhicules) — source unique
+$script:PoliceTitreGestionFenetre = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
+$script:PoliceLabelSecondaireFenetre = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Regular)
+$script:CouleurTexteSecondairePanel = [System.Drawing.Color]::FromArgb(60, 60, 60)
+$script:TitrePanelAgents = "Gestion des agents"
+$script:TitrePanelVehicules = "Gestion des véhicules"
+
 # FONCTION BOUTON AVEC BORDURE (CORRIGEE)
 function Set-BtnBorderStyle {
     param(
