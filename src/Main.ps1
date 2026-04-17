@@ -1,4 +1,4 @@
-# ========== MAIN.PS1 - POINT D'ENTRÉE PRINCIPAL ==========
+# ========== MAIN.PS1 - POINT D'ENTRÉE PRINCIPAL NETTOYÉ ==========
 
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
@@ -15,7 +15,7 @@ Write-Host "[MAIN] Chargement des styles..." -ForegroundColor Gray
 Write-Log "[MAIN] Application start" "INFO" @{ scriptPath = $scriptPath }
 
 # ============================================
-# 1.5 INITIALISATION DE LA BASE SQLITE
+# 2. INITIALISATION DE LA BASE SQLITE
 # ============================================
 . "$scriptPath\Database\Database.ps1"
 try {
@@ -27,27 +27,16 @@ try {
 }
 
 # ============================================
-# 2. CHARGEMENT DE LA NOUVELLE ARCHITECTURE
-# ============================================
-Write-Host "[MAIN] Chargement de la nouvelle architecture..." -ForegroundColor Gray
-. "$scriptPath\Framework\Store.ps1"
-. "$scriptPath\Framework\Router.ps1"
-. "$scriptPath\Framework\Components.ps1"
-. "$scriptPath\Services\AffectationService.ps1"
-. "$scriptPath\Pages\DatePage.ps1"
-. "$scriptPath\Pages\TourneesPage.ps1"
-. "$scriptPath\Pages\AffectationPage.ps1"
-
-# ============================================
-# 3. CHARGEMENT DES MODULES EXISTANTS
+# 3. CHARGEMENT DES MODULES MÉTIER
 # ============================================
 Write-Host "[MAIN] Chargement des modules métier..." -ForegroundColor Gray
 . "$scriptPath\ODM\ConventionNommage\ConventionNommage.ps1"
 . "$scriptPath\ODM\Agents\AgentRepository.ps1"
 . "$scriptPath\ODM\Vehicules\VehiculesRepository.ps1"
 
+
 # ============================================
-# 4. CHARGEMENT DE LA GUI
+# 4. CHARGEMENT ET LANCEMENT DE LA GUI
 # ============================================
 Write-Host "[MAIN] Chargement de l'interface..." -ForegroundColor Gray
 . "$scriptPath\GUI.ps1"
