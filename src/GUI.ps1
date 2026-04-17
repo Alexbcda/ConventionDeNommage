@@ -1,7 +1,6 @@
 # GUI.ps1 - Version simplifiée
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-. "$scriptDir\Framework\Components.ps1"
 . "$scriptDir\Common\Styles.ps1"
 
 function Start-GUI {

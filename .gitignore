@@ -1,30 +1,20 @@
-# Dossiers de données
-Data/
-src/Data/
-*.json
+# Logs
+Logs/
+*.log
+
+# Base de données (contenu, pas structure)
+Data/gestion.db
+Data/odm_config.json
+
+# DLLs
+lib/*.dll
+!lib/System.Data.SQLite.dll
 
 # Fichiers temporaires
 *.tmp
-*.log
 *.bak
-*.backup
-*.ps1~
-*.ps1.bak
-*.txt
+Test-*.ps1
 
-# Gros fichiers
-complete_export.txt
-CODE_COMPLET.txt
-
-# Fichiers système
+# Dossiers système
 .DS_Store
 Thumbs.db
-desktop.ini
-*.suo
-*.user
-
-# Dossier Git
-.git/
-Output/*.exe
-Launcher.vbs
-setup.iss
