@@ -78,6 +78,140 @@ function Ensure-SqliteLoaded {
     return $true
 }
 
+function Test-SafeSqlIdentifier {
+    <#
+    Identifiant SQL (table/colonne) : lettres, chiffres, underscore uniquement.
+    Évite l'injection via PRAGMA / ALTER lorsque des paramètres dynamiques sont utilisés.
+    #>
+    param([Parameter(Mandatory=$true)] [string]$Name)
+    if ($Name -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
+        throw "Identifiant SQL invalide: $Name"
+    }
+    return $true
+}
+
+function Get-SqliteLastInsertRowId {
+    param(
+        [Parameter(Mandatory=$true)]
+        [System.Data.SQLite.SQLiteCommand]$Command
+    )
+    $Command.Parameters.Clear()
+    $Command.CommandText = "SELECT last_insert_rowid()"
+    $result = $Command.ExecuteScalar()
+    $resultString = $result.ToString()
+    $match = [regex]::Match($resultString, '\d+$')
+    if ($match.Success) { return [int64]$match.Value }
+    return [int64]$resultString
+}
+
+function New-VehiculeRowObject {
+    param(
+        [Parameter(Mandatory=$true)]
+        $Reader
+    )
+    [PSCustomObject]@{
+        id = $Reader["id_vehicule"]
+        numero_parc = $Reader["numero_parc"]
+        immatriculation = $Reader["immatriculation"]
+        numero_chassis = $Reader["numero_chassis"]
+        marque = $Reader["marque"]
+        modele = $Reader["modele"]
+        date_mise_circulation = $Reader["date_mise_circulation"]
+        date_controle = $Reader["date_controle"]
+        date_entree = $Reader["date_entree"]
+        date_sortie = $Reader["date_sortie"]
+        date_fin_controle_technique = $Reader["date_fin_controle_technique"]
+        capacite = $Reader["capacite"]
+        conducteur_id = $Reader["conducteur_id"]
+        actif = $Reader["actif"]
+    }
+}
+
+function Test-SqliteColumnExists {
+    param(
+        [Parameter(Mandatory=$true)] $Connection,
+        [Parameter(Mandatory=$true)] [string]$TableName,
+        [Parameter(Mandatory=$true)] [string]$ColumnName
+    )
+
+    $null = Test-SafeSqlIdentifier $TableName
+    $null = Test-SafeSqlIdentifier $ColumnName
+
+    $cmd = $Connection.CreateCommand()
+    $cmd.CommandText = "PRAGMA table_info($TableName)"
+    $reader = $cmd.ExecuteReader()
+    try {
+        while ($reader.Read()) {
+            if ([string]$reader["name"] -eq $ColumnName) { return $true }
+        }
+        return $false
+    } finally {
+        if ($reader) { $reader.Close() }
+    }
+}
+
+function Add-SqliteColumnIfMissing {
+    param(
+        [Parameter(Mandatory=$true)] $Connection,
+        [Parameter(Mandatory=$true)] [string]$TableName,
+        [Parameter(Mandatory=$true)] [string]$ColumnName,
+        [Parameter(Mandatory=$true)] [string]$ColumnDefinition
+    )
+
+    $null = Test-SafeSqlIdentifier $TableName
+    $null = Test-SafeSqlIdentifier $ColumnName
+    if ($ColumnDefinition -notmatch '^[A-Za-z0-9_, ()]+$') {
+        throw "Définition de colonne SQL non autorisée."
+    }
+
+    if (Test-SqliteColumnExists -Connection $Connection -TableName $TableName -ColumnName $ColumnName) {
+        return $false
+    }
+
+    $cmd = $Connection.CreateCommand()
+    $cmd.CommandText = "ALTER TABLE $TableName ADD COLUMN $ColumnName $ColumnDefinition"
+    $null = $cmd.ExecuteNonQuery()
+    Write-Log "[DB] Added missing column" "INFO" @{ table = $TableName; column = $ColumnName; definition = $ColumnDefinition }
+    return $true
+}
+
+function Update-VehiculeActifFromDates {
+    param([Parameter(Mandatory=$true)] $Connection)
+
+    $cmd = $Connection.CreateCommand()
+    $cmd.CommandText = @"
+UPDATE Vehicule
+SET actif = CASE
+    WHEN date_sortie IS NULL OR TRIM(date_sortie) = '' THEN 1
+    ELSE 0
+END
+"@
+    $rows = $cmd.ExecuteNonQuery()
+    Write-Log "[DB] Synced Vehicule.actif from date_sortie" "INFO" @{ rows = $rows }
+}
+
+function Invoke-DatabaseMigrations {
+    $conn = Open-Connection
+    try {
+        $null = Add-SqliteColumnIfMissing -Connection $conn -TableName "Vehicule" -ColumnName "date_entree" -ColumnDefinition "TEXT"
+        $null = Add-SqliteColumnIfMissing -Connection $conn -TableName "Vehicule" -ColumnName "date_sortie" -ColumnDefinition "TEXT"
+        $null = Add-SqliteColumnIfMissing -Connection $conn -TableName "Vehicule" -ColumnName "date_fin_controle_technique" -ColumnDefinition "TEXT"
+
+        # Données : numéro de parc obligatoire — compléter les lignes historiques vides (avant contrainte métier côté app)
+        $cmdFixParc = $conn.CreateCommand()
+        $cmdFixParc.CommandText = @"
+UPDATE Vehicule
+SET numero_parc = TRIM(immatriculation)
+WHERE numero_parc IS NULL OR TRIM(numero_parc) = ''
+"@
+        $null = $cmdFixParc.ExecuteNonQuery()
+
+        Update-VehiculeActifFromDates -Connection $conn
+    } finally {
+        Close-Connection $conn
+    }
+}
+
 function Initialize-Database {
     if (-not (Test-Path $script:DllPath)) {
         Write-Host "❌ DLL manquante" -ForegroundColor Red
@@ -98,6 +232,8 @@ function Initialize-Database {
         Write-Host "✅ Base créée" -ForegroundColor Green
         Write-Log "[DB] Database created" "INFO" @{ dbPath = $script:DbPath }
     }
+
+    Invoke-DatabaseMigrations
     return $true
 }
 
@@ -184,15 +320,7 @@ VALUES (
         $null = $cmd.ExecuteNonQuery()
         $sw.Stop()
 
-        $cmd.CommandText = "SELECT last_insert_rowid()"
-        $result = $cmd.ExecuteScalar()
-        
-        # Extraire le nombre (gère le cas "1 1")
-        $resultString = $result.ToString()
-        $match = [regex]::Match($resultString, '\d+$')
-        $newId =
-            if ($match.Success) { [int]$match.Value }
-            else { [int]$resultString }
+        $newId = [int](Get-SqliteLastInsertRowId -Command $cmd)
 
         Write-Log "[DB] Add-Agent success" "INFO" @{ id = $newId; elapsed_ms = $sw.ElapsedMilliseconds }
         return $newId
@@ -401,24 +529,234 @@ ORDER BY a.nom, a.prenom
 }
 
 function Get-Vehicules {
+    <#
+    Véhicules actifs uniquement (actif = 1). Propriétés alignées usage grille / formulaires.
+    Typage logique véhicule : id (number), numero_parc, immatriculation, numero_chassis, actif (1|0), etc.
+    #>
     $conn = Open-Connection
     try {
         $cmd = $conn.CreateCommand()
-        $cmd.CommandText = "SELECT id_vehicule, numero_parc, immatriculation, marque, modele, capacite, conducteur_id, actif FROM Vehicule WHERE actif = 1 ORDER BY numero_parc"
+        $cmd.CommandText = @"
+SELECT id_vehicule, numero_parc, immatriculation, numero_chassis, marque, modele,
+       date_mise_circulation, date_controle, date_entree, date_sortie,
+       date_fin_controle_technique, capacite, conducteur_id, actif
+FROM Vehicule
+WHERE actif = 1
+ORDER BY numero_parc
+"@
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
         $reader = $cmd.ExecuteReader()
         $vehicules = @()
-        while ($reader.Read()) {
-            $vehicules += [PSCustomObject]@{
-                id = $reader["id_vehicule"]
-                numero_parc = $reader["numero_parc"]
-                immatriculation = $reader["immatriculation"]
-                marque = $reader["marque"]
-                modele = $reader["modele"]
-                capacite = $reader["capacite"]
-                conducteur_id = $reader["conducteur_id"]
-                actif = $reader["actif"]
+        try {
+            while ($reader.Read()) {
+                $vehicules += (New-VehiculeRowObject -Reader $reader)
             }
+        } finally {
+            if ($reader) { $reader.Close() }
         }
+        $sw.Stop()
+        Write-Log "[DB] Get-Vehicules" "INFO" @{ count = $vehicules.Count; elapsed_ms = $sw.ElapsedMilliseconds }
         return $vehicules
+    } catch {
+        Write-Log "[DB] Get-Vehicules failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
     } finally { Close-Connection $conn }
+}
+
+function Get-AllVehicules {
+    <#
+    Tous les véhicules (actifs et inactifs / historique), même schéma que Get-Vehicules.
+    #>
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+SELECT id_vehicule, numero_parc, immatriculation, numero_chassis, marque, modele,
+       date_mise_circulation, date_controle, date_entree, date_sortie,
+       date_fin_controle_technique, capacite, conducteur_id, actif
+FROM Vehicule
+ORDER BY numero_parc
+"@
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $reader = $cmd.ExecuteReader()
+        $vehicules = @()
+        try {
+            while ($reader.Read()) {
+                $vehicules += (New-VehiculeRowObject -Reader $reader)
+            }
+        } finally {
+            if ($reader) { $reader.Close() }
+        }
+        $sw.Stop()
+        Write-Log "[DB] Get-AllVehicules" "INFO" @{ count = $vehicules.Count; elapsed_ms = $sw.ElapsedMilliseconds }
+        return $vehicules
+    } catch {
+        Write-Log "[DB] Get-AllVehicules failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    } finally { Close-Connection $conn }
+}
+
+# ============================================================
+# VÉHICULES — persistance uniquement (requêtes paramétrées)
+# La validation métier est dans ODM/Vehicules/VehiculesRepository.ps1
+# ============================================================
+
+function Add-VehiculeRecord {
+    param(
+        [string]$NumeroParc,
+        [string]$Immatriculation,
+        [string]$NumeroChassis,
+        $Marque,
+        $Modele,
+        [string]$DateMiseCirculation,
+        $DateControle,
+        [string]$DateEntree,
+        $DateSortie,
+        $DateFinControleTechnique,
+        [int]$Actif
+    )
+
+    Write-Log "[DB] Add-VehiculeRecord begin" "INFO" @{
+        numero_parc = $NumeroParc; immatriculation = $Immatriculation; actif = $Actif
+    }
+
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+INSERT INTO Vehicule (
+    numero_parc, immatriculation, numero_chassis, marque, modele,
+    date_mise_circulation, date_controle, date_entree, date_sortie,
+    date_fin_controle_technique, actif
+)
+VALUES (
+    @parc, @immat, @chassis, @marque, @modele,
+    @date_mise, @date_ctrl, @date_entree, @date_sortie,
+    @date_fin_ctrl_tech, @actif
+)
+"@
+        $cmd.Parameters.AddWithValue("@parc", $NumeroParc) | Out-Null
+        $cmd.Parameters.AddWithValue("@immat", $Immatriculation) | Out-Null
+        $cmd.Parameters.AddWithValue("@chassis", $NumeroChassis) | Out-Null
+        $cmd.Parameters.AddWithValue("@marque", $(if ($Marque) { $Marque } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@modele", $(if ($Modele) { $Modele } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_mise", $DateMiseCirculation) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_ctrl", $(if ($DateControle) { $DateControle } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_entree", $DateEntree) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_sortie", $(if ($DateSortie) { $DateSortie } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_fin_ctrl_tech", $(if ($DateFinControleTechnique) { $DateFinControleTechnique } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@actif", $Actif) | Out-Null
+
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $null = $cmd.ExecuteNonQuery()
+        $sw.Stop()
+        $newId = [int](Get-SqliteLastInsertRowId -Command $cmd)
+        Write-Log "[DB] Add-VehiculeRecord success" "INFO" @{ id = $newId; elapsed_ms = $sw.ElapsedMilliseconds }
+        return $newId
+    } catch {
+        Write-Log "[DB] Add-VehiculeRecord failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    } finally {
+        Close-Connection $conn
+    }
+}
+
+function Update-VehiculeRecord {
+    param(
+        [int]$Id,
+        [string]$NumeroParc,
+        [string]$Immatriculation,
+        [string]$NumeroChassis,
+        $Marque,
+        $Modele,
+        [string]$DateMiseCirculation,
+        $DateControle,
+        [string]$DateEntree,
+        $DateSortie,
+        $DateFinControleTechnique,
+        [int]$Actif
+    )
+
+    Write-Log "[DB] Update-VehiculeRecord begin" "INFO" @{ id = $Id; numero_parc = $NumeroParc }
+
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+UPDATE Vehicule
+SET numero_parc = @parc, immatriculation = @immat, numero_chassis = @chassis,
+    marque = @marque, modele = @modele, date_mise_circulation = @date_mise, date_controle = @date_ctrl,
+    date_entree = @date_entree, date_sortie = @date_sortie,
+    date_fin_controle_technique = @date_fin_ctrl_tech, actif = @actif
+WHERE id_vehicule = @id
+"@
+        $cmd.Parameters.AddWithValue("@id", $Id) | Out-Null
+        $cmd.Parameters.AddWithValue("@parc", $NumeroParc) | Out-Null
+        $cmd.Parameters.AddWithValue("@immat", $Immatriculation) | Out-Null
+        $cmd.Parameters.AddWithValue("@chassis", $NumeroChassis) | Out-Null
+        $cmd.Parameters.AddWithValue("@marque", $(if ($Marque) { $Marque } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@modele", $(if ($Modele) { $Modele } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_mise", $DateMiseCirculation) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_ctrl", $(if ($DateControle) { $DateControle } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_entree", $DateEntree) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_sortie", $(if ($DateSortie) { $DateSortie } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_fin_ctrl_tech", $(if ($DateFinControleTechnique) { $DateFinControleTechnique } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@actif", $Actif) | Out-Null
+
+        $n = $cmd.ExecuteNonQuery()
+        Write-Log "[DB] Update-VehiculeRecord success" "INFO" @{ id = $Id; rows = $n }
+        return $n
+    } catch {
+        Write-Log "[DB] Update-VehiculeRecord failed" "ERROR" @{ id = $Id; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    } finally {
+        Close-Connection $conn
+    }
+}
+
+function Remove-VehiculeRecord {
+    param([int]$Id)
+
+    Write-Log "[DB] Remove-VehiculeRecord begin" "INFO" @{ id = $Id }
+
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = "DELETE FROM Vehicule WHERE id_vehicule = @id"
+        $cmd.Parameters.AddWithValue("@id", $Id) | Out-Null
+        $n = $cmd.ExecuteNonQuery()
+        Write-Log "[DB] Remove-VehiculeRecord success" "INFO" @{ id = $Id; rows = $n }
+        return $n
+    } catch {
+        Write-Log "[DB] Remove-VehiculeRecord failed" "ERROR" @{ id = $Id; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    } finally {
+        Close-Connection $conn
+    }
+}
+
+function Get-VehiculeRowById {
+    param([int]$Id)
+
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+SELECT id_vehicule, numero_parc, immatriculation, numero_chassis, marque, modele,
+       date_mise_circulation, date_controle, date_entree, date_sortie,
+       date_fin_controle_technique, capacite, conducteur_id, actif
+FROM Vehicule
+WHERE id_vehicule = @id
+"@
+        $cmd.Parameters.AddWithValue("@id", $Id) | Out-Null
+        $reader = $cmd.ExecuteReader()
+        try {
+            if (-not $reader.Read()) { return $null }
+            return (New-VehiculeRowObject -Reader $reader)
+        } finally {
+            if ($reader) { $reader.Close() }
+        }
+    } finally {
+        Close-Connection $conn
+    }
 }
