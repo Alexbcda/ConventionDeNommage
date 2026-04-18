@@ -1,0 +1,4008 @@
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\Data\templates.json
+================================================================================
+{
+  "templates": [
+    {
+      "id": "certificat",
+      "name": "CERTIFICAT",
+      "format": "Certificat de Destruction-{text}-du {date}",
+      "dateFormat": "dd.MM.yyyy",
+      "enabled": true
+    },
+    {
+      "id": "planner",
+      "name": "PLANNER",
+      "format": "{date}-{text}",
+      "dateFormat": "yyyyMMdd",
+      "enabled": true
+    },
+    {
+      "id": "france-travail",
+      "name": "FRANCE TRAVAIL",
+      "format": "{text}-du {date}",
+      "dateFormat": "dd.MM.yyyy",
+      "enabled": true
+    }
+  ]
+}
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\Launcher.vbs
+================================================================================
+' Launcher.vbs - Convention de nommage
+On Error Resume Next
+
+Dim strPath, objFSO, objShell, strCommand, strArgs
+
+Set objShell = CreateObject("WScript.Shell")
+Set objFSO = CreateObject("Scripting.FileSystemObject")
+
+strPath = objFSO.GetParentFolderName(WScript.ScriptFullName)
+
+If WScript.Arguments.Count > 0 Then
+    strArgs = WScript.Arguments(0)
+    strArgs = Replace(strArgs, """", "\""")
+    strCommand = "powershell.exe -NoExit -ExecutionPolicy Bypass -NoProfile -File """ & strPath & "\src\Main.ps1"" """ & strArgs & """"
+Else
+    strCommand = "powershell.exe -NoExit -ExecutionPolicy Bypass -NoProfile -File """ & strPath & "\src\Main.ps1"""
+End If
+
+objShell.Run strCommand, 1, False
+
+Set objShell = Nothing
+Set objFSO = Nothing
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\Common\Styles.ps1
+================================================================================
+# ============================================
+# STYLES.PS1 - VERSION CORRIGEE
+# ============================================
+
+# COULEURS
+$script:CouleurOrange = [System.Drawing.Color]::FromArgb(226, 110, 42)
+$script:CouleurOrangeClair = [System.Drawing.Color]::FromArgb(255, 140, 60)
+$script:CouleurOrangeFonce = [System.Drawing.Color]::FromArgb(229, 90, 42)
+$script:CouleurCertificat = [System.Drawing.Color]::FromArgb(175, 71, 11)
+$script:CouleurCertificatClair = [System.Drawing.Color]::FromArgb(200, 100, 50)
+$script:CouleurBleu = [System.Drawing.Color]::FromArgb(26, 106, 168)
+$script:CouleurVert = [System.Drawing.Color]::FromArgb(26, 159, 123)
+$script:CouleurBlanc = [System.Drawing.Color]::FromArgb(255, 255, 255)
+$script:CouleurGrisClair = [System.Drawing.Color]::FromArgb(245, 245, 245)
+$script:CouleurGrisFonce = [System.Drawing.Color]::FromArgb(39, 39, 39)
+$script:CouleurGrisFond = [System.Drawing.Color]::FromArgb(248, 249, 250)
+$script:CouleurLigneAlternee = [System.Drawing.Color]::FromArgb(255, 245, 235)
+$script:CouleurSelection = [System.Drawing.Color]::FromArgb(229, 90, 42)
+
+# POLICES
+$script:PoliceTitre1 = New-Object System.Drawing.Font("Arial", 20, [System.Drawing.FontStyle]::Bold)
+$script:PoliceTitre2 = New-Object System.Drawing.Font("Arial", 16, [System.Drawing.FontStyle]::Bold)
+$script:PoliceTitre3 = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold)
+$script:PoliceNormal = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Regular)
+$script:PoliceBouton = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+
+# Titres / textes secondaires des panneaux de gestion (Agents, Véhicules) — source unique
+$script:PoliceTitreGestionFenetre = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
+$script:PoliceLabelSecondaireFenetre = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Regular)
+$script:CouleurTexteSecondairePanel = [System.Drawing.Color]::FromArgb(60, 60, 60)
+$script:TitrePanelAgents = "Gestion des agents"
+$script:TitrePanelVehicules = "Gestion des véhicules"
+
+# FONCTION BOUTON AVEC BORDURE (CORRIGEE)
+function Set-BtnBorderStyle {
+    param(
+        $Button,
+        [string]$Text,
+        $BorderColor,
+        [int]$Width = 100,
+        [int]$Height = 40
+    )
+    
+    # Valeur par défaut si BorderColor est null
+    if ($BorderColor -eq $null) {
+        $BorderColor = $script:CouleurOrange
+    }
+    
+    $Button.Text = $Text
+    $Button.Size = New-Object System.Drawing.Size($Width, $Height)
+    $Button.BackColor = $script:CouleurBlanc
+    $Button.FlatStyle = "Flat"
+    $Button.FlatAppearance.BorderColor = $BorderColor
+    $Button.FlatAppearance.BorderSize = 2
+    $Button.FlatAppearance.MouseOverBackColor = $BorderColor
+    $Button.FlatAppearance.MouseDownBackColor = $BorderColor
+    $Button.ForeColor = $script:CouleurGrisFonce
+    $Button.Font = $script:PoliceBouton
+    $Button.Cursor = [System.Windows.Forms.Cursors]::Hand
+
+    # ✅ STOCKAGE SAFE
+    $Button.Tag = $BorderColor
+
+    # ✅ EVENTS SAFE
+    $Button.Add_MouseEnter({
+        if ($this.Tag -ne $null) {
+            $this.BackColor = $this.Tag
+        }
+        $this.ForeColor = $script:CouleurBlanc
+    })
+
+    $Button.Add_MouseLeave({
+        $this.BackColor = $script:CouleurBlanc
+        $this.ForeColor = $script:CouleurGrisFonce
+    })
+}
+
+# BOUTONS SPECIFIQUES
+function Set-BtnValiderStyle {
+    param($BtnValider)
+    Set-BtnBorderStyle -Button $BtnValider -Text "VALIDER" -BorderColor $script:CouleurCertificat -Width 100 -Height 40
+}
+
+function Set-BtnRetourStyle {
+    param($BtnRetour)
+    Set-BtnBorderStyle -Button $BtnRetour -Text "← RETOUR" -BorderColor $script:CouleurCertificat -Width 100 -Height 40
+}
+
+function Set-BtnQuitterStyle {
+    param($BtnQuitter)
+    Set-BtnBorderStyle -Button $BtnQuitter -Text "✖ QUITTER" -BorderColor $script:CouleurGrisFonce -Width 100 -Height 40
+}
+
+function Set-BtnCertificatStyle {
+    param($BtnCertificat)
+    Set-BtnBorderStyle -Button $BtnCertificat -Text "CERTIFICAT" -BorderColor $script:CouleurCertificat -Width 130 -Height 45
+}
+
+function Set-BtnPlannerStyle {
+    param($BtnPlanner)
+    Set-BtnBorderStyle -Button $BtnPlanner -Text "PLANNER" -BorderColor $script:CouleurBleu -Width 130 -Height 45
+}
+
+function Set-BtnFranceTravailStyle {
+    param($BtnFranceTravail)
+    Set-BtnBorderStyle -Button $BtnFranceTravail -Text "FRANCE TRAVAIL" -BorderColor $script:CouleurVert -Width 140 -Height 45
+}
+
+function Set-BtnAjouterStyle {
+    param($BtnAjouter)
+    Set-BtnBorderStyle -Button $BtnAjouter -Text "➕ AJOUTER" -BorderColor $script:CouleurCertificat -Width 180 -Height 45
+}
+
+# GRILLE
+function Set-GridStyle {
+    param($Grid)
+    $Grid.BackgroundColor = $script:CouleurBlanc
+    $Grid.BorderStyle = "FixedSingle"
+    $Grid.AllowUserToAddRows = $false
+    $Grid.AllowUserToDeleteRows = $false
+    $Grid.RowHeadersVisible = $false
+    $Grid.SelectionMode = "FullRowSelect"
+    $Grid.DefaultCellStyle.SelectionBackColor = $script:CouleurSelection
+    $Grid.DefaultCellStyle.SelectionForeColor = $script:CouleurBlanc
+}
+
+function Apply-AlternateRowColor {
+    param($Grid, $RowIndex, $Row)
+    if ($RowIndex % 2 -eq 1) {
+        $Grid.Rows[$Row].DefaultCellStyle.BackColor = $script:CouleurLigneAlternee
+    }
+}
+
+# CONSTANTES DE LAYOUT
+$script:LayoutMargin = 12
+$script:LayoutPadding = 50
+$script:LayoutSpacingSmall = 5
+$script:LayoutSpacingNormal = 10
+$script:LayoutSpacingLarge = 20
+
+$script:LayoutTitleX = 0
+$script:LayoutTitleY = 0
+$script:LayoutInfoY = 60
+$script:LayoutFieldY = 110
+$script:LayoutButtonsY = 170
+$script:LayoutCalendarY = 240
+
+# CONSTANTES FENETRE
+$script:TailleFenetreLargeur = 1400
+$script:TailleFenetreHauteur = 800
+$script:TailleFenetreMiniLargeur = 1000
+$script:TailleFenetreMiniHauteur = 650
+
+Write-Host "[STYLES] Version corrigee" -ForegroundColor Green
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\Common\Validation.ps1
+================================================================================
+<# 
+Validation.ps1 - Helpers de validation réutilisables (WinForms-friendly)
+
+- Pas d'exécution dynamique (pas d'Invoke-Expression)
+- Fonctions pures (pas d'accès DB)
+#>
+
+function Normalize-Telephone {
+    param([string]$Telephone)
+    if ($null -eq $Telephone) { return "" }
+    # Garder uniquement les chiffres
+    return ($Telephone -replace '[^0-9]', '')
+}
+
+function Format-Telephone {
+    param([string]$Telephone)
+    # Nettoie (digits-only), valide (10 chiffres) puis formate en "XX XX XX XX XX"
+    # - Champ vide autorisé => retourne ""
+    # - Invalide => retourne $null
+    if ([string]::IsNullOrWhiteSpace($Telephone)) { return "" }
+
+    $digits = Normalize-Telephone $Telephone
+    if ([string]::IsNullOrWhiteSpace($digits)) { return "" }
+    if ($digits.Length -ne 10) { return $null }
+
+    return ($digits.Substring(0,2) + " " +
+            $digits.Substring(2,2) + " " +
+            $digits.Substring(4,2) + " " +
+            $digits.Substring(6,2) + " " +
+            $digits.Substring(8,2))
+}
+
+function Test-Telephone {
+    param([string]$Telephone)
+    $formatted = Format-Telephone $Telephone
+    return ($null -ne $formatted -and $formatted -ne "")
+}
+
+function Normalize-Email {
+    param([string]$Email)
+    if ($null -eq $Email) { return "" }
+    return $Email.Trim()
+}
+
+function Test-Email {
+    param([string]$Email)
+    $e = Normalize-Email $Email
+    if ([string]::IsNullOrWhiteSpace($e)) { return $true } # champ optionnel
+
+    if ($e -notmatch '@') { return $false }
+    # Validation "stricte mais réaliste": local@domaine.tld avec tld >= 2
+    if ($e -notmatch '^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$') { return $false }
+    return $true
+}
+
+function Sanitize-TextInput {
+    param([string]$Text)
+    if ($null -eq $Text) { return "" }
+    $t = $Text.Trim()
+    # Retirer caractères/séquences suspects (couche UI supplémentaire)
+    $t = $t -replace '[''\";<>]', ''
+    $t = $t.Replace('--', '')
+    return $t
+}
+
+function Test-SecuriteInput {
+    param([string]$Text)
+    if ($null -eq $Text) { return $true }
+    $t = $Text
+    # Refuser si présence de caractères/séquences dangereux
+    if ($t -match '[''\";<>]') { return $false }
+    if ($t.Contains("--")) { return $false }
+    return $true
+}
+
+<#
+Numéro de parc véhicule : obligatoire côté métier, format restreint (pas d’injection SQL / XSS).
+#>
+function Test-NumeroParcVehicule {
+    param([string]$Value)
+    if ($null -eq $Value) { return $false }
+    $t = $Value.Trim()
+    if ($t.Length -eq 0 -or $t.Length -gt 50) { return $false }
+    if (-not (Test-SecuriteInput $t)) { return $false }
+    if ($t -notmatch '^[A-Za-z0-9._\- ]+$') { return $false }
+    return $true
+}
+
+function Get-NumeroParcError {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return "Le numéro de parc est obligatoire." }
+    if (-not (Test-NumeroParcVehicule $Value)) { return "Numéro de parc invalide (caractères ou longueur max 50)." }
+    return ""
+}
+
+<#
+Date stockée au format strict YYYY-MM-DD (couche BDD / API interne).
+#>
+function Test-YyyyMmDdDate {
+    param([string]$DateStr)
+    if ([string]::IsNullOrWhiteSpace($DateStr)) { return $true }
+    return ($DateStr -match '^\d{4}-\d{2}-\d{2}$')
+}
+
+function Normalize-Whitespace {
+    param([string]$Text)
+    if ($null -eq $Text) { return "" }
+    $t = $Text.Trim()
+    # Remplacer les séquences d'espaces/tab par un seul espace
+    $t = ($t -replace "\\s+", " ")
+    return $t
+}
+
+function Format-Nom {
+    param([string]$Nom)
+    $n = Normalize-Whitespace $Nom
+    if ([string]::IsNullOrWhiteSpace($n)) { return "" }
+    return $n.ToUpperInvariant()
+}
+
+function Format-Prenom {
+    param([string]$Prenom)
+    $p = Normalize-Whitespace $Prenom
+    if ([string]::IsNullOrWhiteSpace($p)) { return "" }
+
+    # Mettre chaque mot en "Title Case" simple: 1ère lettre maj, reste min
+    $parts = $p.Split(' ')
+    $out = foreach ($part in $parts) {
+        if ([string]::IsNullOrWhiteSpace($part)) { continue }
+        $lower = $part.ToLowerInvariant()
+        if ($lower.Length -eq 1) { $lower.ToUpperInvariant() }
+        else { $lower.Substring(0,1).ToUpperInvariant() + $lower.Substring(1) }
+    }
+    return ($out -join ' ')
+}
+
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\Config.ps1
+================================================================================
+if ([System.Threading.Thread]::CurrentThread.ApartmentState -ne "STA") {
+    powershell -STA -File $PSCommandPath $args
+    exit
+}
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+# Tous les styles sont dans Styles.ps1
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\Core\Logger.ps1
+================================================================================
+# Logger.ps1 - Système de journalisation
+
+$script:logFile = Join-Path $PSScriptRoot "..\Logs\app.log"
+
+function Ensure-LogPath {
+    try {
+        $dir = Split-Path -Parent $script:logFile
+        if (-not (Test-Path $dir)) {
+            $null = New-Item -Path $dir -ItemType Directory -Force
+        }
+    } catch {}
+}
+
+function Format-LogData {
+    param($Data)
+    if ($null -eq $Data) { return "" }
+    try {
+        if ($Data -is [string]) { return $Data }
+        return ($Data | ConvertTo-Json -Compress -Depth 6)
+    } catch {
+        try { return ($Data | Out-String).Trim() } catch { return "" }
+    }
+}
+
+function Write-Log {
+    param(
+        [string]$Message,
+        [string]$Level = "INFO",
+        $Data = $null
+    )
+    
+    Ensure-LogPath
+    # Ne pas utiliser Get-Date: une fonction Get-Date du projet peut masquer la cmdlet.
+    $timestamp = [datetime]::Now.ToString("yyyy-MM-dd HH:mm:ss")
+    $dataText = Format-LogData $Data
+    $suffix = if ([string]::IsNullOrWhiteSpace($dataText)) { "" } else { " | data=$dataText" }
+    $logEntry = "[$timestamp] [$Level] [pid=$PID] $Message$suffix"
+    
+    # Afficher dans la console (si console disponible)
+    try {
+        Write-Host $logEntry
+    } catch {}
+    
+    # Écrire dans le fichier
+    try {
+        Add-Content -Path $script:logFile -Value $logEntry -ErrorAction SilentlyContinue
+    } catch {}
+}
+
+function Clear-Log {
+    Remove-Item $script:logFile -ErrorAction SilentlyContinue
+    Write-Log "Log effacé" "INFO"
+}
+
+try {
+    Export-ModuleMember -Function Write-Log, Clear-Log
+} catch {
+    # Logger.ps1 est souvent dot-sourcé (pas importé comme module) : on ignore l'export.
+}
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\Core\PDFReorganizer.ps1
+================================================================================
+# PDFReorganizer.ps1 - Réorganisation de PDF
+
+function Reorganiser-PDF {
+    param(
+        [string]$SourcePDF, 
+        [string]$OutputPDF, 
+        [hashtable]$Mapping
+    )
+    
+    Write-Host "`n[PDF] === DEBUT REORGANISATION ===" -ForegroundColor Cyan
+    Write-Host "[PDF] Source : $(Split-Path $SourcePDF -Leaf)" -ForegroundColor Gray
+    Write-Host "[PDF] Destination : $(Split-Path $OutputPDF -Leaf)" -ForegroundColor Gray
+    Write-Host "[PDF] Pages configurées : $($Mapping.Count)" -ForegroundColor Gray
+    
+    # Calculer l'ordre des pages
+    $pagesOrder = @()
+    foreach ($key in $Mapping.Keys) {
+        $pagesOrder += [PSCustomObject]@{
+            PageNum = [int]$key
+            Tournee = $Mapping[$key].Tournee
+            Rang = $Mapping[$key].Rang
+        }
+    }
+    $pagesOrder = $pagesOrder | Sort-Object Tournee, Rang, PageNum
+    $pageNumbers = $pagesOrder | ForEach-Object { $_.PageNum }
+    $pageRange = $pageNumbers -join ','
+    
+    Write-Host "[PDF] Ordre des pages : $pageRange" -ForegroundColor Green
+    
+    # Vérifier si Ghostscript est installé
+    $gsPaths = @(
+        "C:\Program Files\gs\gs10.01.1\bin\gswin64c.exe",
+        "C:\Program Files\gs\gs10.00.0\bin\gswin64c.exe",
+        "C:\Program Files\gs\gs9.56.1\bin\gswin64c.exe",
+        "C:\Program Files\gs\gs9.55.0\bin\gswin64c.exe",
+        "C:\Program Files\Ghostscript\bin\gswin64c.exe"
+    )
+    
+    $gsPath = $null
+    foreach ($path in $gsPaths) {
+        if (Test-Path $path) {
+            $gsPath = $path
+            break
+        }
+    }
+    
+    if ($gsPath) {
+        Write-Host "[PDF] Ghostscript trouvé : $gsPath" -ForegroundColor Green
+        
+        try {
+            # Construire la commande Ghostscript
+            $gsArgs = @(
+                "-dNOPAUSE",
+                "-dBATCH",
+                "-sDEVICE=pdfwrite",
+                "-sOutputFile=`"$OutputPDF`""
+            )
+            
+            # Ajouter chaque page individuellement
+            foreach ($pageNum in $pageNumbers) {
+                $gsArgs += "-dFirstPage=$pageNum"
+                $gsArgs += "-dLastPage=$pageNum"
+            }
+            
+            $gsArgs += "`"$SourcePDF`""
+            
+            Write-Host "[PDF] Exécution de Ghostscript..." -ForegroundColor Gray
+            $process = Start-Process -FilePath $gsPath -ArgumentList $gsArgs -NoNewWindow -Wait -PassThru
+            
+            if ($process.ExitCode -eq 0 -and (Test-Path $OutputPDF)) {
+                Write-Host "[PDF] ✅ PDF créé avec succès !" -ForegroundColor Green
+                return $true
+            } else {
+                Write-Host "[PDF] ❌ Ghostscript a échoué (code: $($process.ExitCode))" -ForegroundColor Red
+                return $false
+            }
+        } catch {
+            Write-Host "[PDF] ❌ Erreur Ghostscript : $_" -ForegroundColor Red
+            return $false
+        }
+    } else {
+        Write-Host "[PDF] Ghostscript non trouvé" -ForegroundColor Yellow
+        
+        # Alternative : Utiliser l'impression Windows
+        Add-Type -AssemblyName System.Windows.Forms
+        
+        $message = @"
+Ghostscript n'est pas installé. Pour réorganiser le PDF :
+
+1. Téléchargez Ghostscript : https://ghostscript.com/releases/gsdnld.html
+2. Installez-le
+3. Réessayez
+
+OU utilisez cette méthode manuelle :
+
+1. Le PDF va s'ouvrir
+2. Appuyez sur Ctrl+P
+3. Sélectionnez "Microsoft Print to PDF"
+4. Dans "Pages", entrez : $pageRange
+5. Imprimez vers : $OutputPDF
+"@
+        
+        $result = [System.Windows.Forms.MessageBox]::Show(
+            $message,
+            "Réorganisation PDF",
+            [System.Windows.Forms.MessageBoxButtons]::OKCancel,
+            [System.Windows.Forms.MessageBoxIcon]::Information
+        )
+        
+        if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+            Start-Process $SourcePDF
+            return $true  # On considère que l'utilisateur va le faire manuellement
+        }
+        return $false
+    }
+}
+
+function Get-PDFPageCount {
+    param([string]$FichierPDF)
+    
+    if (-not (Test-Path $FichierPDF)) {
+        return 0
+    }
+    
+    # Utiliser Ghostscript pour compter les pages
+    $gsPaths = @(
+        "C:\Program Files\gs\gs10.01.1\bin\gswin64c.exe",
+        "C:\Program Files\gs\gs10.00.0\bin\gswin64c.exe"
+    )
+    
+    foreach ($gsPath in $gsPaths) {
+        if (Test-Path $gsPath) {
+            try {
+                $output = & $gsPath -dNODISPLAY -q -c "($FichierPDF) (r) file runpdfbegin pdfpagecount = quit" 2>&1
+                if ($output -match '\d+') {
+                    return [int]$matches[0]
+                }
+            } catch {}
+        }
+    }
+    
+    # Fallback : compter via COM
+    try {
+        $pdfDoc = New-Object -ComObject "AcroExch.PDDoc"
+        $pdfDoc.Open($FichierPDF)
+        $count = $pdfDoc.GetNumPages()
+        $pdfDoc.Close()
+        return $count
+    } catch {
+        return 1
+    }
+}
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\Database\Database.ps1
+================================================================================
+# ============================================================
+# Database.ps1 - VERSION FINALE STABLE
+# ============================================================
+
+$script:DbPath  = Join-Path $PSScriptRoot "..\..\Data\gestion.db"
+$script:DllPath = Join-Path $PSScriptRoot "..\..\lib\System.Data.SQLite.dll"
+. (Join-Path $PSScriptRoot "..\Core\Logger.ps1")
+
+$script:POSTES = @(
+    'Collecteur',
+    'Trieur',
+    'Assistant planning',
+    'REX',
+    'Commercial',
+    'Responsable des exploitations'
+)
+
+function Get-PostesListe { return $script:POSTES }
+
+# ============================================================
+# DATE - CORRIGÉE
+# ============================================================
+
+function ToDbDate {
+    param($Date)
+    if (-not $Date) { return $null }
+    try {
+        if ($Date -is [System.DBNull]) { return $null }
+
+        $dt =
+            if ($Date -is [datetime]) { [datetime]$Date }
+            else { [datetime]::Parse($Date) }
+
+        # DateTimePicker.Value est souvent Kind=Unspecified : on l'interprète en heure locale,
+        # puis on stocke un timestamp Unix en secondes (UTC) en base.
+        if ($dt.Kind -eq [System.DateTimeKind]::Unspecified) {
+            $dt = [datetime]::SpecifyKind($dt, [System.DateTimeKind]::Local)
+        }
+
+        return [long]([DateTimeOffset]$dt.ToUniversalTime()).ToUnixTimeSeconds()
+    } catch {
+        return $null
+    }
+}
+
+function FromDbDate {
+    param($Timestamp)
+    if (-not $Timestamp) { return $null }
+    try {
+        if ($Timestamp -is [System.DBNull]) { return $null }
+
+        $ts = [long]$Timestamp
+
+        # Compat: certaines bases stockent en millisecondes.
+        # 1e12 ms ~= 2001-09-09, donc au-delà on considère des millisecondes.
+        if ($ts -ge 1000000000000) {
+            return [DateTimeOffset]::FromUnixTimeMilliseconds($ts).LocalDateTime
+        }
+
+        return [DateTimeOffset]::FromUnixTimeSeconds($ts).LocalDateTime
+    } catch {
+        return $null
+    }
+}
+
+# ============================================================
+# CONNEXION
+# ============================================================
+
+function Ensure-SqliteLoaded {
+    if ("System.Data.SQLite.SQLiteConnection" -as [type]) { return $true }
+
+    if (-not (Test-Path $script:DllPath)) {
+        throw "DLL SQLite manquante: $script:DllPath"
+    }
+
+    Add-Type -Path $script:DllPath -ErrorAction Stop
+    return $true
+}
+
+function Test-SafeSqlIdentifier {
+    <#
+    Identifiant SQL (table/colonne) : lettres, chiffres, underscore uniquement.
+    Évite l'injection via PRAGMA / ALTER lorsque des paramètres dynamiques sont utilisés.
+    #>
+    param([Parameter(Mandatory=$true)] [string]$Name)
+    if ($Name -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
+        throw "Identifiant SQL invalide: $Name"
+    }
+    return $true
+}
+
+function Get-SqliteLastInsertRowId {
+    param(
+        [Parameter(Mandatory=$true)]
+        [System.Data.SQLite.SQLiteCommand]$Command
+    )
+    $Command.Parameters.Clear()
+    $Command.CommandText = "SELECT last_insert_rowid()"
+    $result = $Command.ExecuteScalar()
+    $resultString = $result.ToString()
+    $match = [regex]::Match($resultString, '\d+$')
+    if ($match.Success) { return [int64]$match.Value }
+    return [int64]$resultString
+}
+
+function New-VehiculeRowObject {
+    param(
+        [Parameter(Mandatory=$true)]
+        $Reader
+    )
+    [PSCustomObject]@{
+        id = $Reader["id_vehicule"]
+        numero_parc = $Reader["numero_parc"]
+        immatriculation = $Reader["immatriculation"]
+        numero_chassis = $Reader["numero_chassis"]
+        marque = $Reader["marque"]
+        modele = $Reader["modele"]
+        date_mise_circulation = $Reader["date_mise_circulation"]
+        date_controle = $Reader["date_controle"]
+        date_entree = $Reader["date_entree"]
+        date_sortie = $Reader["date_sortie"]
+        date_fin_controle_technique = $Reader["date_fin_controle_technique"]
+        capacite = $Reader["capacite"]
+        conducteur_id = $Reader["conducteur_id"]
+        actif = $Reader["actif"]
+    }
+}
+
+function Test-SqliteColumnExists {
+    param(
+        [Parameter(Mandatory=$true)] $Connection,
+        [Parameter(Mandatory=$true)] [string]$TableName,
+        [Parameter(Mandatory=$true)] [string]$ColumnName
+    )
+
+    $null = Test-SafeSqlIdentifier $TableName
+    $null = Test-SafeSqlIdentifier $ColumnName
+
+    $cmd = $Connection.CreateCommand()
+    $cmd.CommandText = "PRAGMA table_info($TableName)"
+    $reader = $cmd.ExecuteReader()
+    try {
+        while ($reader.Read()) {
+            if ([string]$reader["name"] -eq $ColumnName) { return $true }
+        }
+        return $false
+    } finally {
+        if ($reader) { $reader.Close() }
+    }
+}
+
+function Add-SqliteColumnIfMissing {
+    param(
+        [Parameter(Mandatory=$true)] $Connection,
+        [Parameter(Mandatory=$true)] [string]$TableName,
+        [Parameter(Mandatory=$true)] [string]$ColumnName,
+        [Parameter(Mandatory=$true)] [string]$ColumnDefinition
+    )
+
+    $null = Test-SafeSqlIdentifier $TableName
+    $null = Test-SafeSqlIdentifier $ColumnName
+    if ($ColumnDefinition -notmatch '^[A-Za-z0-9_, ()]+$') {
+        throw "Définition de colonne SQL non autorisée."
+    }
+
+    if (Test-SqliteColumnExists -Connection $Connection -TableName $TableName -ColumnName $ColumnName) {
+        return $false
+    }
+
+    $cmd = $Connection.CreateCommand()
+    $cmd.CommandText = "ALTER TABLE $TableName ADD COLUMN $ColumnName $ColumnDefinition"
+    $null = $cmd.ExecuteNonQuery()
+    Write-Log "[DB] Added missing column" "INFO" @{ table = $TableName; column = $ColumnName; definition = $ColumnDefinition }
+    return $true
+}
+
+function Update-VehiculeActifFromDates {
+    param([Parameter(Mandatory=$true)] $Connection)
+
+    $cmd = $Connection.CreateCommand()
+    $cmd.CommandText = @"
+UPDATE Vehicule
+SET actif = CASE
+    WHEN date_sortie IS NULL OR TRIM(date_sortie) = '' THEN 1
+    ELSE 0
+END
+"@
+    $rows = $cmd.ExecuteNonQuery()
+    Write-Log "[DB] Synced Vehicule.actif from date_sortie" "INFO" @{ rows = $rows }
+}
+
+function Invoke-DatabaseMigrations {
+    $conn = Open-Connection
+    try {
+        $null = Add-SqliteColumnIfMissing -Connection $conn -TableName "Vehicule" -ColumnName "date_entree" -ColumnDefinition "TEXT"
+        $null = Add-SqliteColumnIfMissing -Connection $conn -TableName "Vehicule" -ColumnName "date_sortie" -ColumnDefinition "TEXT"
+        $null = Add-SqliteColumnIfMissing -Connection $conn -TableName "Vehicule" -ColumnName "date_fin_controle_technique" -ColumnDefinition "TEXT"
+
+        # Données : numéro de parc obligatoire — compléter les lignes historiques vides (avant contrainte métier côté app)
+        $cmdFixParc = $conn.CreateCommand()
+        $cmdFixParc.CommandText = @"
+UPDATE Vehicule
+SET numero_parc = TRIM(immatriculation)
+WHERE numero_parc IS NULL OR TRIM(numero_parc) = ''
+"@
+        $null = $cmdFixParc.ExecuteNonQuery()
+
+        Update-VehiculeActifFromDates -Connection $conn
+    } finally {
+        Close-Connection $conn
+    }
+}
+
+function Initialize-Database {
+    if (-not (Test-Path $script:DllPath)) {
+        Write-Host "❌ DLL manquante" -ForegroundColor Red
+        Write-Log "[DB] SQLite DLL missing" "ERROR" @{ dllPath = $script:DllPath }
+        return $false
+    }
+
+    Ensure-SqliteLoaded | Out-Null
+
+    if (-not (Test-Path $script:DbPath)) {
+        Write-Log "[DB] Creating database" "INFO" @{ dbPath = $script:DbPath }
+        $schema = Get-Content (Join-Path $PSScriptRoot "Schema.sql") -Raw
+        $conn = Open-Connection
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = $schema
+        $null = $cmd.ExecuteNonQuery()
+        Close-Connection $conn
+        Write-Host "✅ Base créée" -ForegroundColor Green
+        Write-Log "[DB] Database created" "INFO" @{ dbPath = $script:DbPath }
+    }
+
+    Invoke-DatabaseMigrations
+    return $true
+}
+
+function Open-Connection {
+    Ensure-SqliteLoaded | Out-Null
+    $conn = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$script:DbPath;Version=3;")
+    $conn.Open()
+    return $conn
+}
+
+function Close-Connection {
+    param($c)
+    if ($c) {
+        $c.Close()
+        $c.Dispose()
+    }
+}
+
+# ============================================================
+# AGENTS
+# ============================================================
+
+function Add-Agent {
+    param(
+        $Nom,
+        $Prenom,
+        $Telephone,
+        $Email,
+        $DateEntree,
+        $DateSortie,
+        $TypeContrat,
+        $BaseHeuresSemaine = 35,
+        $VehiculeId = $null,
+        $Poste = "Collecteur"
+    )
+
+    if ($Poste -notin $script:POSTES) {
+        throw "Poste invalide"
+    }
+
+    $actif = if ($DateSortie) { 0 } else { 1 }
+    $deTs = ToDbDate $DateEntree
+    $dsTs = ToDbDate $DateSortie
+    Write-Log "[DB] Add-Agent begin" "INFO" @{
+        nom = $Nom; prenom = $Prenom; telephone = $Telephone; email = $Email
+        type_contrat = $TypeContrat; base_heures_semaine = $BaseHeuresSemaine
+        poste = $Poste; vehicule_id = $VehiculeId; actif = $actif
+        date_entree_ts = $deTs; date_sortie_ts = $dsTs
+    }
+
+    $conn = Open-Connection
+
+    try {
+        $cmd = $conn.CreateCommand()
+
+        $cmd.CommandText = @"
+INSERT INTO Agent (
+nom, prenom, telephone, email,
+date_entree, date_sortie,
+type_contrat, base_heures_semaine,
+vehicule_id, poste, actif
+)
+VALUES (
+@nom, @prenom, @tel, @email,
+@de, @ds,
+@tc, @bh,
+@vid, @poste, @actif
+)
+"@
+
+        $cmd.Parameters.AddWithValue("@nom", $Nom) | Out-Null
+        $cmd.Parameters.AddWithValue("@prenom", $Prenom) | Out-Null
+        $cmd.Parameters.AddWithValue("@tel", $Telephone) | Out-Null
+        $cmd.Parameters.AddWithValue("@email", $Email) | Out-Null
+        $cmd.Parameters.AddWithValue("@de", $deTs) | Out-Null
+        $cmd.Parameters.AddWithValue("@ds", $dsTs) | Out-Null
+        $cmd.Parameters.AddWithValue("@tc", $TypeContrat) | Out-Null
+        $cmd.Parameters.AddWithValue("@bh", $BaseHeuresSemaine) | Out-Null
+        $cmd.Parameters.AddWithValue("@vid", $VehiculeId) | Out-Null
+        $cmd.Parameters.AddWithValue("@poste", $Poste) | Out-Null
+        $cmd.Parameters.AddWithValue("@actif", $actif) | Out-Null
+
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $null = $cmd.ExecuteNonQuery()
+        $sw.Stop()
+
+        $newId = [int](Get-SqliteLastInsertRowId -Command $cmd)
+
+        Write-Log "[DB] Add-Agent success" "INFO" @{ id = $newId; elapsed_ms = $sw.ElapsedMilliseconds }
+        return $newId
+    } catch {
+        Write-Log "[DB] Add-Agent failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    }
+    finally {
+        Close-Connection $conn
+    }
+}
+
+function Update-Agent {
+    param(
+        $Id,
+        $Nom,
+        $Prenom,
+        $Telephone,
+        $Email,
+        $DateEntree,
+        $DateSortie,
+        $TypeContrat,
+        $BaseHeuresSemaine = 35,
+        $VehiculeId = $null,
+        $Poste = "Collecteur"
+    )
+
+    if ($Poste -notin $script:POSTES) {
+        throw "Poste invalide"
+    }
+
+    $actif = if ($DateSortie) { 0 } else { 1 }
+
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+UPDATE Agent SET
+nom=@nom, prenom=@prenom, telephone=@tel, email=@email,
+date_entree=@de, date_sortie=@ds,
+type_contrat=@tc, base_heures_semaine=@bh,
+vehicule_id=@vid, poste=@poste, actif=@actif
+WHERE id_agent=@id
+"@
+
+        $cmd.Parameters.AddWithValue("@id", [int]$Id) | Out-Null
+        $cmd.Parameters.AddWithValue("@nom", $Nom) | Out-Null
+        $cmd.Parameters.AddWithValue("@prenom", $Prenom) | Out-Null
+        $cmd.Parameters.AddWithValue("@tel", $Telephone) | Out-Null
+        $cmd.Parameters.AddWithValue("@email", $Email) | Out-Null
+        $cmd.Parameters.AddWithValue("@de", (ToDbDate $DateEntree)) | Out-Null
+        $cmd.Parameters.AddWithValue("@ds", (ToDbDate $DateSortie)) | Out-Null
+        $cmd.Parameters.AddWithValue("@tc", $TypeContrat) | Out-Null
+        $cmd.Parameters.AddWithValue("@bh", $BaseHeuresSemaine) | Out-Null
+        $cmd.Parameters.AddWithValue("@vid", $VehiculeId) | Out-Null
+        $cmd.Parameters.AddWithValue("@poste", $Poste) | Out-Null
+        $cmd.Parameters.AddWithValue("@actif", $actif) | Out-Null
+
+        return $cmd.ExecuteNonQuery()
+    }
+    finally {
+        Close-Connection $conn
+    }
+}
+
+function Get-AgentById {
+    param($Id)
+
+    $conn = Open-Connection
+
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = "SELECT * FROM Agent WHERE id_agent = @id"
+        $cmd.Parameters.AddWithValue("@id", [int]$Id) | Out-Null
+
+        $reader = $cmd.ExecuteReader()
+
+        $result = $null
+
+        if ($reader.Read()) {
+            $result = [PSCustomObject]@{
+                id = $reader["id_agent"]
+                nom = $reader["nom"]
+                prenom = $reader["prenom"]
+                telephone = $reader["telephone"]
+                email = $reader["email"]
+                date_entree = FromDbDate $reader["date_entree"]
+                date_sortie = FromDbDate $reader["date_sortie"]
+                type_contrat = $reader["type_contrat"]
+                base_heures_semaine = $reader["base_heures_semaine"]
+                poste = $reader["poste"]
+                actif = $reader["actif"]
+                vehicule_id = $reader["vehicule_id"]
+            }
+        }
+
+        $reader.Close()
+        return $result
+    }
+    finally {
+        Close-Connection $conn
+    }
+}
+
+function Remove-Agent {
+    param($Id)
+
+    $conn = Open-Connection
+
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = "DELETE FROM Agent WHERE id_agent = @id"
+        $cmd.Parameters.AddWithValue("@id", [int]$Id) | Out-Null
+        return $cmd.ExecuteNonQuery()
+    }
+    finally {
+        Close-Connection $conn
+    }
+}
+
+function Get-Agents {
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+SELECT
+  a.id_agent, a.nom, a.prenom, a.telephone, a.email,
+  a.date_entree, a.date_sortie, a.type_contrat,
+  a.base_heures_semaine, a.poste, a.actif, a.vehicule_id,
+  v.numero_parc AS numero_parc
+FROM Agent a
+LEFT JOIN Vehicule v ON v.id_vehicule = a.vehicule_id
+WHERE a.actif = 1
+ORDER BY a.nom, a.prenom
+"@
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $reader = $cmd.ExecuteReader()
+        $agents = @()
+        while ($reader.Read()) {
+            $agents += [PSCustomObject]@{
+                id = $reader["id_agent"]
+                nom = $reader["nom"]
+                prenom = $reader["prenom"]
+                telephone = $reader["telephone"]
+                email = $reader["email"]
+                date_entree = FromDbDate $reader["date_entree"]
+                date_sortie = FromDbDate $reader["date_sortie"]
+                type_contrat = $reader["type_contrat"]
+                base_heures_semaine = $reader["base_heures_semaine"]
+                poste = $reader["poste"]
+                actif = $reader["actif"]
+                vehicule_id = $reader["vehicule_id"]
+                numero_parc = $reader["numero_parc"]
+            }
+        }
+        $sw.Stop()
+        Write-Log "[DB] Get-Agents" "INFO" @{ count = $agents.Count; elapsed_ms = $sw.ElapsedMilliseconds }
+        return $agents
+    } catch {
+        Write-Log "[DB] Get-Agents failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    } finally { Close-Connection $conn }
+}
+
+function Get-AllAgents {
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+SELECT
+  a.id_agent, a.nom, a.prenom, a.telephone, a.email,
+  a.date_entree, a.date_sortie, a.type_contrat,
+  a.base_heures_semaine, a.poste, a.actif, a.vehicule_id,
+  v.numero_parc AS numero_parc
+FROM Agent a
+LEFT JOIN Vehicule v ON v.id_vehicule = a.vehicule_id
+ORDER BY a.nom, a.prenom
+"@
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $reader = $cmd.ExecuteReader()
+        $agents = @()
+        while ($reader.Read()) {
+            $agents += [PSCustomObject]@{
+                id = $reader["id_agent"]
+                nom = $reader["nom"]
+                prenom = $reader["prenom"]
+                telephone = $reader["telephone"]
+                email = $reader["email"]
+                date_entree = FromDbDate $reader["date_entree"]
+                date_sortie = FromDbDate $reader["date_sortie"]
+                type_contrat = $reader["type_contrat"]
+                base_heures_semaine = $reader["base_heures_semaine"]
+                poste = $reader["poste"]
+                actif = $reader["actif"]
+                vehicule_id = $reader["vehicule_id"]
+                numero_parc = $reader["numero_parc"]
+            }
+        }
+        $sw.Stop()
+        Write-Log "[DB] Get-AllAgents" "INFO" @{ count = $agents.Count; elapsed_ms = $sw.ElapsedMilliseconds }
+        return $agents
+    } catch {
+        Write-Log "[DB] Get-AllAgents failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    } finally { Close-Connection $conn }
+}
+
+function Get-Vehicules {
+    <#
+    Véhicules actifs uniquement (actif = 1). Propriétés alignées usage grille / formulaires.
+    Typage logique véhicule : id (number), numero_parc, immatriculation, numero_chassis, actif (1|0), etc.
+    #>
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+SELECT id_vehicule, numero_parc, immatriculation, numero_chassis, marque, modele,
+       date_mise_circulation, date_controle, date_entree, date_sortie,
+       date_fin_controle_technique, capacite, conducteur_id, actif
+FROM Vehicule
+WHERE actif = 1
+ORDER BY numero_parc
+"@
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $reader = $cmd.ExecuteReader()
+        $vehicules = @()
+        try {
+            while ($reader.Read()) {
+                $vehicules += (New-VehiculeRowObject -Reader $reader)
+            }
+        } finally {
+            if ($reader) { $reader.Close() }
+        }
+        $sw.Stop()
+        Write-Log "[DB] Get-Vehicules" "INFO" @{ count = $vehicules.Count; elapsed_ms = $sw.ElapsedMilliseconds }
+        return $vehicules
+    } catch {
+        Write-Log "[DB] Get-Vehicules failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    } finally { Close-Connection $conn }
+}
+
+function Get-AllVehicules {
+    <#
+    Tous les véhicules (actifs et inactifs / historique), même schéma que Get-Vehicules.
+    #>
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+SELECT id_vehicule, numero_parc, immatriculation, numero_chassis, marque, modele,
+       date_mise_circulation, date_controle, date_entree, date_sortie,
+       date_fin_controle_technique, capacite, conducteur_id, actif
+FROM Vehicule
+ORDER BY numero_parc
+"@
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $reader = $cmd.ExecuteReader()
+        $vehicules = @()
+        try {
+            while ($reader.Read()) {
+                $vehicules += (New-VehiculeRowObject -Reader $reader)
+            }
+        } finally {
+            if ($reader) { $reader.Close() }
+        }
+        $sw.Stop()
+        Write-Log "[DB] Get-AllVehicules" "INFO" @{ count = $vehicules.Count; elapsed_ms = $sw.ElapsedMilliseconds }
+        return $vehicules
+    } catch {
+        Write-Log "[DB] Get-AllVehicules failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    } finally { Close-Connection $conn }
+}
+
+# ============================================================
+# VÉHICULES — persistance uniquement (requêtes paramétrées)
+# La validation métier est dans ODM/Vehicules/VehiculesRepository.ps1
+# ============================================================
+
+function Add-VehiculeRecord {
+    param(
+        [string]$NumeroParc,
+        [string]$Immatriculation,
+        [string]$NumeroChassis,
+        $Marque,
+        $Modele,
+        [string]$DateMiseCirculation,
+        $DateControle,
+        [string]$DateEntree,
+        $DateSortie,
+        $DateFinControleTechnique,
+        [int]$Actif
+    )
+
+    Write-Log "[DB] Add-VehiculeRecord begin" "INFO" @{
+        numero_parc = $NumeroParc; immatriculation = $Immatriculation; actif = $Actif
+    }
+
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+INSERT INTO Vehicule (
+    numero_parc, immatriculation, numero_chassis, marque, modele,
+    date_mise_circulation, date_controle, date_entree, date_sortie,
+    date_fin_controle_technique, actif
+)
+VALUES (
+    @parc, @immat, @chassis, @marque, @modele,
+    @date_mise, @date_ctrl, @date_entree, @date_sortie,
+    @date_fin_ctrl_tech, @actif
+)
+"@
+        $cmd.Parameters.AddWithValue("@parc", $NumeroParc) | Out-Null
+        $cmd.Parameters.AddWithValue("@immat", $Immatriculation) | Out-Null
+        $cmd.Parameters.AddWithValue("@chassis", $NumeroChassis) | Out-Null
+        $cmd.Parameters.AddWithValue("@marque", $(if ($Marque) { $Marque } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@modele", $(if ($Modele) { $Modele } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_mise", $DateMiseCirculation) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_ctrl", $(if ($DateControle) { $DateControle } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_entree", $DateEntree) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_sortie", $(if ($DateSortie) { $DateSortie } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_fin_ctrl_tech", $(if ($DateFinControleTechnique) { $DateFinControleTechnique } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@actif", $Actif) | Out-Null
+
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $null = $cmd.ExecuteNonQuery()
+        $sw.Stop()
+        $newId = [int](Get-SqliteLastInsertRowId -Command $cmd)
+        Write-Log "[DB] Add-VehiculeRecord success" "INFO" @{ id = $newId; elapsed_ms = $sw.ElapsedMilliseconds }
+        return $newId
+    } catch {
+        Write-Log "[DB] Add-VehiculeRecord failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    } finally {
+        Close-Connection $conn
+    }
+}
+
+function Update-VehiculeRecord {
+    param(
+        [int]$Id,
+        [string]$NumeroParc,
+        [string]$Immatriculation,
+        [string]$NumeroChassis,
+        $Marque,
+        $Modele,
+        [string]$DateMiseCirculation,
+        $DateControle,
+        [string]$DateEntree,
+        $DateSortie,
+        $DateFinControleTechnique,
+        [int]$Actif
+    )
+
+    Write-Log "[DB] Update-VehiculeRecord begin" "INFO" @{ id = $Id; numero_parc = $NumeroParc }
+
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+UPDATE Vehicule
+SET numero_parc = @parc, immatriculation = @immat, numero_chassis = @chassis,
+    marque = @marque, modele = @modele, date_mise_circulation = @date_mise, date_controle = @date_ctrl,
+    date_entree = @date_entree, date_sortie = @date_sortie,
+    date_fin_controle_technique = @date_fin_ctrl_tech, actif = @actif
+WHERE id_vehicule = @id
+"@
+        $cmd.Parameters.AddWithValue("@id", $Id) | Out-Null
+        $cmd.Parameters.AddWithValue("@parc", $NumeroParc) | Out-Null
+        $cmd.Parameters.AddWithValue("@immat", $Immatriculation) | Out-Null
+        $cmd.Parameters.AddWithValue("@chassis", $NumeroChassis) | Out-Null
+        $cmd.Parameters.AddWithValue("@marque", $(if ($Marque) { $Marque } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@modele", $(if ($Modele) { $Modele } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_mise", $DateMiseCirculation) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_ctrl", $(if ($DateControle) { $DateControle } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_entree", $DateEntree) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_sortie", $(if ($DateSortie) { $DateSortie } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@date_fin_ctrl_tech", $(if ($DateFinControleTechnique) { $DateFinControleTechnique } else { [DBNull]::Value })) | Out-Null
+        $cmd.Parameters.AddWithValue("@actif", $Actif) | Out-Null
+
+        $n = $cmd.ExecuteNonQuery()
+        Write-Log "[DB] Update-VehiculeRecord success" "INFO" @{ id = $Id; rows = $n }
+        return $n
+    } catch {
+        Write-Log "[DB] Update-VehiculeRecord failed" "ERROR" @{ id = $Id; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    } finally {
+        Close-Connection $conn
+    }
+}
+
+function Remove-VehiculeRecord {
+    param([int]$Id)
+
+    Write-Log "[DB] Remove-VehiculeRecord begin" "INFO" @{ id = $Id }
+
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = "DELETE FROM Vehicule WHERE id_vehicule = @id"
+        $cmd.Parameters.AddWithValue("@id", $Id) | Out-Null
+        $n = $cmd.ExecuteNonQuery()
+        Write-Log "[DB] Remove-VehiculeRecord success" "INFO" @{ id = $Id; rows = $n }
+        return $n
+    } catch {
+        Write-Log "[DB] Remove-VehiculeRecord failed" "ERROR" @{ id = $Id; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    } finally {
+        Close-Connection $conn
+    }
+}
+
+function Get-VehiculeRowById {
+    param([int]$Id)
+
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+SELECT id_vehicule, numero_parc, immatriculation, numero_chassis, marque, modele,
+       date_mise_circulation, date_controle, date_entree, date_sortie,
+       date_fin_controle_technique, capacite, conducteur_id, actif
+FROM Vehicule
+WHERE id_vehicule = @id
+"@
+        $cmd.Parameters.AddWithValue("@id", $Id) | Out-Null
+        $reader = $cmd.ExecuteReader()
+        try {
+            if (-not $reader.Read()) { return $null }
+            return (New-VehiculeRowObject -Reader $reader)
+        } finally {
+            if ($reader) { $reader.Close() }
+        }
+    } finally {
+        Close-Connection $conn
+    }
+}
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\Database\Schema.sql
+================================================================================
+-- Schema.sql - Version complète avec toutes les colonnes
+
+CREATE TABLE IF NOT EXISTS Agent (
+    id_agent INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom TEXT NOT NULL,
+    prenom TEXT NOT NULL,
+    telephone TEXT,
+    email TEXT,
+    date_entree INTEGER,
+    date_sortie INTEGER,
+    type_contrat TEXT NOT NULL,
+    base_heures_semaine INTEGER DEFAULT 35,
+    vehicule_id INTEGER,
+    poste TEXT DEFAULT 'Collecteur',
+    actif INTEGER DEFAULT 1
+);
+
+-- Migration incrémentale : ajout des dates métier sur Vehicule existant
+-- Format base de données : YYYY-MM-DD
+ALTER TABLE Vehicule ADD COLUMN date_entree TEXT;
+ALTER TABLE Vehicule ADD COLUMN date_sortie TEXT;
+ALTER TABLE Vehicule ADD COLUMN date_fin_controle_technique TEXT;
+
+-- Schéma final attendu pour la table Vehicule
+CREATE TABLE IF NOT EXISTS Vehicule (
+    id_vehicule INTEGER PRIMARY KEY AUTOINCREMENT,
+    numero_parc TEXT NOT NULL,
+    immatriculation TEXT NOT NULL UNIQUE,
+    numero_chassis TEXT,
+    marque TEXT,
+    modele TEXT,
+    date_mise_circulation TEXT,
+    date_controle TEXT,
+    date_entree TEXT,
+    date_sortie TEXT,
+    capacite INTEGER,
+    conducteur_id INTEGER,
+    alerte TEXT,
+    date_alerte TEXT,
+    date_fin_controle_technique TEXT,
+    actif INTEGER DEFAULT 1
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_poste ON Agent(poste);
+CREATE INDEX IF NOT EXISTS idx_agent_actif ON Agent(actif);
+CREATE INDEX IF NOT EXISTS idx_vehicule_immat ON Vehicule(immatriculation);
+CREATE INDEX IF NOT EXISTS idx_vehicule_parc ON Vehicule(numero_parc);
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\GUI.ps1
+================================================================================
+# GUI.ps1 - Version simplifiée
+
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+. "$scriptDir\Common\Styles.ps1"
+
+function Start-GUI {
+    param([string]$FichierPDF)
+
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+
+    . "$PSScriptRoot\Config.ps1"
+    . "$PSScriptRoot\ODM\ConventionNommage\ConventionNommage.ps1"
+    . "$PSScriptRoot\ODM\Agents\AgentPanel.ps1"
+    . "$PSScriptRoot\ODM\Agents\AgentRepository.ps1"
+    . "$PSScriptRoot\ODM\Vehicules\VehiculesPanel.ps1"
+    . "$PSScriptRoot\ODM\Vehicules\VehiculesRepository.ps1"
+    . "$PSScriptRoot\ODM\Affectations\Date.ps1"
+    . "$PSScriptRoot\ODM\Affectations\DatePanel.ps1"
+    . "$PSScriptRoot\ODM\Affectations\AffectationNbTournees.ps1"
+    . "$PSScriptRoot\ODM\Affectations\AffectationNbTourneesPanel.ps1"
+        
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Convention de nommage"
+    $form.Size = New-Object System.Drawing.Size(1400, 800)
+    $form.StartPosition = "CenterScreen"
+    $form.MinimumSize = New-Object System.Drawing.Size(1000, 650)
+    $form.Font = $script:PoliceNormal
+    $form.BackColor = $script:CouleurGrisFond
+
+    $tabControl = New-Object System.Windows.Forms.TabControl
+    $tabControl.Dock = "Fill"
+    $tabControl.Font = $script:PoliceNormal
+    $tabControl.Name = "MainTabControl"
+
+    # ONGLET 1 : Convention de nommage
+    $tabRename = New-Object System.Windows.Forms.TabPage
+    $tabRename.Text = "Convention de nommage"
+    $tabRename.BackColor = $script:CouleurGrisFond
+    
+    $panelResult = Show-ConventionNommagePanel -FichierPDF $FichierPDF
+    $realPanel = $panelResult[-1]
+    $tabRename.Controls.Add($realPanel)
+    $tabControl.TabPages.Add($tabRename)
+
+    # ONGLET 2 : Affectation
+    $tabAffectation = New-Object System.Windows.Forms.TabPage
+    $tabAffectation.Text = "Affectation"
+    $tabAffectation.BackColor = $script:CouleurGrisFond
+    $affectationContainer = New-Object System.Windows.Forms.Panel
+    $affectationContainer.Dock = "Fill"
+    $affectationContainer.Name = "AffectationContainer"
+    $panelDate = Show-DatePanel -NextPanel $null -CurrentPanel $null
+    $panelDate.Dock = "Fill"
+    $panelDate.Name = "DatePanel"
+    $panelTournees = Show-AffectationNbTourneesPanel -NextPanel $null -CurrentPanel $null
+    $panelTournees.Dock = "Fill"
+    $panelTournees.Name = "TourneesPanel"
+    $panelTournees.Visible = $false
+    $affectationContainer.Controls.Add($panelDate)
+    $affectationContainer.Controls.Add($panelTournees)
+    $tabAffectation.Controls.Add($affectationContainer)
+    $tabControl.TabPages.Add($tabAffectation)
+    $form.Tag = $affectationContainer
+
+    # ONGLET 3 : Agents
+    $tabAgents = New-Object System.Windows.Forms.TabPage
+    $tabAgents.Text = "Données agents"
+    $tabAgents.BackColor = $script:CouleurGrisFond
+    
+    $agentsPanel = Show-AgentsPanel
+    if ($agentsPanel) {
+        $agentsPanel.Dock = "Fill"
+        $tabAgents.Controls.Add($agentsPanel)
+    } else {
+        $lblError = New-Object System.Windows.Forms.Label
+        $lblError.Text = "Erreur de chargement du panneau des agents"
+        $lblError.Dock = "Fill"
+        $lblError.TextAlign = "MiddleCenter"
+        $lblError.ForeColor = [System.Drawing.Color]::Red
+        $tabAgents.Controls.Add($lblError)
+    }
+    $tabControl.TabPages.Add($tabAgents)
+
+    # ONGLET 4 : Vehicules
+    $tabVehicules = New-Object System.Windows.Forms.TabPage
+    $tabVehicules.Text = "Données véhicules"
+    $tabVehicules.BackColor = $script:CouleurGrisFond
+    $vehiculesPanel = Show-VehiculesPanel -Vehicules (Get-Vehicules)
+    if ($vehiculesPanel) {
+        $vehiculesPanel.Dock = "Fill"
+        $tabVehicules.Controls.Add($vehiculesPanel)
+    }
+    $tabControl.TabPages.Add($tabVehicules)
+
+    $form.Controls.Add($tabControl)
+
+    $form.Add_Shown({
+        Start-Sleep -Milliseconds 100
+        if ($realPanel) {
+            $txtBox = $realPanel.Controls | Where-Object { $_ -is [System.Windows.Forms.TextBox] }
+            if ($txtBox) { $txtBox.Focus() }
+        }
+    })
+
+    [System.Windows.Forms.Application]::Run($form)
+}
+
+function Show-PDFViewer {
+    param([string]$FilePath, [string]$Title = "Visionneuse PDF")
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    if (-not (Test-Path $FilePath)) {
+        [System.Windows.Forms.MessageBox]::Show("Fichier non trouve : $FilePath", "Erreur")
+        return
+    }
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = $Title
+    $form.Size = New-Object System.Drawing.Size(1000, 700)
+    $form.StartPosition = "CenterScreen"
+    $webBrowser = New-Object System.Windows.Forms.WebBrowser
+    $webBrowser.Dock = "Fill"
+    try { $webBrowser.Navigate($FilePath); $form.Controls.Add($webBrowser) }
+    catch { Start-Process $FilePath }
+    $btnClose = New-Object System.Windows.Forms.Button
+    $btnClose.Text = "FERMER"
+    $btnClose.Size = New-Object System.Drawing.Size(100, 40)
+    $btnClose.Anchor = "Bottom,Right"
+    $btnClose.Location = New-Object System.Drawing.Point($form.ClientSize.Width - 120, $form.ClientSize.Height - 50)
+    $btnClose.BackColor = $script:CouleurOrange
+    $btnClose.ForeColor = $script:CouleurBlanc
+    $btnClose.FlatStyle = "Flat"
+    $btnClose.Font = $script:PoliceBouton
+    $btnClose.Add_Click({ $form.Close() })
+    $form.Controls.Add($btnClose)
+    $form.ShowDialog()
+}
+
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\Main.ps1
+================================================================================
+# ========== MAIN.PS1 - POINT D'ENTRÉE PRINCIPAL NETTOYÉ ==========
+
+$scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+Write-Host "🚀 DÉMARRAGE DE L'APPLICATION..." -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+
+# ============================================
+# 1. CHARGEMENT DES STYLES ET CONFIGURATION
+# ============================================
+Write-Host "[MAIN] Chargement des styles..." -ForegroundColor Gray
+. "$scriptPath\Config.ps1"
+. "$scriptPath\Common\Styles.ps1"
+. "$scriptPath\Core\Logger.ps1"
+Write-Log "[MAIN] Application start" "INFO" @{ scriptPath = $scriptPath }
+
+# ============================================
+# 2. INITIALISATION DE LA BASE SQLITE
+# ============================================
+. "$scriptPath\Database\Database.ps1"
+try {
+    $ok = Initialize-Database
+    Write-Log "[MAIN] Initialize-Database result" "INFO" @{ ok = $ok }
+} catch {
+    Write-Log "[MAIN] Initialize-Database failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+    throw
+}
+
+# ============================================
+# 3. CHARGEMENT DES MODULES MÉTIER
+# ============================================
+Write-Host "[MAIN] Chargement des modules métier..." -ForegroundColor Gray
+. "$scriptPath\ODM\ConventionNommage\ConventionNommage.ps1"
+. "$scriptPath\ODM\Agents\AgentRepository.ps1"
+. "$scriptPath\ODM\Vehicules\VehiculesRepository.ps1"
+
+
+# ============================================
+# 4. CHARGEMENT ET LANCEMENT DE LA GUI
+# ============================================
+Write-Host "[MAIN] Chargement de l'interface..." -ForegroundColor Gray
+. "$scriptPath\GUI.ps1"
+
+# ============================================
+# 5. LANCEMENT
+# ============================================
+Write-Host "[MAIN] Lancement..." -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Green
+
+Start-GUI
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Affectations\AffectationNbTournees.ps1
+================================================================================
+# AffectationNbTournees.ps1 - Gestion du nombre de tournées
+function Get-NbTournees {
+    $configPath = Join-Path $PSScriptRoot "..\..\Data\odm_config.json"
+    if (Test-Path $configPath) {
+        $config = Get-Content $configPath | ConvertFrom-Json
+        return $config.NbTournees
+    }
+    return 1
+}
+
+function Set-NbTournees {
+    param([int]$NbTournees)
+    $configPath = Join-Path $PSScriptRoot "..\..\Data\odm_config.json"
+    $config = @{ NbTournees = $NbTournees }
+    $config | ConvertTo-Json | Out-File $configPath -Encoding UTF8 -Force
+}
+
+
+
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Affectations\AffectationNbTourneesPanel.ps1
+================================================================================
+# AffectationNbTourneesPanel.ps1 - Panneau de sélection du nombre de tournées
+function Show-AffectationNbTourneesPanel {
+    param($NextPanel, $CurrentPanel)
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = "Fill"
+    $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $panel.Padding = New-Object System.Windows.Forms.Padding(50)
+    
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = "Nombre de tournées"
+    $lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
+    $lblTitle.ForeColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
+    $lblTitle.Location = New-Object System.Drawing.Point(0, 0)
+    $lblTitle.Size = New-Object System.Drawing.Size(400, 50)
+    $panel.Controls.Add($lblTitle)
+    
+    $numTournees = New-Object System.Windows.Forms.NumericUpDown
+    $numTournees.Location = New-Object System.Drawing.Point(0, 70)
+    $numTournees.Size = New-Object System.Drawing.Size(100, 30)
+    $numTournees.Minimum = 1
+    $numTournees.Maximum = 10
+    $numTournees.Value = Get-NbTournees
+    $panel.Controls.Add($numTournees)
+    
+    $btnValider = New-Object System.Windows.Forms.Button
+    $btnValider.Text = "VALIDER"
+    $btnValider.Location = New-Object System.Drawing.Point(0, 120)
+    $btnValider.Size = New-Object System.Drawing.Size(100, 40)
+    $btnValider.BackColor = [System.Drawing.Color]::FromArgb(175, 71, 11)
+    $btnValider.ForeColor = [System.Drawing.Color]::White
+    $btnValider.FlatStyle = "Flat"
+    $btnValider.Add_Click({
+        Set-NbTournees -NbTournees $numTournees.Value
+        if ($NextPanel) { $NextPanel.Visible = $true }
+        if ($CurrentPanel) { $CurrentPanel.Visible = $false }
+    })
+    $panel.Controls.Add($btnValider)
+    
+    return $panel
+}
+
+
+
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Affectations\Date.ps1
+================================================================================
+# Date.ps1 - Gestion des dates
+function Get-CNDateParDefaut {
+    try {
+        $configPath = Join-Path $PSScriptRoot "..\..\Data\odm_config.json"
+        if (Test-Path $configPath) {
+            $config = Get-Content $configPath | ConvertFrom-Json
+            return [DateTime]::ParseExact($config.DateParDefaut, "yyyy-MM-dd", $null)
+        }
+    } catch {}
+    return [DateTime]::Now.AddDays(-1)
+}
+
+function Set-CNDate {
+    param([DateTime]$Date)
+    $configPath = Join-Path $PSScriptRoot "..\..\Data\odm_config.json"
+    $config = @{ DateParDefaut = $Date.ToString("yyyy-MM-dd") }
+    $config | ConvertTo-Json | Out-File $configPath -Encoding UTF8 -Force
+}
+
+
+
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Affectations\DatePanel.ps1
+================================================================================
+# DatePanel.ps1 - Panneau de sélection de date
+function Show-DatePanel {
+    param($NextPanel, $CurrentPanel)
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = "Fill"
+    $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $panel.Padding = New-Object System.Windows.Forms.Padding(50)
+    
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = "Sélectionnez la date"
+    $lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
+    $lblTitle.ForeColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
+    $lblTitle.Location = New-Object System.Drawing.Point(0, 0)
+    $lblTitle.Size = New-Object System.Drawing.Size(400, 50)
+    $panel.Controls.Add($lblTitle)
+    
+    $datePicker = New-Object System.Windows.Forms.DateTimePicker
+    $datePicker.Location = New-Object System.Drawing.Point(0, 70)
+    $datePicker.Size = New-Object System.Drawing.Size(200, 30)
+    $datePicker.Value = Get-CNDateParDefaut
+    $panel.Controls.Add($datePicker)
+    
+    $btnValider = New-Object System.Windows.Forms.Button
+    $btnValider.Text = "VALIDER"
+    $btnValider.Location = New-Object System.Drawing.Point(0, 120)
+    $btnValider.Size = New-Object System.Drawing.Size(100, 40)
+    $btnValider.BackColor = [System.Drawing.Color]::FromArgb(175, 71, 11)
+    $btnValider.ForeColor = [System.Drawing.Color]::White
+    $btnValider.FlatStyle = "Flat"
+    $btnValider.Add_Click({
+        Set-CNDate -Date $datePicker.Value
+        if ($NextPanel) { $NextPanel.Visible = $true }
+        if ($CurrentPanel) { $CurrentPanel.Visible = $false }
+    })
+    $panel.Controls.Add($btnValider)
+    
+    return $panel
+}
+
+
+
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Agents\AgentForm.ps1
+================================================================================
+# AgentForm.ps1 - Formulaire agent (envoie DateTime normal)
+
+. "$PSScriptRoot\..\..\Database\Database.ps1"
+. "$PSScriptRoot\..\..\Common\Styles.ps1"
+. "$PSScriptRoot\..\..\Core\Logger.ps1"
+. "$PSScriptRoot\..\..\Common\Validation.ps1"
+
+function Show-AgentForm {
+    param(
+        [string]$Mode = "Ajouter",
+        [pscustomobject]$Agent = $null,
+        [System.Windows.Forms.IWin32Window]$Owner = $null
+    )
+
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "$Mode un agent"
+    $form.Size = New-Object System.Drawing.Size(650, 650)
+    $form.StartPosition = "CenterParent"
+    $form.BackColor = $script:CouleurGrisFond
+    $form.FormBorderStyle = "FixedDialog"
+    $form.MaximizeBox = $false
+
+    $y = 20
+    $left = 30
+    $labelW = 150
+    $fieldW = 350
+    $errorColor = [System.Drawing.Color]::FromArgb(180, 0, 0)
+    $errorFont = New-Object System.Drawing.Font("Arial", 8, [System.Drawing.FontStyle]::Regular)
+
+    $script:__telUpdating = $false
+    $script:__telAllowFormatted = $false
+    $script:__nomUpdating = $false
+    $script:__prenomUpdating = $false
+
+    function Add-ErrorLabel {
+        param([int]$x, [int]$yPos)
+        $lbl = New-Object System.Windows.Forms.Label
+        $lbl.AutoSize = $false
+        $lbl.Size = New-Object System.Drawing.Size($fieldW, 18)
+        $lbl.Location = New-Object System.Drawing.Point($x, ($yPos + 24))
+        $lbl.ForeColor = $errorColor
+        $lbl.Font = $errorFont
+        $lbl.Text = ""
+        $form.Controls.Add($lbl)
+        return $lbl
+    }
+
+    function Set-FieldError {
+        param(
+            [System.Windows.Forms.Label]$Label,
+            [string]$Message
+        )
+        if (-not $Label) { return }
+        $Label.Text = $Message
+        $Label.Visible = -not [string]::IsNullOrWhiteSpace($Message)
+    }
+
+    function Get-TelError {
+        param([string]$Text)
+        $formatted = Format-Telephone $Text
+        if ($formatted -eq "") { return "" } # tel optionnel
+        if ($null -eq $formatted) { return "Le numéro doit contenir 10 chiffres" }
+        return ""
+    }
+
+    function Get-EmailError {
+        param([string]$Text)
+        if ([string]::IsNullOrWhiteSpace($Text)) { return "" } # optionnel
+        if (Test-Email $Text) { return "" }
+        return "Adresse email invalide"
+    }
+
+    function Get-SecurityError {
+        param([string]$Text)
+        if (Test-SecuriteInput $Text) { return "" }
+        return "Caractères interdits détectés"
+    }
+
+    function Get-NomError {
+        $sec = Get-SecurityError $txtNom.Text
+        if ($sec) { return $sec }
+        $n = $txtNom.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($n)) { return "Nom obligatoire" }
+        if ($n.Length -lt 2) { return "Nom obligatoire (min 2 caractères)" }
+        return ""
+    }
+
+    function Get-PrenomError {
+        $sec = Get-SecurityError $txtPrenom.Text
+        if ($sec) { return $sec }
+        $p = $txtPrenom.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($p)) { return "Prénom obligatoire" }
+        if ($p.Length -lt 2) { return "Prénom obligatoire (min 2 caractères)" }
+        return ""
+    }
+
+    function Validate-All {
+        param([switch]$FocusFirstInvalid)
+        $hasError = $false
+
+        # Nom / Prénom (strict)
+        Set-FieldError -Label $lblNomError -Message (Get-NomError)
+        Set-FieldError -Label $lblPrenomError -Message (Get-PrenomError)
+        if ($lblNomError.Visible) {
+            $hasError = $true
+            if ($FocusFirstInvalid) { $txtNom.Focus() }
+        }
+        if ($lblPrenomError.Visible) {
+            $hasError = $true
+            if ($FocusFirstInvalid -and -not $lblNomError.Visible) { $txtPrenom.Focus() }
+        }
+
+        # Téléphone / Email
+        Set-FieldError -Label $lblTelError -Message (Get-TelError $txtTel.Text)
+        Set-FieldError -Label $lblEmailError -Message (Get-EmailError $txtEmail.Text)
+        if ($lblNomError.Visible -or $lblPrenomError.Visible -or $lblTelError.Visible -or $lblEmailError.Visible) { $hasError = $true }
+
+        if ($hasError -and $FocusFirstInvalid) {
+            if ($lblNomError.Visible) { $txtNom.Focus(); return $false }
+            if ($lblPrenomError.Visible) { $txtPrenom.Focus(); return $false }
+            if ($lblTelError.Visible) { $txtTel.Focus(); return $false }
+            if ($lblEmailError.Visible) { $txtEmail.Focus(); return $false }
+        }
+
+        return (-not $hasError)
+    }
+
+    function Update-SubmitState {
+        # Désactiver VALIDER si une erreur existe (UX)
+        $btnOk.Enabled = Validate-All
+    }
+
+    function Add-Label($text) {
+        $lbl = New-Object System.Windows.Forms.Label
+        $lbl.Text = $text
+        $lbl.Location = New-Object System.Drawing.Point($left, $y)
+        $lbl.Size = New-Object System.Drawing.Size($labelW, 25)
+        $form.Controls.Add($lbl)
+    }
+
+    function Add-TextBox($value) {
+        $txt = New-Object System.Windows.Forms.TextBox
+        $txt.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+        $txt.Size = New-Object System.Drawing.Size($fieldW, 25)
+        $txt.Text = $value
+        $form.Controls.Add($txt)
+        return $txt
+    }
+
+    # NOM
+    Add-Label "Nom * :"
+    $txtNom = Add-TextBox $(if ($Agent -and $Agent.nom) { $Agent.nom } else { "" })
+    $lblNomError = Add-ErrorLabel -x ($left + $labelW) -yPos $y
+    $y += 40
+
+    # PRENOM
+    Add-Label "Prénom * :"
+    $txtPrenom = Add-TextBox $(if ($Agent -and $Agent.prenom) { $Agent.prenom } else { "" })
+    $lblPrenomError = Add-ErrorLabel -x ($left + $labelW) -yPos $y
+    $y += 40
+
+    # TEL
+    Add-Label "Téléphone :"
+    $txtTel = Add-TextBox $(if ($Agent -and $Agent.telephone) { $Agent.telephone } else { "" })
+    $txtTel.MaxLength = 10
+    $lblTelError = Add-ErrorLabel -x ($left + $labelW) -yPos $y
+    $y += 40
+
+    # EMAIL
+    Add-Label "Email :"
+    $txtEmail = Add-TextBox $(if ($Agent -and $Agent.email) { $Agent.email } else { "" })
+    $lblEmailError = Add-ErrorLabel -x ($left + $labelW) -yPos $y
+    $y += 40
+
+    # CONTRAT
+    Add-Label "Contrat :"
+    $cmbContrat = New-Object System.Windows.Forms.ComboBox
+    $cmbContrat.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+    $cmbContrat.Size = New-Object System.Drawing.Size($fieldW, 25)
+    $cmbContrat.DropDownStyle = "DropDownList"
+    $cmbContrat.Items.AddRange(@("CDI","CDD","Interim","Apprentissage"))
+    if ($Agent -and $Agent.type_contrat) {
+        $cmbContrat.SelectedItem = $Agent.type_contrat
+    } else {
+        $cmbContrat.SelectedIndex = 0
+    }
+    $form.Controls.Add($cmbContrat)
+    $y += 40
+
+    # HEURES
+    Add-Label "Heures/semaine :"
+    $numHeures = New-Object System.Windows.Forms.NumericUpDown
+    $numHeures.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+    $numHeures.Minimum = 0
+    $numHeures.Maximum = 60
+    if ($Agent -and $Agent.base_heures_semaine) {
+        $numHeures.Value = $Agent.base_heures_semaine
+    } else {
+        $numHeures.Value = 35
+    }
+    $form.Controls.Add($numHeures)
+    $y += 40
+
+    # POSTE
+    Add-Label "Poste :"
+    $cmbPoste = New-Object System.Windows.Forms.ComboBox
+    $cmbPoste.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+    $cmbPoste.Size = New-Object System.Drawing.Size($fieldW, 25)
+    $cmbPoste.DropDownStyle = "DropDownList"
+    $cmbPoste.Items.AddRange(@(Get-PostesListe))
+    if ($Agent -and $Agent.poste) {
+        $cmbPoste.SelectedItem = $Agent.poste
+    } else {
+        $cmbPoste.SelectedIndex = 0
+    }
+    $form.Controls.Add($cmbPoste)
+    $y += 40
+
+    # DATE ENTREE (objet DateTime normal)
+    Add-Label "Date entrée :"
+    $dtEntree = New-Object System.Windows.Forms.DateTimePicker
+    $dtEntree.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+    # Format explicite pour éviter les saisies ambiguës (ex: "01 avril 2026" peut être rejeté et revenir à aujourd'hui)
+    $dtEntree.Format = [System.Windows.Forms.DateTimePickerFormat]::Custom
+    $dtEntree.CustomFormat = "dd/MM/yyyy"
+    if ($Agent -and $Agent.date_entree) {
+        $dtEntree.Value = $Agent.date_entree
+    }
+    $form.Controls.Add($dtEntree)
+    $y += 40
+
+    # DATE SORTIE (objet DateTime normal)
+    Add-Label "Date sortie :"
+    $dtSortie = New-Object System.Windows.Forms.DateTimePicker
+    $dtSortie.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+    $dtSortie.Format = "Short"
+    $dtSortie.ShowCheckBox = $true
+    $dtSortie.Checked = $false
+    if ($Agent -and $Agent.date_sortie) {
+        $dtSortie.Checked = $true
+        $dtSortie.Value = $Agent.date_sortie
+    }
+    $form.Controls.Add($dtSortie)
+    $y += 60
+
+    # BOUTONS
+    $btnOk = New-Object System.Windows.Forms.Button
+    $btnOk.Text = "VALIDER"
+    $btnOk.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+    Set-BtnValiderStyle -BtnValider $btnOk
+    $form.Controls.Add($btnOk)
+    $form.AcceptButton = $btnOk
+
+    $btnCancel = New-Object System.Windows.Forms.Button
+    $btnCancel.Text = "QUITTER"
+    $btnCancel.Location = New-Object System.Drawing.Point(($left + $labelW + 120), $y)
+    Set-BtnQuitterStyle -BtnQuitter $btnCancel
+    $btnCancel.Add_Click({ $form.Close() })
+    $form.Controls.Add($btnCancel)
+
+    # Stocker le résultat sur le Form pour éviter les soucis de scope dans les handlers WinForms
+    $form.Tag = $null
+
+    $btnOk.Add_Click({
+        try {
+            # Sécurité: nettoyage UI supplémentaire
+            $txtNom.Text = Sanitize-TextInput $txtNom.Text
+            $txtPrenom.Text = Sanitize-TextInput $txtPrenom.Text
+            $txtEmail.Text = Sanitize-TextInput $txtEmail.Text
+
+            if (-not (Test-SecuriteInput $txtNom.Text) -or -not (Test-SecuriteInput $txtPrenom.Text) -or -not (Test-SecuriteInput $txtEmail.Text) -or -not (Test-SecuriteInput $txtTel.Text)) {
+                Set-FieldError -Label $lblNomError -Message (Get-SecurityError $txtNom.Text)
+                Set-FieldError -Label $lblPrenomError -Message (Get-SecurityError $txtPrenom.Text)
+                Set-FieldError -Label $lblEmailError -Message (Get-SecurityError $txtEmail.Text)
+                Set-FieldError -Label $lblTelError -Message (Get-SecurityError $txtTel.Text)
+                return
+            }
+
+            # [AgentForm] Nom/Prenom normalization applied
+            $nom = Format-Nom $txtNom.Text
+            $prenom = Format-Prenom $txtPrenom.Text
+            $txtNom.Text = $nom
+            $txtPrenom.Text = $prenom
+
+            if (-not (Validate-All -FocusFirstInvalid)) {
+                Write-Log "[AgentForm] Validation failed: tel/email" "WARN" @{
+                    tel = $txtTel.Text; email = $txtEmail.Text
+                }
+                return
+            }
+
+            Write-Host "[AgentForm] Sécurité input OK"
+
+            $telFormatted = Format-Telephone $txtTel.Text
+            if ($null -eq $telFormatted) {
+                Set-FieldError -Label $lblTelError -Message "Le numéro doit contenir 10 chiffres"
+                $txtTel.Focus()
+                return
+            }
+            if ($telFormatted -ne "") {
+                $script:__telAllowFormatted = $true
+                $txtTel.MaxLength = 14
+                $txtTel.Text = $telFormatted
+                Write-Host "[AgentForm] Validation téléphone OK"
+                $script:__telAllowFormatted = $false
+            }
+            if (-not [string]::IsNullOrWhiteSpace($txtEmail.Text)) {
+                Write-Host "[AgentForm] Validation email OK"
+            }
+
+            $result = [PSCustomObject]@{
+                nom = $nom
+                prenom = $prenom
+                # Stockage au format standard "XX XX XX XX XX" (ou vide si optionnel)
+                telephone = $telFormatted
+                email = (Normalize-Email $txtEmail.Text)
+                type_contrat = $cmbContrat.SelectedItem.ToString()
+                base_heures_semaine = [int]$numHeures.Value
+                poste = $cmbPoste.SelectedItem.ToString()
+                date_entree = $dtEntree.Value
+                date_sortie = if ($dtSortie.Checked) { $dtSortie.Value } else { $null }
+            }
+            $form.Tag = $result
+            Write-Log "[AgentForm] Submit OK" "INFO" $result
+            $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+            $form.Close()
+        } catch {
+            Write-Log "[AgentForm] Submit failed (exception in click handler)" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+            [System.Windows.Forms.MessageBox]::Show(
+                ("Erreur dans le formulaire:`n`n{0}" -f $_.Exception.Message),
+                "Erreur",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+            return
+        }
+    })
+
+    # ===== Validation temps réel =====
+
+    $txtNom.Add_TextChanged({
+        if ($script:__nomUpdating) { return }
+        try {
+            $script:__nomUpdating = $true
+            $formatted = Format-Nom $txtNom.Text
+            if ($txtNom.Text -ne $formatted) {
+                $txtNom.Text = $formatted
+                $txtNom.SelectionStart = $txtNom.Text.Length
+            }
+            Set-FieldError -Label $lblNomError -Message (Get-NomError)
+            Update-SubmitState
+        } finally {
+            $script:__nomUpdating = $false
+        }
+    })
+
+    $txtPrenom.Add_TextChanged({
+        if ($script:__prenomUpdating) { return }
+        try {
+            $script:__prenomUpdating = $true
+            $formatted = Format-Prenom $txtPrenom.Text
+            if ($txtPrenom.Text -ne $formatted) {
+                $txtPrenom.Text = $formatted
+                $txtPrenom.SelectionStart = $txtPrenom.Text.Length
+            }
+            Set-FieldError -Label $lblPrenomError -Message (Get-PrenomError)
+            Update-SubmitState
+        } finally {
+            $script:__prenomUpdating = $false
+        }
+    })
+
+    # Téléphone: blocage de toute saisie non numérique (KeyPress) + validation temps réel
+    $txtTel.Add_KeyPress({
+        param($sender, $e)
+        # Autoriser contrôles (Backspace, Ctrl+C/V, etc.)
+        if ($e.Control) { return }
+        if ($e.KeyChar -eq [char]8) { return } # backspace
+        if (-not [char]::IsDigit($e.KeyChar)) {
+            $e.Handled = $true
+        }
+    })
+
+    $txtTel.Add_TextChanged({
+        if ($script:__telAllowFormatted) { return }
+        # Sécurité: s'assurer qu'il n'y a que des chiffres même si collage
+        $digits = Normalize-Telephone $txtTel.Text
+        if ($digits.Length -gt 10) { $digits = $digits.Substring(0,10) }
+        if ($txtTel.Text -ne $digits) {
+            $pos = $txtTel.SelectionStart
+            $txtTel.Text = $digits
+            $txtTel.SelectionStart = [Math]::Min($pos, $txtTel.Text.Length)
+        }
+        Set-FieldError -Label $lblTelError -Message (Get-TelError $txtTel.Text)
+        Update-SubmitState
+    })
+
+    $txtEmail.Add_TextChanged({
+        Set-FieldError -Label $lblEmailError -Message (Get-EmailError $txtEmail.Text)
+        Update-SubmitState
+    })
+
+    # Etat initial du bouton
+    Update-SubmitState
+
+    if ($Owner) {
+        $form.ShowDialog($Owner) | Out-Null
+    } else {
+        $form.ShowDialog() | Out-Null
+    }
+    
+    if ($form.DialogResult -eq [System.Windows.Forms.DialogResult]::OK) {
+        $out = $form.Tag
+        Write-Log "[AgentForm] Returning result" "INFO" @{ mode = $Mode; ok = $true; isNull = ($null -eq $out) }
+        return $out
+    }
+
+    Write-Log "[AgentForm] Returning null" "INFO" @{ mode = $Mode; ok = $false; dialogResult = $form.DialogResult.ToString() }
+    return $null
+}
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Agents\AgentPanel.ps1
+================================================================================
+# AgentPanel.ps1 - VERSION SANS LOGS
+
+. "$PSScriptRoot\..\..\Database\Database.ps1"
+. "$PSScriptRoot\AgentRepository.ps1"
+. "$PSScriptRoot\AgentForm.ps1"
+. "$PSScriptRoot\..\..\Common\Styles.ps1"
+. "$PSScriptRoot\..\..\Core\Logger.ps1"
+
+$script:DebugAgentsUI = $false
+
+function Refresh-AgentsGrid {
+    <#
+    Refresh-AgentsGrid
+    - Charge les agents selon le mode historique
+    - Centralise la logique d'affichage et le style des lignes
+    #>
+    param(
+        [Parameter(Mandatory=$true)] $Grid,
+        [bool]$IncludeHistorique = $false
+    )
+
+    Write-Log "[AgentsUI] RefreshGrid begin" "INFO"
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        if (-not $Grid) { throw "Grid is null" }
+        $null = $Grid.Rows.Clear()
+
+        # Optimisation: une seule lecture DB selon le mode
+        $agents = if ($IncludeHistorique) { Get-AllAgents } else { Get-Agents }
+        Write-Log "[AgentsUI] RefreshGrid loaded agents" "INFO" @{ count = $agents.Count }
+
+        # [AgentsUI] Active agents set to normal font (no bold)
+        # Style texte: actifs en police normale, inactifs en gris clair (placeholder)
+        $baseFont = $script:PoliceNormal
+        if (-not $baseFont) { $baseFont = (if ($Grid.DefaultCellStyle.Font) { $Grid.DefaultCellStyle.Font } else { $Grid.Font }) }
+        $normalFont = New-Object System.Drawing.Font($baseFont, ([System.Drawing.FontStyle]::Regular))
+        $inactiveColor = [System.Drawing.Color]::FromArgb(150, 150, 150)
+
+        $i = 0
+        foreach ($a in $agents) {
+            $null = $Grid.Rows.Add()
+            $Grid.Rows[$i].Cells[$Grid.Columns["Nom"].Index].Value = $a.nom
+            $Grid.Rows[$i].Cells[$Grid.Columns["Prenom"].Index].Value = $a.prenom
+            $Grid.Rows[$i].Cells[$Grid.Columns["Tel"].Index].Value = $a.telephone
+            $Grid.Rows[$i].Cells[$Grid.Columns["Email"].Index].Value = $a.email
+            $Grid.Rows[$i].Cells[$Grid.Columns["Parc"].Index].Value = if ($a.numero_parc -and $a.numero_parc -ne [System.DBNull]::Value) { $a.numero_parc } else { "" }
+            $Grid.Rows[$i].Cells[$Grid.Columns["Contrat"].Index].Value = $a.type_contrat
+            $Grid.Rows[$i].Cells[$Grid.Columns["Heures"].Index].Value = $a.base_heures_semaine
+            $Grid.Rows[$i].Cells[$Grid.Columns["Edit"].Index].Value = "✏️"
+            $Grid.Rows[$i].Cells[$Grid.Columns["Delete"].Index].Value = "🗑️"
+            $Grid.Rows[$i].Tag = $a.id
+
+            # Style visuel: Actifs = normal, Inactifs = gris clair (désactivé)
+            $isActif = ([int]$a.actif -eq 1)
+            $Grid.Rows[$i].DefaultCellStyle.Font = $normalFont
+            if (-not $isActif) {
+                $Grid.Rows[$i].DefaultCellStyle.ForeColor = $inactiveColor
+            }
+
+            # Appliquer couleur alternée via helper existant (si dispo)
+            try { Apply-AlternateRowColor -Grid $Grid -RowIndex $i -Row $i } catch {}
+            $i++
+        }
+        # Tri visuel (en plus du ORDER BY côté SQL)
+        if ($Grid.Columns.Contains("Nom")) {
+            $Grid.Sort($Grid.Columns["Nom"], [System.ComponentModel.ListSortDirection]::Ascending)
+        }
+        $Grid.Refresh()
+    } catch {
+        Write-Log "[AgentsUI] RefreshGrid failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    } finally {
+        $sw.Stop()
+        Write-Log "[AgentsUI] RefreshGrid end" "INFO" @{ rows = $(if ($Grid) { $Grid.Rows.Count } else { $null }); elapsed_ms = $sw.ElapsedMilliseconds }
+    }
+}
+
+function Show-AgentsPanel {
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+
+    $mainPanel = New-Object System.Windows.Forms.Panel
+    $mainPanel.Dock = "Fill"
+    $mainPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $mainPanel.Padding = New-Object System.Windows.Forms.Padding(20)
+
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = $script:TitrePanelAgents
+    $lblTitle.Font = $script:PoliceTitreGestionFenetre
+    $lblTitle.ForeColor = $script:CouleurOrange
+    $lblTitle.Location = New-Object System.Drawing.Point(20, 20)
+    $lblTitle.Size = New-Object System.Drawing.Size(400, 50)
+    $mainPanel.Controls.Add($lblTitle)
+
+    # ===== Option historique (actifs + inactifs) =====
+    $lblHistorique = New-Object System.Windows.Forms.Label
+    $lblHistorique.Text = "Afficher l’historique des agents"
+    $lblHistorique.Font = $script:PoliceLabelSecondaireFenetre
+    $lblHistorique.ForeColor = $script:CouleurTexteSecondairePanel
+    # [AgentsUI] UI spacing adjusted +15px for history mode
+    $lblHistorique.Location = New-Object System.Drawing.Point(20, 77)
+    $lblHistorique.Size = New-Object System.Drawing.Size(260, 20)
+    $mainPanel.Controls.Add($lblHistorique)
+
+    $chkHistoriqueAgents = New-Object System.Windows.Forms.CheckBox
+    $chkHistoriqueAgents.Name = "chkHistoriqueAgents"
+    $chkHistoriqueAgents.Location = New-Object System.Drawing.Point(285, 78)
+    $chkHistoriqueAgents.Size = New-Object System.Drawing.Size(20, 20)
+    $chkHistoriqueAgents.Checked = $false
+    $chkHistoriqueAgents.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $mainPanel.Controls.Add($chkHistoriqueAgents)
+
+    $btnAjouter = New-Object System.Windows.Forms.Button
+    $btnAjouter.Text = "+ AJOUTER UN AGENT"
+    $btnAjouter.Location = New-Object System.Drawing.Point(900, 20)
+    $btnAjouter.Size = New-Object System.Drawing.Size(200, 45)
+    Set-BtnAjouterStyle -BtnAjouter $btnAjouter
+    $btnAjouter.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $mainPanel.Controls.Add($btnAjouter)
+
+    $grid = New-Object System.Windows.Forms.DataGridView
+    $grid.Name = "AgentsGrid"
+    # [UI] DataGridView fixed to responsive Fill layout
+    $grid.Location = New-Object System.Drawing.Point(20, 110)
+    # Taille de départ raisonnable (ne doit pas dépasser la fenêtre); Anchor gère le responsive ensuite
+    $grid.Size = New-Object System.Drawing.Size(1100, 560)
+    $grid.Anchor = "Top,Bottom,Left,Right"
+    $grid.AllowUserToAddRows = $false
+    $grid.RowHeadersVisible = $false
+    $grid.BackgroundColor = [System.Drawing.Color]::White
+    $grid.SelectionMode = "FullRowSelect"
+    $grid.BorderStyle = "FixedSingle"
+    # Scroll horizontal activé (resize manuel)
+    $grid.ScrollBars = [System.Windows.Forms.ScrollBars]::Both
+    # Mode sans autosize pour permettre le redimensionnement manuel
+    $grid.AutoSizeColumnsMode = "None"
+    $grid.AutoGenerateColumns = $false
+    $grid.AllowUserToResizeColumns = $true
+    Set-GridStyle -Grid $grid
+
+    # Réduire le flickering (propriété non publique)
+    try {
+        $prop = $grid.GetType().GetProperty("DoubleBuffered", [System.Reflection.BindingFlags] "Instance,NonPublic")
+        if ($prop) { $prop.SetValue($grid, $true, $null) }
+    } catch {}
+
+    # Lignes alternées: pair = gris clair, impair = orange très léger (teinte douce existante)
+    $grid.DefaultCellStyle.BackColor = $script:CouleurGrisClair
+    $grid.AlternatingRowsDefaultCellStyle.BackColor = $script:CouleurLigneAlternee
+    $grid.DefaultCellStyle.SelectionBackColor = $script:CouleurSelection
+    $grid.DefaultCellStyle.SelectionForeColor = $script:CouleurBlanc
+    $grid.ColumnHeadersHeightSizeMode = "AutoSize"
+    $grid.ColumnHeadersDefaultCellStyle.WrapMode = [System.Windows.Forms.DataGridViewTriState]::False
+
+    # [UI] Manual column selection enabled for clean AgentPanel view
+    # Colonnes explicitement autorisées (ordre contrôlé)
+    $grid.Columns.Clear()
+    $null = $grid.Columns.Add("Nom", "Nom")
+    $null = $grid.Columns.Add("Prenom", "Prénom")
+    $null = $grid.Columns.Add("Tel", "Téléphone")
+    $null = $grid.Columns.Add("Email", "Email")
+    $null = $grid.Columns.Add("Parc", "N° parc")
+    $null = $grid.Columns.Add("Contrat", "Type de contrat")
+    $null = $grid.Columns.Add("Heures", "Base heures")
+    $null = $grid.Columns.Add("Edit", "Modifier")
+    $null = $grid.Columns.Add("Delete", "Supprimer")
+
+    # Largeurs par défaut (l'utilisateur peut ensuite redimensionner à la souris)
+    $grid.Columns["Nom"].Width = 150
+    $grid.Columns["Prenom"].Width = 120
+    $grid.Columns["Tel"].Width = 110
+    $grid.Columns["Email"].Width = 120
+    $grid.Columns["Parc"].Width = 90
+    $grid.Columns["Contrat"].Width = 130
+    $grid.Columns["Heures"].Width = 100
+    $grid.Columns["Edit"].Width = 90
+    $grid.Columns["Delete"].Width = 90  
+
+    # Actions: centrées et compactes
+    $grid.Columns["Edit"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleCenter
+    $grid.Columns["Delete"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleCenter
+
+    # Email: ne pas wrap, tronquage visuel si trop long
+    $grid.Columns["Email"].DefaultCellStyle.WrapMode = [System.Windows.Forms.DataGridViewTriState]::False
+    $grid.Columns["Email"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleLeft
+
+    $mainPanel.Controls.Add($grid)
+    Refresh-AgentsGrid -Grid $grid -IncludeHistorique $chkHistoriqueAgents.Checked
+
+    $chkHistoriqueAgents.Add_CheckedChanged({
+        $mode = if ($this.Checked) { "ON" } else { "OFF" }
+        Write-Log "[AgentsUI] Historique mode $mode" "INFO"
+        $g = $this.Parent.Controls["AgentsGrid"]
+        Refresh-AgentsGrid -Grid $g -IncludeHistorique $this.Checked
+    })
+
+    $btnAjouter.Add_Click({
+        # $mainPanel peut être $null dans certains contextes d'event; utiliser le bouton comme point d'ancrage.
+        try {
+            Write-Log "[AgentsUI] Click add agent" "INFO"
+            if ($script:DebugAgentsUI) {
+                [System.Windows.Forms.MessageBox]::Show("Click: ouverture du formulaire Agent", "Debug", "OK", "Information") | Out-Null
+            }
+            $owner = $this.FindForm()
+            $nouveau = Show-AgentForm -Mode "Ajouter" -Owner $owner
+            if (-not $nouveau) {
+                Write-Log "[AgentsUI] Add agent cancelled (form returned null)" "INFO"
+                return
+            }
+
+            if ($script:DebugAgentsUI) {
+                [System.Windows.Forms.MessageBox]::Show(
+                    ("Form OK:`nnom={0}`nprenom={1}`nentree={2:dd/MM/yyyy}`nsortie={3}" -f $nouveau.nom, $nouveau.prenom, $nouveau.date_entree, $nouveau.date_sortie),
+                    "Debug",
+                    "OK",
+                    "Information"
+                ) | Out-Null
+            }
+            Write-Log "[AgentsUI] Form data ready" "INFO" $nouveau
+            $newId = Add-AgentWithValidation -Nom $nouveau.nom -Prenom $nouveau.prenom -Telephone $nouveau.telephone -Email $nouveau.email -DateEntree $nouveau.date_entree -DateSortie $nouveau.date_sortie -TypeContrat $nouveau.type_contrat -BaseHeuresSemaine $nouveau.base_heures_semaine -Poste $nouveau.poste
+            Write-Log "[AgentsUI] Add-AgentWithValidation returned" "INFO" @{ id = $newId }
+            try {
+                $created = Get-AgentById -Id $newId
+                if ($created) {
+                    Write-Log "[AgentsUI] Created agent loaded from DB" "INFO" @{ id = $created.id; actif = $created.actif }
+                } else {
+                    Write-Log "[AgentsUI] Created agent not found after insert" "WARN" @{ id = $newId }
+                }
+            } catch {
+                Write-Log "[AgentsUI] Post-insert Get-AgentById failed" "ERROR" @{ id = $newId; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+            }
+            if ($script:DebugAgentsUI) {
+                [System.Windows.Forms.MessageBox]::Show(("Ajout OK (id={0})" -f $newId), "Agents", "OK", "Information") | Out-Null
+            }
+            $g = $this.Parent.Controls["AgentsGrid"]
+            $chk = $this.Parent.Controls["chkHistoriqueAgents"]
+            Refresh-AgentsGrid -Grid $g -IncludeHistorique $chk.Checked
+        } catch {
+            Write-Log "[AgentsUI] Add agent failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+            [System.Windows.Forms.MessageBox]::Show(
+                ("Erreur lors de l'ajout de l'agent:`n`n{0}" -f $_.Exception.Message),
+                "Erreur",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+        }
+    })
+
+    $grid.Add_CellClick({
+        param($sender, $e)
+
+        if (-not $sender) { return }
+        if (-not $e) { return }
+        if ($e.RowIndex -lt 0) { return }
+        if ($e.ColumnIndex -lt 0) { return }
+        if ($e.RowIndex -ge $sender.Rows.Count) { return }
+
+        $row = $sender.Rows[$e.RowIndex]
+        if (-not $row) { return }
+        if ($null -eq $row.Tag) { return }
+
+        $id = [int]$row.Tag
+
+        $editCol = $sender.Columns["Edit"].Index
+        $delCol = $sender.Columns["Delete"].Index
+
+        if ($e.ColumnIndex -eq $editCol) {
+            $agent = Get-AgentById -Id $id
+            $owner = $sender.FindForm()
+            $modif = Show-AgentForm -Mode "Modifier" -Agent $agent -Owner $owner
+            if ($modif) {
+                Update-Agent -Id $id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -Poste $modif.poste | Out-Null
+                $chk = $sender.Parent.Controls["chkHistoriqueAgents"]
+                Refresh-AgentsGrid -Grid $sender -IncludeHistorique $chk.Checked
+            }
+            return
+        }
+
+        if ($e.ColumnIndex -eq $delCol) {
+            $confirm = [System.Windows.Forms.MessageBox]::Show("Supprimer cet agent ?", "Confirmation", "YesNo")
+            if ($confirm -eq "Yes") {
+                Remove-Agent -Id $id | Out-Null
+                $chk = $sender.Parent.Controls["chkHistoriqueAgents"]
+                Refresh-AgentsGrid -Grid $sender -IncludeHistorique $chk.Checked
+            }
+            return
+        }
+    })
+
+    # Double-clic sur une ligne: ouvrir le formulaire de modification
+    # Ne casse pas le clic sur les colonnes Modifier/Supprimer (on ignore ces colonnes au double-clic).
+    $grid.Add_CellDoubleClick({
+        param($sender, $e)
+
+        if (-not $sender) { return }
+        if (-not $e) { return }
+        if ($e.RowIndex -lt 0) { return }
+        if ($e.ColumnIndex -lt 0) { return }
+        if ($e.RowIndex -ge $sender.Rows.Count) { return }
+
+        # Colonnes actions: laisser le comportement existant du simple clic
+        try {
+            $editCol = $sender.Columns["Edit"].Index
+            $delCol = $sender.Columns["Delete"].Index
+            if ($e.ColumnIndex -in @($editCol, $delCol)) { return }
+        } catch {}
+
+        $row = $sender.Rows[$e.RowIndex]
+        if (-not $row) { return }
+        if ($null -eq $row.Tag) { return }
+
+        # Bonus: surligner la ligne
+        try {
+            $sender.ClearSelection()
+            $row.Selected = $true
+        } catch {}
+
+        $id = [int]$row.Tag
+        Write-Log "[AgentsUI] Double-click edit agent ID = $id" "INFO"
+
+        try {
+            $agent = Get-AgentById -Id $id
+            if (-not $agent) { return }
+
+            $owner = $sender.FindForm()
+            $modif = Show-AgentForm -Mode "Modifier" -Agent $agent -Owner $owner
+            if ($modif) {
+                Update-Agent -Id $id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -Poste $modif.poste | Out-Null
+                $chk = $sender.Parent.Controls["chkHistoriqueAgents"]
+                Refresh-AgentsGrid -Grid $sender -IncludeHistorique $chk.Checked
+            }
+        } catch {
+            Write-Log "[AgentsUI] Double-click edit failed" "ERROR" @{ id = $id; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+            [System.Windows.Forms.MessageBox]::Show(
+                ("Erreur lors de la modification de l'agent:`n`n{0}" -f $_.Exception.Message),
+                "Erreur",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+        }
+    })
+
+    return $mainPanel
+}
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Agents\AgentRepository.ps1
+================================================================================
+# AgentRepository.ps1 - Logique métier (ne duplique pas Database.ps1)
+
+. "$PSScriptRoot\..\..\Database\Database.ps1"
+. "$PSScriptRoot\..\..\Core\Logger.ps1"
+
+# ============================================================
+# VALIDATIONS
+# ============================================================
+
+function Test-NomValide {
+    param($Nom)
+    if ([string]::IsNullOrWhiteSpace($Nom)) { return $false }
+    return $Nom.Length -ge 2
+}
+
+function Test-PrenomValide {
+    param($Prenom)
+    if ([string]::IsNullOrWhiteSpace($Prenom)) { return $false }
+    return $Prenom.Length -ge 2
+}
+
+function Test-TelephoneValide {
+    param($Telephone)
+    if ([string]::IsNullOrWhiteSpace($Telephone)) { return $true }
+    $clean = $Telephone -replace '[^0-9+]', ''
+    if ($clean -match '^0[1-9][0-9]{8}$') { return $true }
+    if ($clean -match '^\+33[1-9][0-9]{8}$') { return $true }
+    return $false
+}
+
+function Test-EmailValide {
+    param($Email)
+    if ([string]::IsNullOrWhiteSpace($Email)) { return $true }
+    return $Email -match '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+}
+
+# ============================================================
+# AJOUT AVEC VALIDATION
+# ============================================================
+
+function Add-AgentWithValidation {
+    param($Nom, $Prenom, $Telephone, $Email, $DateEntree, $DateSortie, $TypeContrat, $BaseHeuresSemaine = 35, $VehiculeId = $null, $Poste = "Collecteur")
+    
+    Write-Log "[Agents] Add-AgentWithValidation begin" "INFO" @{
+        nom = $Nom; prenom = $Prenom; telephone = $Telephone; email = $Email
+        type_contrat = $TypeContrat; base_heures_semaine = $BaseHeuresSemaine
+        poste = $Poste; vehicule_id = $VehiculeId
+        date_entree = $DateEntree; date_sortie = $DateSortie
+    }
+
+    # Validations
+    if (-not (Test-NomValide $Nom)) { Write-Log "[Agents] Validation failed: nom" "WARN" @{ nom = $Nom }; throw "Nom invalide (min 2 caractères)" }
+    if (-not (Test-PrenomValide $Prenom)) { Write-Log "[Agents] Validation failed: prenom" "WARN" @{ prenom = $Prenom }; throw "Prénom invalide (min 2 caractères)" }
+    if (-not (Test-TelephoneValide $Telephone)) { Write-Log "[Agents] Validation failed: telephone" "WARN" @{ telephone = $Telephone }; throw "Téléphone invalide" }
+    if (-not (Test-EmailValide $Email)) { Write-Log "[Agents] Validation failed: email" "WARN" @{ email = $Email }; throw "Email invalide" }
+    
+    # Appel à la base
+    try {
+        $newId = Add-Agent -Nom $Nom -Prenom $Prenom -Telephone $Telephone -Email $Email -DateEntree $DateEntree -DateSortie $DateSortie -TypeContrat $TypeContrat -BaseHeuresSemaine $BaseHeuresSemaine -VehiculeId $VehiculeId -Poste $Poste
+        Write-Log "[Agents] Add-AgentWithValidation success" "INFO" @{ id = $newId }
+        return $newId
+    } catch {
+        Write-Log "[Agents] Add-AgentWithValidation failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    }
+}
+
+# ============================================================
+# RECHERCHES
+# ============================================================
+
+function Search-Agents {
+    param($Nom = "", $Prenom = "", $Poste = "")
+    
+    $agents = Get-Agents
+    if ($Nom) { $agents = $agents | Where-Object { $_.nom -like "*$Nom*" } }
+    if ($Prenom) { $agents = $agents | Where-Object { $_.prenom -like "*$Prenom*" } }
+    if ($Poste) { $agents = $agents | Where-Object { $_.poste -eq $Poste } }
+    return $agents
+}
+
+# ============================================================
+# STATISTIQUES
+# ============================================================
+
+function Get-AgentsStatistics {
+    $agents = Get-Agents
+    return [PSCustomObject]@{
+        Total = $agents.Count
+        ParPoste = $agents | Group-Object poste | ForEach-Object { 
+            [PSCustomObject]@{ Poste = $_.Name; Count = $_.Count }
+        }
+        Actifs = ($agents | Where-Object { $_.actif -eq 1 }).Count
+        Inactifs = ($agents | Where-Object { $_.actif -eq 0 }).Count
+    }
+}
+
+# ============================================================
+# EXPORT
+# ============================================================
+
+function Export-AgentsToCsv {
+    param($Path)
+    $agents = Get-Agents
+    $agents | Export-Csv -Path $Path -NoTypeInformation -Encoding UTF8
+    Write-Host "✅ Agents exportés vers $Path" -ForegroundColor Green
+}
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\ConventionNommage\ConventionNommage.ps1
+================================================================================
+# ConventionNommage.ps1 - Module principal
+
+. "$PSScriptRoot\ConventionNommageLogic.ps1"
+. "$PSScriptRoot\ConventionNommagePanel.ps1"
+
+Write-Verbose "[CN-Module] Module ConventionNommage chargé"
+
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\ConventionNommage\ConventionNommageLogic.ps1
+================================================================================
+# ConventionNommageLogic.ps1 - Logique métier
+
+function Invoke-CNRenameAction {
+    param(
+        [string]$TemplateId, 
+        [string]$FichierPDF, 
+        [string]$UserText, 
+        [datetime]$DateSelectionnee
+    )
+
+    $templatePath = Join-Path $PSScriptRoot "..\..\..\Data\templates.json"
+    
+    if (-not (Test-Path $templatePath)) {
+        Write-Host "[CN-Logic] templates.json non trouvé à: $templatePath" -ForegroundColor Red
+        throw "Fichier templates.json non trouvé"
+    }
+    
+    $templates = (Get-Content $templatePath -Raw | ConvertFrom-Json).templates
+    $template = $templates | Where-Object { $_.id -eq $TemplateId }
+
+    if (-not $template) {
+        throw "Template non trouvé : $TemplateId"
+    }
+
+    $cleanText = $UserText -replace '[\\/:*?"<>|]', '_'
+    $formattedDate = $DateSelectionnee.ToString($template.dateFormat)
+    $nouveauNom = $template.format -replace '{text}', $cleanText -replace '{date}', $formattedDate
+    
+    if (-not $nouveauNom.EndsWith(".pdf")) { 
+        $nouveauNom += ".pdf" 
+    }
+
+    $dossier = Split-Path $FichierPDF -Parent
+    $nouveauChemin = Join-Path $dossier $nouveauNom
+    
+    if (Test-Path $nouveauChemin) {
+        Add-Type -AssemblyName System.Windows.Forms
+        $result = [System.Windows.Forms.MessageBox]::Show(
+            "Le fichier '$nouveauNom' existe déjà. Voulez-vous le remplacer ?",
+            "Fichier existant",
+            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+            [System.Windows.Forms.MessageBoxIcon]::Question
+        )
+        if ($result -eq [System.Windows.Forms.DialogResult]::No) {
+            return $false
+        }
+    }
+
+    Rename-Item -Path $FichierPDF -NewName $nouveauNom -Force
+    return $true
+}
+
+Write-Host "[CN-Logic] Chargé" -ForegroundColor Cyan
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\ConventionNommage\ConventionNommagePanel.ps1
+================================================================================
+# ConventionNommagePanel.ps1 - VERSION FINALE
+
+function Show-ConventionNommagePanel {
+    param([string]$FichierPDF)
+
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = "Fill"
+    $panel.BackColor = $script:CouleurGrisFond
+    $panel.Padding = New-Object System.Windows.Forms.Padding(50)
+    # Données pour les gestionnaires d'événements : le CLR n'exécute pas les handlers dans la portée locale de cette fonction.
+    $panel.Tag = @{ FichierPDF = $FichierPDF }
+
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = "Renommer un PDF"
+    $lblTitle.Font = $script:PoliceTitre1
+    $lblTitle.ForeColor = $script:CouleurOrange
+    $lblTitle.Location = New-Object System.Drawing.Point(0, 0)
+    $lblTitle.Size = New-Object System.Drawing.Size(500, 50)
+    $panel.Controls.Add($lblTitle)
+
+    $txtCollecte = New-Object System.Windows.Forms.TextBox
+    $txtCollecte.Name = "txtCollecte"
+    $txtCollecte.Location = New-Object System.Drawing.Point(0, 110)
+    $txtCollecte.Size = New-Object System.Drawing.Size(550, 35)
+    $txtCollecte.Font = $script:PoliceNormal
+    $txtCollecte.PlaceholderText = "Renseigner le point de collecte"
+    $panel.Controls.Add($txtCollecte)
+
+    $btnCert = New-Object System.Windows.Forms.Button
+    Set-BtnCertificatStyle -BtnCertificat $btnCert
+    $btnCert.Location = New-Object System.Drawing.Point(0, 170)
+    $panel.Controls.Add($btnCert)
+
+    $btnPlan = New-Object System.Windows.Forms.Button
+    Set-BtnPlannerStyle -BtnPlanner $btnPlan
+    $btnPlan.Location = New-Object System.Drawing.Point(145, 170)
+    $panel.Controls.Add($btnPlan)
+
+    $btnFT = New-Object System.Windows.Forms.Button
+    Set-BtnFranceTravailStyle -BtnFranceTravail $btnFT
+    $btnFT.Location = New-Object System.Drawing.Point(290, 170)
+    $panel.Controls.Add($btnFT)
+
+    $lblDate = New-Object System.Windows.Forms.Label
+    $lblDate.Text = "Date :"
+    $lblDate.Font = $script:PoliceNormal
+    $lblDate.Location = New-Object System.Drawing.Point(0, 240)
+    $lblDate.Size = New-Object System.Drawing.Size(50, 30)
+    $panel.Controls.Add($lblDate)
+
+    $datePicker = New-Object System.Windows.Forms.DateTimePicker
+    $datePicker.Name = "datePicker"
+    $datePicker.Location = New-Object System.Drawing.Point(60, 240)
+    $datePicker.Size = New-Object System.Drawing.Size(180, 30)
+    $datePicker.Format = [System.Windows.Forms.DateTimePickerFormat]::Short
+    $datePicker.Font = $script:PoliceNormal
+    # Utiliser DateTime .NET pour éviter toute collision avec la fonction métier Get-Date.
+    $datePicker.Value = [datetime]::Now.AddDays(-1)
+    $panel.Controls.Add($datePicker)
+
+    # Mode forcé - label avec Name pour le retrouver
+    $lblModeForce = New-Object System.Windows.Forms.Label
+    $lblModeForce.Name = "lblModeForce"
+    $lblModeForce.Text = ""
+    $lblModeForce.Font = $script:PoliceNormal
+    $lblModeForce.ForeColor = $script:CouleurOrange
+    $lblModeForce.Location = New-Object System.Drawing.Point(260, 245)
+    $lblModeForce.Size = New-Object System.Drawing.Size(250, 25)
+    $lblModeForce.Visible = $false
+    $panel.Controls.Add($lblModeForce)
+
+    # Handlers : utiliser $sender.Parent + Name — les variables locales ne sont pas visibles depuis le délégué CLR.
+    $datePicker.Add_ValueChanged({
+        param($sender, $e)
+        $p = $sender.Parent
+        $label = $p.Controls["lblModeForce"]
+        if ($label) {
+            $label.Text = "Mode forcé : " + $sender.Value.ToString("dd/MM/yyyy")
+            $label.Visible = $true
+        }
+    })
+
+    $null = $btnCert.Add_Click({
+        param($sender, $e)
+        $p = [System.Windows.Forms.Panel]$sender.Parent
+        $txt = [System.Windows.Forms.TextBox]$p.Controls["txtCollecte"]
+        $dt = [System.Windows.Forms.DateTimePicker]$p.Controls["datePicker"]
+        if (-not $txt) { Write-Host "[DEBUG] txtCollecte NULL" -ForegroundColor Yellow; return }
+        if (-not $dt) { Write-Host "[DEBUG] datePicker NULL" -ForegroundColor Yellow; return }
+        $pdf = [string]$p.Tag.FichierPDF
+        $c = $txt.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($c)) {
+            [System.Windows.Forms.MessageBox]::Show("Veuillez saisir le point de collecte")
+            return
+        }
+        $d = $dt.Value
+        $n = "Certificat de Destruction-$c-du $($d.ToString('dd.MM.yyyy')).pdf"
+        Rename-Item -Path $pdf -NewName $n -Force
+        [System.Windows.Forms.MessageBox]::Show("✅ Fichier renommé : $n")
+        $p.FindForm().Close()
+    })
+
+    $null = $btnPlan.Add_Click({
+        param($sender, $e)
+        $p = [System.Windows.Forms.Panel]$sender.Parent
+        $txt = [System.Windows.Forms.TextBox]$p.Controls["txtCollecte"]
+        $dt = [System.Windows.Forms.DateTimePicker]$p.Controls["datePicker"]
+        if (-not $txt) { Write-Host "[DEBUG] txtCollecte NULL" -ForegroundColor Yellow; return }
+        if (-not $dt) { Write-Host "[DEBUG] datePicker NULL" -ForegroundColor Yellow; return }
+        $pdf = [string]$p.Tag.FichierPDF
+        $c = $txt.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($c)) {
+            [System.Windows.Forms.MessageBox]::Show("Veuillez saisir le point de collecte")
+            return
+        }
+        $d = $dt.Value
+        $n = "$($d.ToString('yyyyMMdd'))-$c.pdf"
+        Rename-Item -Path $pdf -NewName $n -Force
+        [System.Windows.Forms.MessageBox]::Show("✅ Fichier renommé : $n")
+        $p.FindForm().Close()
+    })
+
+    $null = $btnFT.Add_Click({
+        param($sender, $e)
+        $p = [System.Windows.Forms.Panel]$sender.Parent
+        $txt = [System.Windows.Forms.TextBox]$p.Controls["txtCollecte"]
+        $dt = [System.Windows.Forms.DateTimePicker]$p.Controls["datePicker"]
+        if (-not $txt) { Write-Host "[DEBUG] txtCollecte NULL" -ForegroundColor Yellow; return }
+        if (-not $dt) { Write-Host "[DEBUG] datePicker NULL" -ForegroundColor Yellow; return }
+        $pdf = [string]$p.Tag.FichierPDF
+        $c = $txt.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($c)) {
+            [System.Windows.Forms.MessageBox]::Show("Veuillez saisir le point de collecte")
+            return
+        }
+        $d = $dt.Value
+        $n = "$c-du $($d.ToString('dd.MM.yyyy')).pdf"
+        Rename-Item -Path $pdf -NewName $n -Force
+        [System.Windows.Forms.MessageBox]::Show("✅ Fichier renommé : $n")
+        $p.FindForm().Close()
+    })
+
+    $txtCollecte.Select()
+    $txtCollecte.Focus()
+
+    return ,$panel
+}
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Vehicules\VehiculesForm.ps1
+================================================================================
+# VehiculesForm.ps1 - Formulaire d'ajout/modification de véhicule
+
+. "$PSScriptRoot\..\..\Database\Database.ps1"
+. "$PSScriptRoot\..\..\Common\Styles.ps1"
+. "$PSScriptRoot\..\..\Common\Validation.ps1"
+
+function Show-VehiculeForm {
+    param(
+        [string]$Mode = "Ajouter",
+        [hashtable]$Vehicule = $null,
+        [System.Windows.Forms.IWin32Window]$Owner = $null
+    )
+
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+
+    function Convert-DbToFrDate {
+        param([string]$DateUs)
+        if ([string]::IsNullOrWhiteSpace($DateUs)) { return "" }
+        try {
+            return ([datetime]::ParseExact($DateUs, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture)).ToString("dd/MM/yyyy")
+        } catch {
+            return $DateUs
+        }
+    }
+
+    function Convert-FrToDbDate {
+        param([string]$DateFr)
+        if ([string]::IsNullOrWhiteSpace($DateFr)) { return $null }
+        try {
+            $dt = [datetime]::ParseExact($DateFr, "dd/MM/yyyy", [System.Globalization.CultureInfo]::InvariantCulture)
+            return $dt.ToString("yyyy-MM-dd")
+        } catch {
+            return $null
+        }
+    }
+
+    function Test-DateFr {
+        param([string]$DateStr)
+        return ($null -ne (Convert-FrToDbDate $DateStr))
+    }
+
+    function Set-Error {
+        param($Label, [string]$Message)
+        $Label.Text = $Message
+    }
+
+    function Get-RequiredDateError {
+        param([string]$Value, [string]$LabelText)
+        if ([string]::IsNullOrWhiteSpace($Value)) { return "$LabelText obligatoire" }
+        if (-not (Test-DateFr $Value)) { return "Format JJ/MM/AAAA invalide" }
+        return ""
+    }
+
+    function Get-OptionalDateError {
+        param([string]$Value)
+        if ([string]::IsNullOrWhiteSpace($Value)) { return "" }
+        if (-not (Test-DateFr $Value)) { return "Format JJ/MM/AAAA invalide" }
+        return ""
+    }
+
+    function Test-DoublonParc {
+        param($NumeroParc)
+        if ([string]::IsNullOrWhiteSpace($NumeroParc)) { return $false }
+        $vehiculesExistants = Get-AllVehicules
+        $doublon = $vehiculesExistants | Where-Object { $_.numero_parc -eq $NumeroParc }
+        if ($Mode -eq "Modifier" -and $Vehicule) {
+            $doublon = $doublon | Where-Object { $_.id -ne $Vehicule.id }
+        }
+        return ($doublon.Count -gt 0)
+    }
+
+    function Test-DoublonImmat {
+        param($Immatriculation)
+        if ([string]::IsNullOrWhiteSpace($Immatriculation)) { return $false }
+        $vehiculesExistants = Get-AllVehicules
+        $doublon = $vehiculesExistants | Where-Object { $_.immatriculation -eq $Immatriculation }
+        if ($Mode -eq "Modifier" -and $Vehicule) {
+            $doublon = $doublon | Where-Object { $_.id -ne $Vehicule.id }
+        }
+        return ($doublon.Count -gt 0)
+    }
+
+    function Test-DoublonChassis {
+        param($NumeroChassis)
+        if ([string]::IsNullOrWhiteSpace($NumeroChassis)) { return $false }
+        $vehiculesExistants = Get-AllVehicules
+        $doublon = $vehiculesExistants | Where-Object { $_.numero_chassis -eq $NumeroChassis }
+        if ($Mode -eq "Modifier" -and $Vehicule) {
+            $doublon = $doublon | Where-Object { $_.id -ne $Vehicule.id }
+        }
+        return ($doublon.Count -gt 0)
+    }
+
+    function Get-ImmatError {
+        param([string]$Value)
+        if ([string]::IsNullOrWhiteSpace($Value)) { return "Champ obligatoire" }
+        if ($Value -notmatch '^[A-Za-z0-9\- ]{1,20}$') { return "Format immatriculation invalide" }
+        $normalized = (Sanitize-TextInput $Value).Trim().ToUpperInvariant()
+        if (Test-DoublonImmat -Immatriculation $normalized) { return "Cette immatriculation existe déjà !" }
+        return ""
+    }
+
+    function Get-ChassisError {
+        param([string]$Value)
+        if ([string]::IsNullOrWhiteSpace($Value)) { return "Champ obligatoire" }
+        if ($Value -notmatch '^[A-HJ-NPR-Z0-9]{17}$') { return "VIN invalide (17 caractères)" }
+        if (Test-DoublonChassis -NumeroChassis $Value) { return "Ce numéro de châssis existe déjà !" }
+        return ""
+    }
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "$Mode un véhicule"
+    $form.Size = New-Object System.Drawing.Size(650, 760)
+    $form.StartPosition = "CenterParent"
+    $form.BackColor = $script:CouleurGrisFond
+    $form.FormBorderStyle = "FixedDialog"
+    $form.MaximizeBox = $false
+    $form.MinimizeBox = $false
+
+    $yPos = 20
+    $labelWidth = 170
+    $fieldWidth = 320
+    $leftMargin = 30
+    $fieldLeft = $leftMargin + $labelWidth
+    $smallErrorFont = New-Object System.Drawing.Font("Segoe UI", 8)
+
+    function Add-Field {
+        param(
+            [string]$LabelText,
+            [string]$InitialValue = "",
+            [bool]$Optional = $false,
+            [int]$MaxLength = 0,
+            [ref]$CurrentY
+        )
+        $lbl = New-Object System.Windows.Forms.Label
+        $lbl.Text = $LabelText
+        $lbl.Location = New-Object System.Drawing.Point($leftMargin, $CurrentY.Value)
+        $lbl.Size = New-Object System.Drawing.Size($labelWidth, 25)
+        $form.Controls.Add($lbl)
+
+        $txt = New-Object System.Windows.Forms.TextBox
+        $txt.Location = New-Object System.Drawing.Point($fieldLeft, $CurrentY.Value)
+        $txt.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+        if ($MaxLength -gt 0) { $txt.MaxLength = $MaxLength }
+        $txt.Text = $InitialValue
+        $form.Controls.Add($txt)
+
+        $info = New-Object System.Windows.Forms.Label
+        $info.Text = ""
+        if ($Optional) { $info.Text = "Optionnel" }
+        $info.ForeColor = if ($Optional) { $script:CouleurOrangeClair } else { $script:CouleurOrange }
+        $info.Font = $smallErrorFont
+        $info.Location = New-Object System.Drawing.Point($fieldLeft, ($CurrentY.Value + 28))
+        $info.Size = New-Object System.Drawing.Size($fieldWidth, 15)
+        $form.Controls.Add($info)
+
+        $script:__vehicule_lastErrorLabel = $info
+        $script:__vehicule_lastTextBox = $txt
+        $CurrentY.Value += 55
+    }
+
+    Add-Field -LabelText "Numéro de parc * :" -InitialValue $(if ($Vehicule) { $Vehicule.numeroParc } else { "" }) -MaxLength 50 -CurrentY ([ref]$yPos)
+    $txtParc = $script:__vehicule_lastTextBox
+    $lblParcError = $script:__vehicule_lastErrorLabel
+
+    Add-Field -LabelText "Immatriculation * :" -InitialValue $(if ($Vehicule) { $Vehicule.immatriculation } else { "" }) -CurrentY ([ref]$yPos)
+    $txtImmat = $script:__vehicule_lastTextBox
+    $lblImmatError = $script:__vehicule_lastErrorLabel
+
+    Add-Field -LabelText "Numéro de châssis * :" -InitialValue $(if ($Vehicule) { $Vehicule.numeroChassis } else { "" }) -MaxLength 17 -CurrentY ([ref]$yPos)
+    $txtChassis = $script:__vehicule_lastTextBox
+    $lblChassisError = $script:__vehicule_lastErrorLabel
+
+    Add-Field -LabelText "Marque :" -InitialValue $(if ($Vehicule) { $Vehicule.marque } else { "" }) -Optional $true -CurrentY ([ref]$yPos)
+    $txtMarque = $script:__vehicule_lastTextBox
+    $lblMarqueInfo = $script:__vehicule_lastErrorLabel
+
+    Add-Field -LabelText "Modèle :" -InitialValue $(if ($Vehicule) { $Vehicule.modele } else { "" }) -Optional $true -CurrentY ([ref]$yPos)
+    $txtModele = $script:__vehicule_lastTextBox
+    $lblModeleInfo = $script:__vehicule_lastErrorLabel
+
+    $lblMise = New-Object System.Windows.Forms.Label
+    $lblMise.Text = "Mise en circulation * :"
+    $lblMise.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
+    $lblMise.Size = New-Object System.Drawing.Size($labelWidth, 25)
+    $form.Controls.Add($lblMise)
+
+    $dtMise = New-Object System.Windows.Forms.DateTimePicker
+    $dtMise.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
+    $dtMise.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+    $dtMise.Format = [System.Windows.Forms.DateTimePickerFormat]::Custom
+    $dtMise.CustomFormat = "dd/MM/yyyy"
+    if ($Vehicule -and $Vehicule.dateMiseCirculation) {
+        $parsedMise = Convert-DbToFrDate $Vehicule.dateMiseCirculation
+        if (Test-DateFr $parsedMise) {
+            $dtMise.Value = [datetime]::ParseExact($parsedMise, "dd/MM/yyyy", [System.Globalization.CultureInfo]::InvariantCulture)
+        }
+    }
+    $form.Controls.Add($dtMise)
+
+    $lblMiseError = New-Object System.Windows.Forms.Label
+    $lblMiseError.Text = ""
+    $lblMiseError.ForeColor = $script:CouleurOrange
+    $lblMiseError.Font = $smallErrorFont
+    $lblMiseError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
+    $lblMiseError.Size = New-Object System.Drawing.Size($fieldWidth, 15)
+    $form.Controls.Add($lblMiseError)
+    $yPos += 55
+
+    $lblDateEntree = New-Object System.Windows.Forms.Label
+    $lblDateEntree.Text = "Date d'entrée * :"
+    $lblDateEntree.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
+    $lblDateEntree.Size = New-Object System.Drawing.Size($labelWidth, 25)
+    $form.Controls.Add($lblDateEntree)
+
+    $dtDateEntree = New-Object System.Windows.Forms.DateTimePicker
+    $dtDateEntree.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
+    $dtDateEntree.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+    $dtDateEntree.Format = [System.Windows.Forms.DateTimePickerFormat]::Custom
+    $dtDateEntree.CustomFormat = "dd/MM/yyyy"
+    if ($Vehicule -and $Vehicule.dateEntree) {
+        $parsedEntree = Convert-DbToFrDate $Vehicule.dateEntree
+        if (Test-DateFr $parsedEntree) {
+            $dtDateEntree.Value = [datetime]::ParseExact($parsedEntree, "dd/MM/yyyy", [System.Globalization.CultureInfo]::InvariantCulture)
+        }
+    }
+    $form.Controls.Add($dtDateEntree)
+
+    $lblDateEntreeError = New-Object System.Windows.Forms.Label
+    $lblDateEntreeError.Text = ""
+    $lblDateEntreeError.ForeColor = $script:CouleurOrange
+    $lblDateEntreeError.Font = $smallErrorFont
+    $lblDateEntreeError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
+    $lblDateEntreeError.Size = New-Object System.Drawing.Size($fieldWidth, 15)
+    $form.Controls.Add($lblDateEntreeError)
+    $yPos += 55
+
+    $lblSortie = New-Object System.Windows.Forms.Label
+    $lblSortie.Text = "Date de sortie :"
+    $lblSortie.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
+    $lblSortie.Size = New-Object System.Drawing.Size($labelWidth, 25)
+    $form.Controls.Add($lblSortie)
+
+    $dtSortie = New-Object System.Windows.Forms.DateTimePicker
+    $dtSortie.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
+    $dtSortie.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+    $dtSortie.Format = [System.Windows.Forms.DateTimePickerFormat]::Custom
+    $dtSortie.CustomFormat = "dd/MM/yyyy"
+    $dtSortie.ShowCheckBox = $true
+    $dtSortie.Checked = $false
+    if ($Vehicule -and $Vehicule.dateSortie) {
+        $parsedSortie = Convert-DbToFrDate $Vehicule.dateSortie
+        if (Test-DateFr $parsedSortie) {
+            $dtSortie.Value = [datetime]::ParseExact($parsedSortie, "dd/MM/yyyy", [System.Globalization.CultureInfo]::InvariantCulture)
+            $dtSortie.Checked = $true
+        }
+    }
+    $form.Controls.Add($dtSortie)
+
+    $lblDateSortieError = New-Object System.Windows.Forms.Label
+    $lblDateSortieError.Text = ""
+    $lblDateSortieError.ForeColor = $script:CouleurOrange
+    $lblDateSortieError.Font = $smallErrorFont
+    $lblDateSortieError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
+    $lblDateSortieError.Size = New-Object System.Drawing.Size($fieldWidth, 15)
+    $form.Controls.Add($lblDateSortieError)
+    $yPos += 55
+
+    $lblFinCtrl = New-Object System.Windows.Forms.Label
+    $lblFinCtrl.Text = "Contrôle technique (date limite) :"
+    $lblFinCtrl.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
+    $lblFinCtrl.Size = New-Object System.Drawing.Size($labelWidth, 25)
+    $form.Controls.Add($lblFinCtrl)
+
+    $dtFinControleTechnique = New-Object System.Windows.Forms.DateTimePicker
+    $dtFinControleTechnique.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
+    $dtFinControleTechnique.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+    $dtFinControleTechnique.Format = [System.Windows.Forms.DateTimePickerFormat]::Custom
+    $dtFinControleTechnique.CustomFormat = "dd/MM/yyyy"
+    $dtFinControleTechnique.ShowCheckBox = $true
+    $dtFinControleTechnique.Checked = $false
+    if ($Vehicule -and $Vehicule.dateFinControleTechnique) {
+        $parsedFinCtrl = Convert-DbToFrDate $Vehicule.dateFinControleTechnique
+        if (Test-DateFr $parsedFinCtrl) {
+            $dtFinControleTechnique.Value = [datetime]::ParseExact($parsedFinCtrl, "dd/MM/yyyy", [System.Globalization.CultureInfo]::InvariantCulture)
+            $dtFinControleTechnique.Checked = $true
+        }
+    }
+    $form.Controls.Add($dtFinControleTechnique)
+
+    $lblFinControleTechniqueError = New-Object System.Windows.Forms.Label
+    $lblFinControleTechniqueError.Text = ""
+    $lblFinControleTechniqueError.ForeColor = $script:CouleurOrangeClair
+    $lblFinControleTechniqueError.Font = $smallErrorFont
+    $lblFinControleTechniqueError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
+    $lblFinControleTechniqueError.Size = New-Object System.Drawing.Size($fieldWidth, 15)
+    $form.Controls.Add($lblFinControleTechniqueError)
+    $yPos += 55
+
+    $btnOk = New-Object System.Windows.Forms.Button
+    Set-BtnValiderStyle -BtnValider $btnOk
+    $btnOk.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
+    $form.Controls.Add($btnOk)
+    $form.AcceptButton = $btnOk
+
+    $btnCancel = New-Object System.Windows.Forms.Button
+    Set-BtnQuitterStyle -BtnQuitter $btnCancel
+    $btnCancel.Location = New-Object System.Drawing.Point(($fieldLeft + 120), $yPos)
+    $btnCancel.Add_Click({ $form.Close() })
+    $form.Controls.Add($btnCancel)
+
+    $form.Tag = $null
+
+    $txtParc.Add_Leave({
+        $txtParc.Text = Normalize-Whitespace (Sanitize-TextInput $txtParc.Text)
+    })
+
+    # Pas de réécriture du Text pendant la saisie : validation seulement (évite curseur / mélange de texte).
+    $txtParc.Add_TextChanged({
+        $raw = $txtParc.Text
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            Set-Error -Label $lblParcError -Message ""
+            return
+        }
+        $norm = Sanitize-TextInput (Normalize-Whitespace $raw)
+        $err = Get-NumeroParcError $norm
+        if ($err) {
+            Set-Error -Label $lblParcError -Message $err
+            return
+        }
+        if (Test-DoublonParc -NumeroParc $norm) {
+            Set-Error -Label $lblParcError -Message "Ce numéro de parc existe déjà !"
+            return
+        }
+        Set-Error -Label $lblParcError -Message ""
+    })
+
+    $txtMarque.Add_Leave({
+        $txtMarque.Text = Normalize-Whitespace (Sanitize-TextInput $txtMarque.Text)
+    })
+
+    $txtModele.Add_Leave({
+        $txtModele.Text = Normalize-Whitespace (Sanitize-TextInput $txtModele.Text)
+    })
+
+    $txtImmat.Add_TextChanged({
+        $msg = ""
+        if (-not [string]::IsNullOrWhiteSpace($txtImmat.Text)) {
+            if ($txtImmat.Text -notmatch '^[A-Za-z0-9\- ]{1,20}$') {
+                $msg = "Format immatriculation invalide"
+            } else {
+                $normalized = (Sanitize-TextInput $txtImmat.Text).Trim().ToUpperInvariant()
+                if (Test-DoublonImmat -Immatriculation $normalized) {
+                    $msg = "Cette immatriculation existe déjà !"
+                }
+            }
+        }
+        Set-Error -Label $lblImmatError -Message $msg
+    })
+
+    $txtImmat.Add_Leave({
+        if ([string]::IsNullOrWhiteSpace($txtImmat.Text)) { return }
+        $txtImmat.Text = (Sanitize-TextInput $txtImmat.Text).Trim().ToUpperInvariant()
+        Set-Error -Label $lblImmatError -Message (Get-ImmatError $txtImmat.Text)
+    })
+
+    $txtChassis.Add_TextChanged({
+        $raw = $txtChassis.Text
+        $msg = ""
+        if (-not [string]::IsNullOrWhiteSpace($raw)) {
+            if ($raw.Length -gt 17 -or $raw -notmatch '^[A-Za-z0-9]*$') {
+                $msg = "VIN invalide (17 caractères)"
+            } else {
+                $normalized = $raw.Trim().ToUpperInvariant()
+                if ($normalized.Length -eq 17) {
+                    $msg = Get-ChassisError $normalized
+                }
+            }
+        }
+        Set-Error -Label $lblChassisError -Message $msg
+    })
+
+    $txtChassis.Add_Leave({
+        if ([string]::IsNullOrWhiteSpace($txtChassis.Text)) { return }
+        $txtChassis.Text = (Sanitize-TextInput $txtChassis.Text).Trim().ToUpperInvariant()
+        Set-Error -Label $lblChassisError -Message (Get-ChassisError $txtChassis.Text)
+    })
+
+    $dtMise.Add_ValueChanged({ Set-Error -Label $lblMiseError -Message "" })
+    $dtDateEntree.Add_ValueChanged({ Set-Error -Label $lblDateEntreeError -Message "" })
+    $dtFinControleTechnique.Add_ValueChanged({ Set-Error -Label $lblFinControleTechniqueError -Message "" })
+    $dtSortie.Add_ValueChanged({
+        if ($dtSortie.Checked) {
+            Set-Error -Label $lblDateSortieError -Message ""
+        } else {
+            Set-Error -Label $lblDateSortieError -Message ""
+        }
+    })
+
+    $btnOk.Add_Click({
+        try {
+            $txtParc.Text = Normalize-Whitespace (Sanitize-TextInput $txtParc.Text)
+            $txtMarque.Text = Normalize-Whitespace (Sanitize-TextInput $txtMarque.Text)
+            $txtModele.Text = Normalize-Whitespace (Sanitize-TextInput $txtModele.Text)
+            if (-not [string]::IsNullOrWhiteSpace($txtImmat.Text)) {
+                $txtImmat.Text = (Sanitize-TextInput $txtImmat.Text).Trim().ToUpperInvariant()
+            }
+            if (-not [string]::IsNullOrWhiteSpace($txtChassis.Text)) {
+                $txtChassis.Text = (Sanitize-TextInput $txtChassis.Text).Trim().ToUpperInvariant()
+            }
+
+            $securityValues = @($txtParc.Text, $txtImmat.Text, $txtChassis.Text, $txtMarque.Text, $txtModele.Text)
+            foreach ($value in $securityValues) {
+                if (-not (Test-SecuriteInput $value)) {
+                    [System.Windows.Forms.MessageBox]::Show(
+                        "Une entrée contient des caractères interdits.",
+                        "Sécurité",
+                        [System.Windows.Forms.MessageBoxButtons]::OK,
+                        [System.Windows.Forms.MessageBoxIcon]::Warning
+                    ) | Out-Null
+                    return
+                }
+            }
+
+            $parcError = Get-NumeroParcError $txtParc.Text
+            if ([string]::IsNullOrWhiteSpace($parcError) -and (Test-DoublonParc -NumeroParc $txtParc.Text)) {
+                $parcError = "Ce numéro de parc existe déjà !"
+            }
+
+            $immatError = Get-ImmatError $txtImmat.Text
+            $chassisError = Get-ChassisError $txtChassis.Text
+            $miseError = ""
+            $entreeError = ""
+            $finCtrlError = ""
+
+            Set-Error -Label $lblParcError -Message $parcError
+            Set-Error -Label $lblImmatError -Message $immatError
+            Set-Error -Label $lblChassisError -Message $chassisError
+            Set-Error -Label $lblMiseError -Message $miseError
+            Set-Error -Label $lblDateEntreeError -Message $entreeError
+            Set-Error -Label $lblFinControleTechniqueError -Message $finCtrlError
+            Set-Error -Label $lblDateSortieError -Message ""
+
+            if ($dtSortie.Checked -and ($dtSortie.Value -lt [datetime]::ParseExact("01/01/1900", "dd/MM/yyyy", [System.Globalization.CultureInfo]::InvariantCulture))) {
+                Set-Error -Label $lblDateSortieError -Message "Date de sortie invalide"
+            }
+
+            $errors = @(
+                $lblParcError.Text,
+                $lblImmatError.Text,
+                $lblChassisError.Text,
+                $lblMiseError.Text,
+                $lblDateEntreeError.Text,
+                $lblDateSortieError.Text,
+                $lblFinControleTechniqueError.Text
+            ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+            if ($errors.Count -gt 0) { return }
+
+            $result = [PSCustomObject]@{
+                numeroParc = $txtParc.Text
+                immatriculation = $txtImmat.Text
+                numeroChassis = $txtChassis.Text
+                marque = $txtMarque.Text
+                modele = $txtModele.Text
+                dateMiseCirculation = $dtMise.Value.ToString("yyyy-MM-dd")
+                # Compatibilité backend: on alimente aussi date_controle avec la fin de contrôle technique.
+                dateControle = if ($dtFinControleTechnique.Checked) { $dtFinControleTechnique.Value.ToString("yyyy-MM-dd") } else { $null }
+                dateEntree = $dtDateEntree.Value.ToString("yyyy-MM-dd")
+                dateSortie = if ($dtSortie.Checked) { $dtSortie.Value.ToString("yyyy-MM-dd") } else { $null }
+                dateFinControleTechnique = if ($dtFinControleTechnique.Checked) { $dtFinControleTechnique.Value.ToString("yyyy-MM-dd") } else { $null }
+            }
+
+            $form.Tag = $result
+            $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+            $form.Close()
+        } catch {
+            [System.Windows.Forms.MessageBox]::Show(
+                ("Erreur dans le formulaire véhicule:`n`n{0}" -f $_.Exception.Message),
+                "Erreur",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+        }
+    })
+
+    if ($Owner) {
+        $form.ShowDialog($Owner) | Out-Null
+    } else {
+        $form.ShowDialog() | Out-Null
+    }
+
+    if ($form.DialogResult -eq [System.Windows.Forms.DialogResult]::OK) {
+        return $form.Tag
+    }
+    return $null
+}
+
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Vehicules\VehiculesPanel.ps1
+================================================================================
+# VehiculesPanel.ps1 - Version refactorisée selon charte AgentPanel
+#
+# Objet véhicule (données liste / DB, propriétés snake_case côté repository) :
+#   id: string|number ; numero_parc ; immatriculation ; numero_chassis ; actif: 0|1 ; …
+
+. "$PSScriptRoot\..\..\Common\Styles.ps1"
+. "$PSScriptRoot\..\..\Core\Logger.ps1"
+. "$PSScriptRoot\VehiculesRepository.ps1"
+. "$PSScriptRoot\VehiculesForm.ps1"
+
+$script:DebugVehiculesUI = $false
+
+function Refresh-VehiculesGrid {
+    <#
+    Refresh-VehiculesGrid
+    - Charge les véhicules selon le mode historique (actif = 1 seul, ou tous si IncludeHistorique)
+    - Colonnes grille : N° parc, Immatriculation, Numéro de châssis, Fin contrôle technique, Modifier, Supprimer
+    #>
+    param(
+        [Parameter(Mandatory=$true)] $Grid,
+        [bool]$IncludeHistorique = $false,
+        [System.Windows.Forms.Label]$EmptyStateLabel = $null
+    )
+
+    Write-Log "[VehiculesUI] RefreshGrid begin" "INFO"
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $ownerForm = $null
+    try {
+        if (-not $Grid) { throw "Grid is null" }
+        $ownerForm = $Grid.FindForm()
+        if ($ownerForm) {
+            $ownerForm.UseWaitCursor = $true
+            $ownerForm.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+        }
+
+        $null = $Grid.Rows.Clear()
+
+        # Une seule lecture DB selon le mode
+        $vehicules = @(
+            if ($IncludeHistorique) { Get-AllVehicules } else { Get-Vehicules }
+        )
+        Write-Log "[VehiculesUI] RefreshGrid loaded vehicles" "INFO" @{ count = $vehicules.Count }
+
+        # Style texte: actifs en police normale, inactifs en gris clair
+        $baseFont = $script:PoliceNormal
+        if (-not $baseFont) { $baseFont = (if ($Grid.DefaultCellStyle.Font) { $Grid.DefaultCellStyle.Font } else { $Grid.Font }) }
+        $normalFont = New-Object System.Drawing.Font($baseFont, ([System.Drawing.FontStyle]::Regular))
+        $inactiveColor = [System.Drawing.Color]::FromArgb(150, 150, 150)
+
+        $i = 0
+        foreach ($v in $vehicules) {
+            $null = $Grid.Rows.Add()
+            $Grid.Rows[$i].Cells[$Grid.Columns["NumeroParc"].Index].Value = if ($v.numero_parc -and $v.numero_parc -ne [System.DBNull]::Value) { $v.numero_parc } else { "" }
+            $Grid.Rows[$i].Cells[$Grid.Columns["Immatriculation"].Index].Value = if ($v.immatriculation -and $v.immatriculation -ne [System.DBNull]::Value) { $v.immatriculation } else { "" }
+            $Grid.Rows[$i].Cells[$Grid.Columns["NumeroChassis"].Index].Value = if ($v.numero_chassis -and $v.numero_chassis -ne [System.DBNull]::Value) { $v.numero_chassis } else { "" }
+            $Grid.Rows[$i].Cells[$Grid.Columns["DateFinControleTechnique"].Index].Value = if ($v.date_fin_controle_technique -and $v.date_fin_controle_technique -ne [System.DBNull]::Value) { $v.date_fin_controle_technique } else { "" }
+            $Grid.Rows[$i].Cells[$Grid.Columns["Edit"].Index].Value = "✏️"
+            $Grid.Rows[$i].Cells[$Grid.Columns["Delete"].Index].Value = "🗑️"
+            $Grid.Rows[$i].Tag = $v.id
+
+            $isActif = ([int]$v.actif -eq 1)
+            $Grid.Rows[$i].DefaultCellStyle.Font = $normalFont
+            if (-not $isActif) {
+                $Grid.Rows[$i].DefaultCellStyle.ForeColor = $inactiveColor
+            } else {
+                $Grid.Rows[$i].DefaultCellStyle.ForeColor = $Grid.DefaultCellStyle.ForeColor
+            }
+
+            try { Apply-AlternateRowColor -Grid $Grid -RowIndex $i -Row $i } catch {}
+            $i++
+        }
+
+        if ($Grid.Columns.Contains("NumeroParc")) {
+            $Grid.Sort($Grid.Columns["NumeroParc"], [System.ComponentModel.ListSortDirection]::Ascending)
+        }
+        $Grid.Refresh()
+
+        if ($EmptyStateLabel) {
+            $EmptyStateLabel.Visible = ($vehicules.Count -eq 0)
+            if ($EmptyStateLabel.Visible) { $EmptyStateLabel.BringToFront() }
+        }
+    } catch {
+        Write-Log "[VehiculesUI] RefreshGrid failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    } finally {
+        if ($ownerForm) {
+            $ownerForm.UseWaitCursor = $false
+            $ownerForm.Cursor = [System.Windows.Forms.Cursors]::Default
+        }
+        $sw.Stop()
+        Write-Log "[VehiculesUI] RefreshGrid end" "INFO" @{ rows = $(if ($Grid) { $Grid.Rows.Count } else { $null }); elapsed_ms = $sw.ElapsedMilliseconds }
+    }
+}
+
+function Show-VehiculesPanel {
+    param(
+        [array]$Vehicules = $null  # Gardé pour compatibilité, mais on utilise Get-Vehicules/Get-AllVehicules
+    )
+
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+
+    $mainPanel = New-Object System.Windows.Forms.Panel
+    $mainPanel.Dock = "Fill"
+    $mainPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+    $mainPanel.Padding = New-Object System.Windows.Forms.Padding(20)
+
+    # ===== TITRE =====
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = $script:TitrePanelVehicules
+    $lblTitle.Font = $script:PoliceTitreGestionFenetre
+    $lblTitle.ForeColor = $script:CouleurOrange
+    $lblTitle.Location = New-Object System.Drawing.Point(20, 20)
+    $lblTitle.Size = New-Object System.Drawing.Size(400, 50)
+    $mainPanel.Controls.Add($lblTitle)
+
+    # ===== Option historique (actifs + inactifs) — même ordre que AgentPanel =====
+    $lblHistorique = New-Object System.Windows.Forms.Label
+    $lblHistorique.Text = "Afficher l’historique des véhicules"
+    $lblHistorique.Font = $script:PoliceLabelSecondaireFenetre
+    $lblHistorique.ForeColor = $script:CouleurTexteSecondairePanel
+    $lblHistorique.Location = New-Object System.Drawing.Point(20, 77)
+    $lblHistorique.Size = New-Object System.Drawing.Size(260, 20)
+    $mainPanel.Controls.Add($lblHistorique)
+
+    $chkHistoriqueVehicules = New-Object System.Windows.Forms.CheckBox
+    $chkHistoriqueVehicules.Name = "chkHistoriqueVehicules"
+    $chkHistoriqueVehicules.Location = New-Object System.Drawing.Point(285, 78)
+    $chkHistoriqueVehicules.Size = New-Object System.Drawing.Size(20, 20)
+    $chkHistoriqueVehicules.Checked = $false
+    $chkHistoriqueVehicules.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $mainPanel.Controls.Add($chkHistoriqueVehicules)
+
+    $btnAjouter = New-Object System.Windows.Forms.Button
+    $btnAjouter.Text = "Ajouter un véhicule"
+    $btnAjouter.Location = New-Object System.Drawing.Point(900, 20)
+    $btnAjouter.Size = New-Object System.Drawing.Size(200, 45)
+    Set-BtnAjouterStyle -BtnAjouter $btnAjouter
+    $btnAjouter.Text = "Ajouter un véhicule"
+    $btnAjouter.Size = New-Object System.Drawing.Size(220, 45)
+    $btnAjouter.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $mainPanel.Controls.Add($btnAjouter)
+
+    # ===== DATA GRID =====
+    $grid = New-Object System.Windows.Forms.DataGridView
+    $grid.Name = "VehiculesGrid"
+    # [UI] DataGridView fixed to responsive Fill layout (charte AgentPanel)
+    $grid.Location = New-Object System.Drawing.Point(20, 110)
+    $grid.Size = New-Object System.Drawing.Size(1100, 560)
+    $grid.Anchor = "Top,Bottom,Left,Right"
+    $grid.AllowUserToAddRows = $false
+    $grid.RowHeadersVisible = $false
+    $grid.BackgroundColor = [System.Drawing.Color]::White
+    $grid.SelectionMode = "FullRowSelect"
+    $grid.BorderStyle = "FixedSingle"
+    $grid.ScrollBars = [System.Windows.Forms.ScrollBars]::Both
+    $grid.AutoSizeColumnsMode = "None"
+    $grid.AutoGenerateColumns = $false
+    $grid.AllowUserToResizeColumns = $true
+    Set-GridStyle -Grid $grid
+
+    # Double buffering pour réduire le flickering
+    try {
+        $prop = $grid.GetType().GetProperty("DoubleBuffered", [System.Reflection.BindingFlags] "Instance,NonPublic")
+        if ($prop) { $prop.SetValue($grid, $true, $null) }
+    } catch {}
+
+    # Lignes alternées
+    $grid.DefaultCellStyle.BackColor = $script:CouleurGrisClair
+    $grid.AlternatingRowsDefaultCellStyle.BackColor = $script:CouleurLigneAlternee
+    $grid.DefaultCellStyle.SelectionBackColor = $script:CouleurSelection
+    $grid.DefaultCellStyle.SelectionForeColor = $script:CouleurBlanc
+    $grid.ColumnHeadersHeightSizeMode = "AutoSize"
+    $grid.ColumnHeadersDefaultCellStyle.WrapMode = [System.Windows.Forms.DataGridViewTriState]::False
+
+    # Colonnes affichées (ordre): N° parc, Immatriculation, Numéro de châssis, Fin CT, Modifier, Supprimer
+    $grid.Columns.Clear()
+    $null = $grid.Columns.Add("NumeroParc", "N° parc")
+    $null = $grid.Columns.Add("Immatriculation", "Immatriculation")
+    $null = $grid.Columns.Add("NumeroChassis", "Numéro de châssis")
+    $null = $grid.Columns.Add("DateFinControleTechnique", "Contrôle technique (date limite)")
+    $null = $grid.Columns.Add("Edit", "Modifier")
+    $null = $grid.Columns.Add("Delete", "Supprimer")
+
+    $grid.Columns["NumeroParc"].Width = 120
+    $grid.Columns["Immatriculation"].Width = 160
+    $grid.Columns["NumeroChassis"].Width = 230
+    $grid.Columns["DateFinControleTechnique"].Width = 160
+    $grid.Columns["Edit"].Width = 90
+    $grid.Columns["Delete"].Width = 90
+    $grid.Columns["Edit"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleCenter
+    $grid.Columns["Delete"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleCenter
+
+    $mainPanel.Controls.Add($grid)
+
+    # Liste vide (optionnel, charte lisible)
+    $lblVehiculesEmpty = New-Object System.Windows.Forms.Label
+    $lblVehiculesEmpty.Name = "lblVehiculesEmpty"
+    $lblVehiculesEmpty.Text = "Aucun véhicule à afficher."
+    $lblVehiculesEmpty.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+    $lblVehiculesEmpty.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Regular)
+    $lblVehiculesEmpty.ForeColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
+    $lblVehiculesEmpty.BackColor = [System.Drawing.Color]::White
+    $lblVehiculesEmpty.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $lblVehiculesEmpty.Location = $grid.Location
+    $lblVehiculesEmpty.Size = $grid.Size
+    $lblVehiculesEmpty.Anchor = $grid.Anchor
+    $lblVehiculesEmpty.Visible = $false
+    $mainPanel.Controls.Add($lblVehiculesEmpty)
+    $lblVehiculesEmpty.BringToFront()
+
+    # ===== CHARGEMENT INITIAL =====
+    Refresh-VehiculesGrid -Grid $grid -IncludeHistorique $chkHistoriqueVehicules.Checked -EmptyStateLabel $lblVehiculesEmpty
+
+    # ===== ÉVÉNEMENT HISTORIQUE =====
+    $chkHistoriqueVehicules.Add_CheckedChanged({
+        $mode = if ($this.Checked) { "ON" } else { "OFF" }
+        Write-Log "[VehiculesUI] Historique mode $mode" "INFO"
+        $g = $this.Parent.Controls["VehiculesGrid"]
+        $empty = $this.Parent.Controls["lblVehiculesEmpty"]
+        Refresh-VehiculesGrid -Grid $g -IncludeHistorique $this.Checked -EmptyStateLabel $empty
+    })
+
+    # ===== ÉVÉNEMENT AJOUTER =====
+    $btnAjouter.Add_Click({
+        try {
+            Write-Log "[VehiculesUI] Click add vehicle" "INFO"
+            if ($script:DebugVehiculesUI) {
+                [System.Windows.Forms.MessageBox]::Show("Click: ouverture du formulaire Véhicule", "Debug", "OK", "Information") | Out-Null
+            }
+            $owner = $this.FindForm()
+            $nouveau = Show-VehiculeForm -Mode "Ajouter" -Owner $owner
+            
+            if (-not $nouveau) {
+                Write-Log "[VehiculesUI] Add vehicle cancelled (form returned null)" "INFO"
+                return
+            }
+
+            Write-Log "[VehiculesUI] Form data ready" "INFO" $nouveau
+            
+            $newId = Add-VehiculeWithValidation `
+                -NumeroParc $nouveau.numeroParc `
+                -Immatriculation $nouveau.immatriculation `
+                -NumeroChassis $nouveau.numeroChassis `
+                -Marque $nouveau.marque `
+                -Modele $nouveau.modele `
+                -DateMiseCirculation $nouveau.dateMiseCirculation `
+                -DateControle $nouveau.dateControle `
+                -DateEntree $nouveau.dateEntree `
+                -DateSortie $nouveau.dateSortie `
+                -DateFinControleTechnique $nouveau.dateFinControleTechnique
+            
+            Write-Log "[VehiculesUI] Add-VehiculeWithValidation returned" "INFO" @{ id = $newId }
+            
+            if ($script:DebugVehiculesUI) {
+                [System.Windows.Forms.MessageBox]::Show(("Ajout OK (id={0})" -f $newId), "Véhicules", "OK", "Information") | Out-Null
+            }
+            
+            $g = $this.Parent.Controls["VehiculesGrid"]
+            $chk = $this.Parent.Controls["chkHistoriqueVehicules"]
+            $empty = $this.Parent.Controls["lblVehiculesEmpty"]
+            Refresh-VehiculesGrid -Grid $g -IncludeHistorique $chk.Checked -EmptyStateLabel $empty
+        } catch {
+            Write-Log "[VehiculesUI] Add vehicle failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+            [System.Windows.Forms.MessageBox]::Show(
+                ("Erreur lors de l'ajout du véhicule:`n`n{0}" -f $_.Exception.Message),
+                "Erreur",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+        }
+    })
+
+    # Clic sur icônes Modifier / Supprimer (même logique AgentPanel)
+    $grid.Add_CellClick({
+        param($sender, $e)
+
+        if (-not $sender) { return }
+        if (-not $e) { return }
+        if ($e.RowIndex -lt 0) { return }
+        if ($e.ColumnIndex -lt 0) { return }
+        if ($e.RowIndex -ge $sender.Rows.Count) { return }
+
+        $row = $sender.Rows[$e.RowIndex]
+        if (-not $row) { return }
+        if ($null -eq $row.Tag) { return }
+
+        $id = $row.Tag
+        $editCol = $sender.Columns["Edit"].Index
+        $delCol = $sender.Columns["Delete"].Index
+
+        if ($e.ColumnIndex -eq $editCol) {
+            $vehiculeComplet = Get-VehiculeById -Id $id
+            if (-not $vehiculeComplet) { return }
+
+            $vehiculeData = @{
+                id = $vehiculeComplet.id
+                numeroParc = $vehiculeComplet.numero_parc
+                immatriculation = $vehiculeComplet.immatriculation
+                numeroChassis = $vehiculeComplet.numero_chassis
+                marque = $vehiculeComplet.marque
+                modele = $vehiculeComplet.modele
+                dateMiseCirculation = $vehiculeComplet.date_mise_circulation
+                dateControle = $vehiculeComplet.date_controle
+                dateEntree = $vehiculeComplet.date_entree
+                dateSortie = $vehiculeComplet.date_sortie
+                dateFinControleTechnique = $vehiculeComplet.date_fin_controle_technique
+            }
+
+            $owner = $sender.FindForm()
+            $modifie = Show-VehiculeForm -Mode "Modifier" -Vehicule $vehiculeData -Owner $owner
+            if ($modifie) {
+                Update-Vehicule `
+                    -Id $id `
+                    -NumeroParc $modifie.numeroParc `
+                    -Immatriculation $modifie.immatriculation `
+                    -NumeroChassis $modifie.numeroChassis `
+                    -Marque $modifie.marque `
+                    -Modele $modifie.modele `
+                    -DateMiseCirculation $modifie.dateMiseCirculation `
+                    -DateControle $modifie.dateControle `
+                    -DateEntree $modifie.dateEntree `
+                    -DateSortie $modifie.dateSortie `
+                    -DateFinControleTechnique $modifie.dateFinControleTechnique | Out-Null
+
+                $chk = $sender.Parent.Controls["chkHistoriqueVehicules"]
+                $empty = $sender.Parent.Controls["lblVehiculesEmpty"]
+                Refresh-VehiculesGrid -Grid $sender -IncludeHistorique $chk.Checked -EmptyStateLabel $empty
+            }
+            return
+        }
+
+        if ($e.ColumnIndex -eq $delCol) {
+            $confirm = [System.Windows.Forms.MessageBox]::Show("Supprimer ce véhicule ?", "Confirmation", "YesNo")
+            if ($confirm -eq "Yes") {
+                Remove-Vehicule -Id $id | Out-Null
+                $chk = $sender.Parent.Controls["chkHistoriqueVehicules"]
+                $empty = $sender.Parent.Controls["lblVehiculesEmpty"]
+                Refresh-VehiculesGrid -Grid $sender -IncludeHistorique $chk.Checked -EmptyStateLabel $empty
+            }
+            return
+        }
+    })
+
+    # Double-clic sur une ligne : ouvrir VehiculeForm en édition (données complètes depuis la DB)
+    $grid.Add_CellDoubleClick({
+        param($sender, $e)
+
+        if (-not $sender) { return }
+        if (-not $e) { return }
+        if ($e.RowIndex -lt 0) { return }
+        if ($e.ColumnIndex -lt 0) { return }
+        if ($e.RowIndex -ge $sender.Rows.Count) { return }
+
+        try {
+            $editCol = $sender.Columns["Edit"].Index
+            $delCol = $sender.Columns["Delete"].Index
+            if ($e.ColumnIndex -in @($editCol, $delCol)) { return }
+        } catch {}
+
+        $row = $sender.Rows[$e.RowIndex]
+        if (-not $row) { return }
+        if ($null -eq $row.Tag) { return }
+
+        try {
+            $sender.ClearSelection()
+            $row.Selected = $true
+        } catch {}
+
+        $id = $row.Tag
+        Write-Log "[VehiculesUI] Double-click edit vehicle ID = $id" "INFO"
+
+        try {
+            $vehiculeComplet = Get-VehiculeById -Id $id
+            if (-not $vehiculeComplet) { return }
+
+            $vehiculeData = @{
+                id = $vehiculeComplet.id
+                numeroParc = $vehiculeComplet.numero_parc
+                immatriculation = $vehiculeComplet.immatriculation
+                numeroChassis = $vehiculeComplet.numero_chassis
+                marque = $vehiculeComplet.marque
+                modele = $vehiculeComplet.modele
+                dateMiseCirculation = $vehiculeComplet.date_mise_circulation
+                dateControle = $vehiculeComplet.date_controle
+                dateEntree = $vehiculeComplet.date_entree
+                dateSortie = $vehiculeComplet.date_sortie
+                dateFinControleTechnique = $vehiculeComplet.date_fin_controle_technique
+            }
+
+            $owner = $sender.FindForm()
+            $modifie = Show-VehiculeForm -Mode "Modifier" -Vehicule $vehiculeData -Owner $owner
+            
+            if ($modifie) {
+                Update-Vehicule `
+                    -Id $id `
+                    -NumeroParc $modifie.numeroParc `
+                    -Immatriculation $modifie.immatriculation `
+                    -NumeroChassis $modifie.numeroChassis `
+                    -Marque $modifie.marque `
+                    -Modele $modifie.modele `
+                    -DateMiseCirculation $modifie.dateMiseCirculation `
+                    -DateControle $modifie.dateControle `
+                    -DateEntree $modifie.dateEntree `
+                    -DateSortie $modifie.dateSortie `
+                    -DateFinControleTechnique $modifie.dateFinControleTechnique | Out-Null
+                
+                $chk = $sender.Parent.Controls["chkHistoriqueVehicules"]
+                $empty = $sender.Parent.Controls["lblVehiculesEmpty"]
+                Refresh-VehiculesGrid -Grid $sender -IncludeHistorique $chk.Checked -EmptyStateLabel $empty
+            }
+        } catch {
+            Write-Log "[VehiculesUI] Double-click edit failed" "ERROR" @{ id = $id; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+            [System.Windows.Forms.MessageBox]::Show(
+                ("Erreur lors de la modification du véhicule:`n`n{0}" -f $_.Exception.Message),
+                "Erreur",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+        }
+    })
+
+    return $mainPanel
+}
+
+================================================================================
+FICHIER: C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\Vehicules\VehiculesRepository.ps1
+================================================================================
+# VehiculesRepository.ps1 — Logique métier véhicules (validation + appels Database.ps1)
+# Couche persistance : Add-VehiculeRecord, Update-VehiculeRecord, Remove-VehiculeRecord, Get-VehiculeRowById
+
+. "$PSScriptRoot\..\..\Database\Database.ps1"
+. "$PSScriptRoot\..\..\Common\Validation.ps1"
+. "$PSScriptRoot\..\..\Core\Logger.ps1"
+
+function Normalize-VehiculeParc {
+    param([string]$NumeroParc)
+    $p = Sanitize-TextInput (Normalize-Whitespace $NumeroParc)
+    if ([string]::IsNullOrWhiteSpace($p)) {
+        throw "Le numéro de parc est obligatoire."
+    }
+    if (-not (Test-NumeroParcVehicule $p)) {
+        throw "Numéro de parc invalide."
+    }
+    return $p
+}
+
+function Normalize-VehiculeTextOptional {
+    param([string]$Text)
+    if ($null -eq $Text) { return "" }
+    $t = Sanitize-TextInput (Normalize-Whitespace $Text)
+    if ([string]::IsNullOrWhiteSpace($t)) { return "" }
+    if (-not (Test-SecuriteInput $t)) {
+        throw "Une entrée texte contient des caractères interdits."
+    }
+    if ($t.Length -gt 120) { throw "Texte trop long." }
+    return $t
+}
+
+function Assert-YyyyMmDdOrNull {
+    param([string]$DateStr, [string]$FieldName, [bool]$Required)
+    if ([string]::IsNullOrWhiteSpace($DateStr)) {
+        if ($Required) { throw "$FieldName est obligatoire." }
+        return $null
+    }
+    if (-not (Test-YyyyMmDdDate $DateStr)) {
+        throw "$FieldName : format de date invalide."
+    }
+    return $DateStr
+}
+
+function Assert-VehiculeId {
+    param($Id)
+    if ($null -eq $Id -or "$Id" -notmatch '^\d+$') {
+        throw "Identifiant véhicule invalide."
+    }
+    return [int]$Id
+}
+
+function Add-VehiculeWithValidation {
+    <#
+    Même rôle que Add-AgentWithValidation : journalisation + validation puis persistance.
+    #>
+    param(
+        $NumeroParc,
+        $Immatriculation,
+        $NumeroChassis,
+        $Marque,
+        $Modele,
+        $DateMiseCirculation,
+        $DateControle,
+        $DateEntree,
+        $DateSortie,
+        $DateFinControleTechnique
+    )
+
+    Write-Log "[Vehicules] Add-VehiculeWithValidation begin" "INFO" @{
+        numero_parc = $NumeroParc; immatriculation = $Immatriculation
+    }
+
+    try {
+        $id = Add-Vehicule @PSBoundParameters
+        Write-Log "[Vehicules] Add-VehiculeWithValidation success" "INFO" @{ id = $id }
+        return $id
+    } catch {
+        Write-Log "[Vehicules] Add-VehiculeWithValidation failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    }
+}
+
+function Add-Vehicule {
+    param(
+        $NumeroParc,
+        $Immatriculation,
+        $NumeroChassis,
+        $Marque,
+        $Modele,
+        $DateMiseCirculation,
+        $DateControle,
+        $DateEntree,
+        $DateSortie,
+        $DateFinControleTechnique
+    )
+
+    $NumeroParc = Normalize-VehiculeParc $NumeroParc
+    $Immatriculation = (Sanitize-TextInput $Immatriculation).Trim().ToUpperInvariant()
+    if ([string]::IsNullOrWhiteSpace($Immatriculation) -or -not (Test-SecuriteInput $Immatriculation)) {
+        throw "Immatriculation invalide."
+    }
+    $NumeroChassis = (Sanitize-TextInput $NumeroChassis).Trim().ToUpperInvariant()
+    if ([string]::IsNullOrWhiteSpace($NumeroChassis) -or $NumeroChassis -notmatch '^[A-HJ-NPR-Z0-9]{17}$') {
+        throw "Numéro de châssis (VIN) invalide."
+    }
+    $Marque = Normalize-VehiculeTextOptional $Marque
+    $Modele = Normalize-VehiculeTextOptional $Modele
+
+    $DateMiseCirculation = Assert-YyyyMmDdOrNull $DateMiseCirculation "Date de mise en circulation" $true
+    $DateControle = Assert-YyyyMmDdOrNull $DateControle "Date de contrôle technique" $false
+    $DateEntree = Assert-YyyyMmDdOrNull $DateEntree "Date d'entrée" $true
+    $DateSortie = Assert-YyyyMmDdOrNull $DateSortie "Date de sortie" $false
+    $DateFinControleTechnique = Assert-YyyyMmDdOrNull $DateFinControleTechnique "Date fin contrôle technique" $false
+
+    $actif = if ([string]::IsNullOrWhiteSpace($DateSortie)) { 1 } else { 0 }
+
+    return Add-VehiculeRecord `
+        -NumeroParc $NumeroParc `
+        -Immatriculation $Immatriculation `
+        -NumeroChassis $NumeroChassis `
+        -Marque $Marque `
+        -Modele $Modele `
+        -DateMiseCirculation $DateMiseCirculation `
+        -DateControle $DateControle `
+        -DateEntree $DateEntree `
+        -DateSortie $DateSortie `
+        -DateFinControleTechnique $DateFinControleTechnique `
+        -Actif $actif
+}
+
+function Update-Vehicule {
+    param(
+        $Id,
+        $NumeroParc,
+        $Immatriculation,
+        $NumeroChassis,
+        $Marque,
+        $Modele,
+        $DateMiseCirculation,
+        $DateControle,
+        $DateEntree,
+        $DateSortie,
+        $DateFinControleTechnique
+    )
+
+    $Id = Assert-VehiculeId $Id
+
+    $NumeroParc = Normalize-VehiculeParc $NumeroParc
+    $Immatriculation = (Sanitize-TextInput $Immatriculation).Trim().ToUpperInvariant()
+    if ([string]::IsNullOrWhiteSpace($Immatriculation) -or -not (Test-SecuriteInput $Immatriculation)) {
+        throw "Immatriculation invalide."
+    }
+    $NumeroChassis = (Sanitize-TextInput $NumeroChassis).Trim().ToUpperInvariant()
+    if ([string]::IsNullOrWhiteSpace($NumeroChassis) -or $NumeroChassis -notmatch '^[A-HJ-NPR-Z0-9]{17}$') {
+        throw "Numéro de châssis (VIN) invalide."
+    }
+    $Marque = Normalize-VehiculeTextOptional $Marque
+    $Modele = Normalize-VehiculeTextOptional $Modele
+
+    $DateMiseCirculation = Assert-YyyyMmDdOrNull $DateMiseCirculation "Date de mise en circulation" $true
+    $DateControle = Assert-YyyyMmDdOrNull $DateControle "Date de contrôle technique" $false
+    $DateEntree = Assert-YyyyMmDdOrNull $DateEntree "Date d'entrée" $true
+    $DateSortie = Assert-YyyyMmDdOrNull $DateSortie "Date de sortie" $false
+    $DateFinControleTechnique = Assert-YyyyMmDdOrNull $DateFinControleTechnique "Date fin contrôle technique" $false
+
+    $actif = if ([string]::IsNullOrWhiteSpace($DateSortie)) { 1 } else { 0 }
+
+    return Update-VehiculeRecord `
+        -Id $Id `
+        -NumeroParc $NumeroParc `
+        -Immatriculation $Immatriculation `
+        -NumeroChassis $NumeroChassis `
+        -Marque $Marque `
+        -Modele $Modele `
+        -DateMiseCirculation $DateMiseCirculation `
+        -DateControle $DateControle `
+        -DateEntree $DateEntree `
+        -DateSortie $DateSortie `
+        -DateFinControleTechnique $DateFinControleTechnique `
+        -Actif $actif
+}
+
+function Remove-Vehicule {
+    param($Id)
+    $Id = Assert-VehiculeId $Id
+    return Remove-VehiculeRecord -Id $Id
+}
+
+function Get-VehiculeById {
+    <#
+    Charge un véhicule par id (actif ou historique), pour édition depuis la grille.
+    #>
+    param($Id)
+    $Id = Assert-VehiculeId $Id
+    return Get-VehiculeRowById -Id $Id
+}
+
