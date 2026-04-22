@@ -2,6 +2,11 @@
 
 $script:logFile = Join-Path $PSScriptRoot "..\Logs\app.log"
 
+$_deskSec = Join-Path $PSScriptRoot "..\Common\DesktopSecurity.ps1"
+if (Test-Path -LiteralPath $_deskSec) {
+    . $_deskSec
+}
+
 function Ensure-LogPath {
     try {
         $dir = Split-Path -Parent $script:logFile
@@ -30,6 +35,9 @@ function Write-Log {
     )
     
     Ensure-LogPath
+    if (Get-Command Rotate-LogIfNeeded -ErrorAction SilentlyContinue) {
+        Rotate-LogIfNeeded -LogFile $script:logFile
+    }
     # Ne pas utiliser Get-Date: une fonction Get-Date du projet peut masquer la cmdlet.
     $timestamp = [datetime]::Now.ToString("yyyy-MM-dd HH:mm:ss")
     $dataText = Format-LogData $Data
@@ -43,7 +51,7 @@ function Write-Log {
     
     # Écrire dans le fichier
     try {
-        Add-Content -Path $script:logFile -Value $logEntry -ErrorAction SilentlyContinue
+        Add-Content -Path $script:logFile -Value $logEntry -Encoding UTF8 -ErrorAction SilentlyContinue
     } catch {}
 }
 

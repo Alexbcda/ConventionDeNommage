@@ -1,6 +1,14 @@
-# ========== MAIN.PS1 - POINT D'ENTRÉE PRINCIPAL NETTOYÉ ==========
+﻿# ========== MAIN.PS1 - POINT D'ENTRÉE PRINCIPAL NETTOYÉ ==========
+# Encodage : UTF-8 (PowerShell 5.1 + fichiers source en UTF-8 avec BOM recommande).
+
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
 
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $scriptPath 'Common\TextEncoding.ps1')
+. (Join-Path $scriptPath 'Common\UiText.ps1')
+Initialize-ConventionAppConsoleUtf8
 
 Write-Host "🚀 DÉMARRAGE DE L'APPLICATION..." -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
@@ -10,6 +18,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 # ============================================
 Write-Host "[MAIN] Chargement des styles..." -ForegroundColor Gray
 . "$scriptPath\Config.ps1"
+# Styles apres UiText (Convert-ToUiText sur libelles boutons).
 . "$scriptPath\Common\Styles.ps1"
 . "$scriptPath\Core\Logger.ps1"
 Write-Log "[MAIN] Application start" "INFO" @{ scriptPath = $scriptPath }
@@ -47,4 +56,4 @@ Write-Host "[MAIN] Chargement de l'interface..." -ForegroundColor Gray
 Write-Host "[MAIN] Lancement..." -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 
-Start-GUI
+Start-GUI -FichierPDF $args[0]

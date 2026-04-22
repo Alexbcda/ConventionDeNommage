@@ -1,4 +1,4 @@
-# AgentPanel.ps1 - VERSION SANS LOGS
+﻿# AgentPanel.ps1 - VERSION SANS LOGS
 
 . "$PSScriptRoot\..\..\Database\Database.ps1"
 . "$PSScriptRoot\AgentRepository.ps1"
@@ -217,7 +217,7 @@ function Show-AgentsPanel {
                     "Information"
                 ) | Out-Null
             }
-            Write-Log "[AgentsUI] Form data ready" "INFO" $nouveau
+            Write-Log "[AgentsUI] Form data ready" "INFO" @{ ok = $true }
             $newId = Add-AgentWithValidation -Nom $nouveau.nom -Prenom $nouveau.prenom -Telephone $nouveau.telephone -Email $nouveau.email -DateEntree $nouveau.date_entree -DateSortie $nouveau.date_sortie -TypeContrat $nouveau.type_contrat -BaseHeuresSemaine $nouveau.base_heures_semaine -Poste $nouveau.poste
             Write-Log "[AgentsUI] Add-AgentWithValidation returned" "INFO" @{ id = $newId }
             try {

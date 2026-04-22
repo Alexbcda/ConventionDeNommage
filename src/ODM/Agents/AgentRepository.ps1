@@ -42,17 +42,15 @@ function Add-AgentWithValidation {
     param($Nom, $Prenom, $Telephone, $Email, $DateEntree, $DateSortie, $TypeContrat, $BaseHeuresSemaine = 35, $VehiculeId = $null, $Poste = "Collecteur")
     
     Write-Log "[Agents] Add-AgentWithValidation begin" "INFO" @{
-        nom = $Nom; prenom = $Prenom; telephone = $Telephone; email = $Email
         type_contrat = $TypeContrat; base_heures_semaine = $BaseHeuresSemaine
         poste = $Poste; vehicule_id = $VehiculeId
-        date_entree = $DateEntree; date_sortie = $DateSortie
     }
 
     # Validations
-    if (-not (Test-NomValide $Nom)) { Write-Log "[Agents] Validation failed: nom" "WARN" @{ nom = $Nom }; throw "Nom invalide (min 2 caractères)" }
-    if (-not (Test-PrenomValide $Prenom)) { Write-Log "[Agents] Validation failed: prenom" "WARN" @{ prenom = $Prenom }; throw "Prénom invalide (min 2 caractères)" }
-    if (-not (Test-TelephoneValide $Telephone)) { Write-Log "[Agents] Validation failed: telephone" "WARN" @{ telephone = $Telephone }; throw "Téléphone invalide" }
-    if (-not (Test-EmailValide $Email)) { Write-Log "[Agents] Validation failed: email" "WARN" @{ email = $Email }; throw "Email invalide" }
+    if (-not (Test-NomValide $Nom)) { Write-Log "[Agents] Validation failed: nom" "WARN" @{ field = 'nom' }; throw "Nom invalide (min 2 caractères)" }
+    if (-not (Test-PrenomValide $Prenom)) { Write-Log "[Agents] Validation failed: prenom" "WARN" @{ field = 'prenom' }; throw "Prénom invalide (min 2 caractères)" }
+    if (-not (Test-TelephoneValide $Telephone)) { Write-Log "[Agents] Validation failed: telephone" "WARN" @{ field = 'telephone' }; throw "Téléphone invalide" }
+    if (-not (Test-EmailValide $Email)) { Write-Log "[Agents] Validation failed: email" "WARN" @{ field = 'email' }; throw "Email invalide" }
     
     # Appel à la base
     try {

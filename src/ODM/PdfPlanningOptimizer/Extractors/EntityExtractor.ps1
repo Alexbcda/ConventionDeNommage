@@ -219,6 +219,19 @@ function script:Get-NormalizedNonEmptyLines {
 
 function script:Find-ClientIdInText {
     param([string]$Text, [string[]]$Lines)
+    if ($Lines) {
+        for ($i = 0; $i -lt $Lines.Count; $i++) {
+            $ln = $Lines[$i]
+            if ([string]::IsNullOrWhiteSpace($ln)) { continue }
+            if ($ln -match '(?i)^\s*client\s*(?:id|ident(?:ifiant)?|n[°o])\s*:\s*$') {
+                if (($i + 1) -lt $Lines.Count) {
+                    $nx = Get-TrimmedOrNull $Lines[$i + 1]
+                    if ($nx -match '^(\d{4,12})\s*$') { return $Matches[1] }
+                }
+            }
+        }
+    }
+
     if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
 
     $m = $script:RxClientIdNumbered.Match($Text)
@@ -328,7 +341,24 @@ function script:Test-IsSevenDigitOdmPrefix {
 }
 
 function script:Find-WorkOrderInText {
-    param([string]$Text, [string]$ClientId)
+    param(
+        [string]$Text,
+        [string]$ClientId,
+        [string[]]$Lines = $null
+    )
+    if ($Lines) {
+        for ($i = 0; $i -lt $Lines.Count; $i++) {
+            $ln = $Lines[$i]
+            if ([string]::IsNullOrWhiteSpace($ln)) { continue }
+            if ($ln -match '(?i)(?:ordre(?:\s+de\s+missions?)?|o\.?\s*t\.?|intervention|n[°o]?\s*ot|n[°o]?\s*ordre|r[ée]f(?:érence)?\.?|mission|bon\s+de\s+commande)\s*:\s*$') {
+                if (($i + 1) -lt $Lines.Count) {
+                    $nx = Get-TrimmedOrNull $Lines[$i + 1]
+                    if ($nx -match '^(\d{6,10})\s*$') { return $Matches[1] }
+                }
+            }
+        }
+    }
+
     if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
 
     $m = $script:RxWorkOrderLabeled.Match($Text)
@@ -346,7 +376,29 @@ function script:Find-WorkOrderInText {
 }
 
 function script:Find-VisitDateInText {
-    param([string]$Text)
+    param(
+        [string]$Text,
+        [string[]]$Lines = $null
+    )
+    if ($Lines) {
+        for ($i = 0; $i -lt $Lines.Count; $i++) {
+            $ln = $Lines[$i]
+            if ([string]::IsNullOrWhiteSpace($ln)) { continue }
+            if ($ln -match '(?i)^\s*date\s+de\s+passage\s*:\s*$') {
+                if (($i + 1) -lt $Lines.Count) {
+                    $nx = Get-TrimmedOrNull $Lines[$i + 1]
+                    if ($nx -match '^(\d{2}/\d{2}/\d{4})\s*$') {
+                        $raw = $Matches[1]
+                        try {
+                            return [datetime]::ParseExact($raw, 'dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
+                        }
+                        catch { }
+                    }
+                }
+            }
+        }
+    }
+
     if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
 
     $m = $script:RxVisitDateLabeled.Match($Text)
@@ -493,8 +545,8 @@ function ConvertTo-PageEntity {
     $entity.Address['PostalCode'] = $addr.PostalCode
     $entity.Address['City'] = $addr.City
 
-    $entity.WorkOrder = Find-WorkOrderInText -Text $text -ClientId $clientId
-    $entity.VisitDate = Find-VisitDateInText $text
+    $entity.WorkOrder = Find-WorkOrderInText -Text $text -ClientId $clientId -Lines $normalized
+    $entity.VisitDate = Find-VisitDateInText -Text $text -Lines $normalized
 
     $contact = Build-ContactFromLines -Lines $normalized -FullText $text
     $entity.Contact['Name'] = $contact.Name

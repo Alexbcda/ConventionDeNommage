@@ -1,4 +1,4 @@
-# AgentForm.ps1 - Formulaire agent (envoie DateTime normal)
+﻿# AgentForm.ps1 - Formulaire agent (envoie DateTime normal)
 
 . "$PSScriptRoot\..\..\Database\Database.ps1"
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
@@ -286,9 +286,7 @@ function Show-AgentForm {
             $txtPrenom.Text = $prenom
 
             if (-not (Validate-All -FocusFirstInvalid)) {
-                Write-Log "[AgentForm] Validation failed: tel/email" "WARN" @{
-                    tel = $txtTel.Text; email = $txtEmail.Text
-                }
+                Write-Log "[AgentForm] Validation failed: tel/email" "WARN" @{ fields = 'tel_email' }
                 return
             }
 
@@ -324,7 +322,7 @@ function Show-AgentForm {
                 date_sortie = if ($dtSortie.Checked) { $dtSortie.Value } else { $null }
             }
             $form.Tag = $result
-            Write-Log "[AgentForm] Submit OK" "INFO" $result
+            Write-Log "[AgentForm] Submit OK" "INFO" @{ ok = $true }
             $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
             $form.Close()
         } catch {

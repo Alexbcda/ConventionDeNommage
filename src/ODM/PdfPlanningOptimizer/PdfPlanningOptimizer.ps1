@@ -52,8 +52,11 @@ function Invoke-PdfPlanningOptimizer {
         [string]$OutputPdfPath
     )
 
-    # Etape 1 : PDF -> extraction (stub)
+    # Etape 1 : PDF -> extraction
     $pdfData = Invoke-PdfExtraction -PdfPath $SourcePdfPath
+    if ($pdfData.PdfTextUnusable -and $pdfData.UserAbortMessage) {
+        throw $pdfData.UserAbortMessage
+    }
 
     # Etape 2 : Excel -> chargement (stub)
     $excelData = Import-PlanningExcelData -ExcelPath $ExcelPath

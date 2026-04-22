@@ -24,19 +24,22 @@ if (-not (Test-Path -LiteralPath $_fre)) {
 }
 . $_fre
 
-$_mtel = Join-Path $PSScriptRoot 'MergeTelemetry.ps1'
+# Dependances archivees sous ../Obsolete (voir CleanPdfPlanningOptimizer.ps1)
+$_etmeObsolete = Join-Path (Split-Path $PSScriptRoot -Parent) 'Obsolete'
+
+$_mtel = Join-Path $_etmeObsolete 'MergeTelemetry.ps1'
 if (-not (Test-Path -LiteralPath $_mtel)) {
     throw "EntityTourneeMergeEngine: MergeTelemetry.ps1 introuvable: $_mtel"
 }
 . $_mtel
 
-$_hma = Join-Path $PSScriptRoot 'HumanMergeAdapter.ps1'
+$_hma = Join-Path $_etmeObsolete 'HumanMergeAdapter.ps1'
 if (-not (Test-Path -LiteralPath $_hma)) {
     throw "EntityTourneeMergeEngine: HumanMergeAdapter.ps1 introuvable: $_hma"
 }
 . $_hma
 
-$_hrms = Join-Path $PSScriptRoot 'HumanResolvedMatchesStore.ps1'
+$_hrms = Join-Path $_etmeObsolete 'HumanResolvedMatchesStore.ps1'
 if (-not (Test-Path -LiteralPath $_hrms)) {
     throw "EntityTourneeMergeEngine: HumanResolvedMatchesStore.ps1 introuvable: $_hrms"
 }
