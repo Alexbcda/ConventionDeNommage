@@ -66,9 +66,7 @@ function Add-VehiculeWithValidation {
         $DateFinControleTechnique
     )
 
-    Write-Log "[Vehicules] Add-VehiculeWithValidation begin" "INFO" @{
-        numero_parc = $NumeroParc; immatriculation = $Immatriculation
-    }
+    Write-Log "[Vehicules] Add-VehiculeWithValidation begin" "INFO" @{ action = 'AddVehicule' }
 
     try {
         $id = Add-Vehicule @PSBoundParameters

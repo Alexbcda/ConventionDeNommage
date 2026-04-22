@@ -1,9 +1,12 @@
-# ============================================================
+﻿# ============================================================
 # Database.ps1 - VERSION FINALE STABLE
+# Sécurité : requêtes paramétrées (@param) — pas de concaténation de valeurs utilisateur dans le SQL.
+# Identifiants dynamiques (PRAGMA table_info) : validés via Test-SafeSqlIdentifier.
 # ============================================================
 
 $script:DbPath  = Join-Path $PSScriptRoot "..\..\Data\gestion.db"
 $script:DllPath = Join-Path $PSScriptRoot "..\..\lib\System.Data.SQLite.dll"
+. (Join-Path $PSScriptRoot '..\Common\DesktopSecurity.ps1')
 . (Join-Path $PSScriptRoot "..\Core\Logger.ps1")
 
 $script:POSTES = @(
@@ -223,7 +226,7 @@ function Initialize-Database {
 
     if (-not (Test-Path $script:DbPath)) {
         Write-Log "[DB] Creating database" "INFO" @{ dbPath = $script:DbPath }
-        $schema = Get-Content (Join-Path $PSScriptRoot "Schema.sql") -Raw
+        $schema = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Schema.sql') -Raw -Encoding UTF8
         $conn = Open-Connection
         $cmd = $conn.CreateCommand()
         $cmd.CommandText = $schema
@@ -270,6 +273,8 @@ function Add-Agent {
         $Poste = "Collecteur"
     )
 
+    Test-CNRateLimit
+
     if ($Poste -notin $script:POSTES) {
         throw "Poste invalide"
     }
@@ -278,7 +283,6 @@ function Add-Agent {
     $deTs = ToDbDate $DateEntree
     $dsTs = ToDbDate $DateSortie
     Write-Log "[DB] Add-Agent begin" "INFO" @{
-        nom = $Nom; prenom = $Prenom; telephone = $Telephone; email = $Email
         type_contrat = $TypeContrat; base_heures_semaine = $BaseHeuresSemaine
         poste = $Poste; vehicule_id = $VehiculeId; actif = $actif
         date_entree_ts = $deTs; date_sortie_ts = $dsTs
@@ -347,6 +351,8 @@ function Update-Agent {
         $VehiculeId = $null,
         $Poste = "Collecteur"
     )
+
+    Test-CNRateLimit
 
     if ($Poste -notin $script:POSTES) {
         throw "Poste invalide"
@@ -427,6 +433,8 @@ function Get-AgentById {
 
 function Remove-Agent {
     param($Id)
+
+    Test-CNRateLimit
 
     $conn = Open-Connection
 
@@ -616,9 +624,9 @@ function Add-VehiculeRecord {
         [int]$Actif
     )
 
-    Write-Log "[DB] Add-VehiculeRecord begin" "INFO" @{
-        numero_parc = $NumeroParc; immatriculation = $Immatriculation; actif = $Actif
-    }
+    Test-CNRateLimit
+
+    Write-Log "[DB] Add-VehiculeRecord begin" "INFO" @{ actif = $Actif }
 
     $conn = Open-Connection
     try {
@@ -677,7 +685,9 @@ function Update-VehiculeRecord {
         [int]$Actif
     )
 
-    Write-Log "[DB] Update-VehiculeRecord begin" "INFO" @{ id = $Id; numero_parc = $NumeroParc }
+    Test-CNRateLimit
+
+    Write-Log "[DB] Update-VehiculeRecord begin" "INFO" @{ id = $Id }
 
     $conn = Open-Connection
     try {
@@ -716,6 +726,8 @@ WHERE id_vehicule = @id
 
 function Remove-VehiculeRecord {
     param([int]$Id)
+
+    Test-CNRateLimit
 
     Write-Log "[DB] Remove-VehiculeRecord begin" "INFO" @{ id = $Id }
 

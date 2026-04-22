@@ -1,4 +1,4 @@
-# DatePanel.ps1 - Panneau de sélection de date
+﻿# DatePanel.ps1 - Panneau de sélection de date
 function Show-DatePanel {
     param($NextPanel, $CurrentPanel)
     

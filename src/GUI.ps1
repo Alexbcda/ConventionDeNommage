@@ -1,6 +1,10 @@
-# GUI.ps1 - Version simplifiée
+﻿# GUI.ps1 - Version simplifiée
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not (Get-Command Convert-ToUiText -ErrorAction SilentlyContinue)) {
+    . "$scriptDir\Common\TextEncoding.ps1"
+    . "$scriptDir\Common\UiText.ps1"
+}
 . "$scriptDir\Common\Styles.ps1"
 
 function Start-GUI {
@@ -9,6 +13,8 @@ function Start-GUI {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     [System.Windows.Forms.Application]::EnableVisualStyles()
+    [System.Windows.Forms.Application]::SetCompatibleTextRenderingDefault($false)
+    Initialize-WinFormsUiCultureFrFr
 
     . "$PSScriptRoot\Config.ps1"
     . "$PSScriptRoot\ODM\ConventionNommage\ConventionNommage.ps1"
@@ -28,6 +34,9 @@ function Start-GUI {
     $form.MinimumSize = New-Object System.Drawing.Size(1000, 650)
     $form.Font = $script:PoliceNormal
     $form.BackColor = $script:CouleurGrisFond
+    $null = $form.Add_Load({
+        $null = [System.Text.Encoding]::Default
+    })
 
     $tabControl = New-Object System.Windows.Forms.TabControl
     $tabControl.Dock = "Fill"
@@ -95,6 +104,7 @@ function Start-GUI {
     $tabControl.TabPages.Add($tabVehicules)
 
     $form.Controls.Add($tabControl)
+    Update-WinFormsTreeUiTexts -RootControl $form
 
     $form.Add_Shown({
         Start-Sleep -Milliseconds 100
@@ -111,12 +121,21 @@ function Show-PDFViewer {
     param([string]$FilePath, [string]$Title = "Visionneuse PDF")
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
+    if (-not (Get-Command Convert-ToUiText -ErrorAction SilentlyContinue)) {
+        $sd = Split-Path -Parent $MyInvocation.MyCommand.Path
+        . (Join-Path $sd 'Common\TextEncoding.ps1')
+        . (Join-Path $sd 'Common\UiText.ps1')
+    }
+    Initialize-WinFormsUiCultureFrFr
     if (-not (Test-Path $FilePath)) {
-        [System.Windows.Forms.MessageBox]::Show("Fichier non trouve : $FilePath", "Erreur")
+        $msg = Convert-ToUiText -Text ("Fichier non trouvé : $FilePath")
+        $cap = Convert-ToUiText -Text 'Erreur'
+        [System.Windows.Forms.MessageBox]::Show($msg, $cap)
         return
     }
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = $Title
+    $null = $form.Add_Load({ $null = [System.Text.Encoding]::Default })
+    $form.Text = Convert-ToUiText -Text $Title
     $form.Size = New-Object System.Drawing.Size(1000, 700)
     $form.StartPosition = "CenterScreen"
     $webBrowser = New-Object System.Windows.Forms.WebBrowser
@@ -124,7 +143,7 @@ function Show-PDFViewer {
     try { $webBrowser.Navigate($FilePath); $form.Controls.Add($webBrowser) }
     catch { Start-Process $FilePath }
     $btnClose = New-Object System.Windows.Forms.Button
-    $btnClose.Text = "FERMER"
+    $btnClose.Text = Convert-ToUiText -Text 'FERMER'
     $btnClose.Size = New-Object System.Drawing.Size(100, 40)
     $btnClose.Anchor = "Bottom,Right"
     $btnClose.Location = New-Object System.Drawing.Point($form.ClientSize.Width - 120, $form.ClientSize.Height - 50)

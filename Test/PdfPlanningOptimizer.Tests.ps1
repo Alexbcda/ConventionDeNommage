@@ -133,6 +133,82 @@ function Test-PdfPlanningOptimizerE2EPdfTotextProbe {
     }
 }
 
+Describe 'PdfPlanningOptimizer - qualite extraction PDF (Test-PdfExtractQuality)' {
+
+    BeforeAll {
+        $script:QePdfExPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Extractors\PdfExtractor.ps1' | Resolve-Path
+        . $script:QePdfExPath
+    }
+
+    It 'Test-PdfExtractQuality : lignes vides => HasText faux, probablement scanne' {
+        $q = Test-PdfExtractQuality -Lines @('', '  ') -PageCount 1 -Mode 'layout'
+        $q.HasText | Should Be $false
+        $q.IsLikelyScanned | Should Be $true
+    }
+
+    It 'Test-PdfExtractQuality : texte riche => HasText vrai' {
+        $rich = @(
+            'N 8276 Date de passage: 17/04/2026 Ordre : 9890123 ODM 9890123-1',
+            'Ligne deux avec du texte et 12345678'
+        )
+        $q = Test-PdfExtractQuality -Lines $rich -PageCount 1 -Mode 'layout'
+        $q.HasText | Should Be $true
+        $q.IsLikelyScanned | Should Be $false
+    }
+}
+
+Describe 'PdfPlanningOptimizer - EntityExtractor multiligne (libelle / valeur ligne suivante)' {
+
+    BeforeAll {
+        $script:MlEntityPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Extractors\EntityExtractor.ps1' | Resolve-Path
+        . $script:MlEntityPath
+    }
+
+    It 'Client ID sur la ligne suivante' {
+        $lines = @('Client ID :', '8276')
+        $e = ConvertTo-PageEntity -PageNumber 1 -Lines $lines
+        $e.ClientID | Should Be '8276'
+    }
+
+    It 'Intervention (libelle) puis numero sur la ligne suivante' {
+        $lines = @('Intervention:', '9890123')
+        $e = ConvertTo-PageEntity -PageNumber 1 -Lines $lines
+        $e.WorkOrder | Should Be '9890123'
+    }
+
+    It 'Date de passage sur la ligne suivante' {
+        $lines = @('Date de passage :', '17/04/2026')
+        $e = ConvertTo-PageEntity -PageNumber 1 -Lines $lines
+        $e.VisitDate | Should Not Be $null
+        $e.VisitDate.ToString('dd/MM/yyyy') | Should Be '17/04/2026'
+    }
+}
+
+Describe 'PdfPlanningOptimizer - Compare-PdftotextExtractionModes (layout vs default)' {
+
+    BeforeAll {
+        $script:CmpPdfExPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Extractors\PdfExtractor.ps1' | Resolve-Path
+        . $script:CmpPdfExPath
+        $script:CmpPdfTotext = Get-PdfPlanningOptimizerE2EPdfTotextPath
+    }
+
+    It 'retourne des longueurs pour layout et default sur PDF fixture' {
+        if ($null -eq $script:CmpPdfTotext) {
+            return
+        }
+        $pdfPath = Join-Path ([System.IO.Path]::GetTempPath()) ('cmp_modes_' + [Guid]::NewGuid().ToString('n') + '.pdf')
+        try {
+            [System.IO.File]::WriteAllBytes($pdfPath, (Get-PdfPlanningOptimizerE2EPlanningPdfBytes))
+            $cmp = Compare-PdftotextExtractionModes -PdfPath $pdfPath -PdftotextExe $script:CmpPdfTotext -PageNumber 1
+            ($cmp.Modes.layout.ExtractedLength -gt 0) | Should Be $true
+            ($cmp.Modes.default.ExtractedLength -gt 0) | Should Be $true
+        }
+        finally {
+            Remove-Item -LiteralPath $pdfPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 Describe 'PdfPlanningOptimizer - grouping WorkOrderEntity' {
 
     BeforeAll {

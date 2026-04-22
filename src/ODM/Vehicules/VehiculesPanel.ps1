@@ -1,4 +1,4 @@
-# VehiculesPanel.ps1 - Version refactorisée selon charte AgentPanel
+﻿# VehiculesPanel.ps1 - Version refactorisée selon charte AgentPanel
 #
 # Objet véhicule (données liste / DB, propriétés snake_case côté repository) :
 #   id: string|number ; numero_parc ; immatriculation ; numero_chassis ; actif: 0|1 ; …
@@ -236,7 +236,7 @@ function Show-VehiculesPanel {
                 return
             }
 
-            Write-Log "[VehiculesUI] Form data ready" "INFO" $nouveau
+            Write-Log "[VehiculesUI] Form data ready" "INFO" @{ ok = $true }
             
             $newId = Add-VehiculeWithValidation `
                 -NumeroParc $nouveau.numeroParc `

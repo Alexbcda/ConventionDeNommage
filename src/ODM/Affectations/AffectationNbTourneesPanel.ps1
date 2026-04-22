@@ -1,4 +1,4 @@
-# AffectationNbTourneesPanel.ps1 - Panneau de sélection du nombre de tournées
+﻿# AffectationNbTourneesPanel.ps1 - Panneau de sélection du nombre de tournées
 function Show-AffectationNbTourneesPanel {
     param($NextPanel, $CurrentPanel)
     

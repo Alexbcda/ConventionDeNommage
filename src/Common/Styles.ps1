@@ -1,4 +1,4 @@
-# ============================================
+﻿# ============================================
 # STYLES.PS1 - VERSION CORRIGEE
 # ============================================
 
@@ -25,11 +25,17 @@ $script:PoliceNormal = New-Object System.Drawing.Font("Arial", 10, [System.Drawi
 $script:PoliceBouton = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
 
 # Titres / textes secondaires des panneaux de gestion (Agents, Véhicules) — source unique
-$script:PoliceTitreGestionFenetre = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
-$script:PoliceLabelSecondaireFenetre = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Regular)
+$script:PoliceTitreGestionFenetre = New-Object System.Drawing.Font("Arial", 18, [System.Drawing.FontStyle]::Bold)
+$script:PoliceLabelSecondaireFenetre = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Regular)
 $script:CouleurTexteSecondairePanel = [System.Drawing.Color]::FromArgb(60, 60, 60)
-$script:TitrePanelAgents = "Gestion des agents"
-$script:TitrePanelVehicules = "Gestion des véhicules"
+if (Get-Command Convert-ToUiText -ErrorAction SilentlyContinue) {
+    $script:TitrePanelAgents = Convert-ToUiText -Text 'Gestion des agents'
+    $script:TitrePanelVehicules = Convert-ToUiText -Text 'Gestion des véhicules'
+}
+else {
+    $script:TitrePanelAgents = 'Gestion des agents'
+    $script:TitrePanelVehicules = 'Gestion des véhicules'
+}
 
 # FONCTION BOUTON AVEC BORDURE (CORRIGEE)
 function Set-BtnBorderStyle {
@@ -46,7 +52,12 @@ function Set-BtnBorderStyle {
         $BorderColor = $script:CouleurOrange
     }
     
-    $Button.Text = $Text
+    if (Get-Command Convert-ToUiText -ErrorAction SilentlyContinue) {
+        $Button.Text = Convert-ToUiText -Text $Text
+    }
+    else {
+        $Button.Text = $Text
+    }
     $Button.Size = New-Object System.Drawing.Size($Width, $Height)
     $Button.BackColor = $script:CouleurBlanc
     $Button.FlatStyle = "Flat"

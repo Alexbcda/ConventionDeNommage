@@ -1,9 +1,9 @@
-# Date.ps1 - Gestion des dates
+﻿# Date.ps1 - Gestion des dates
 function Get-CNDateParDefaut {
     try {
         $configPath = Join-Path $PSScriptRoot "..\..\Data\odm_config.json"
         if (Test-Path $configPath) {
-            $config = Get-Content $configPath | ConvertFrom-Json
+            $config = Get-Content -LiteralPath $configPath -Encoding UTF8 | ConvertFrom-Json
             return [DateTime]::ParseExact($config.DateParDefaut, "yyyy-MM-dd", $null)
         }
     } catch {}

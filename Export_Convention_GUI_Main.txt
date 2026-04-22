@@ -1,0 +1,427 @@
+================================================================================
+DOSSIER: ConventionNommage
+================================================================================
+
+================================================================================
+FICHIER: ConventionNommage.ps1
+================================================================================
+# ConventionNommage.ps1 - Module principal
+
+. "$PSScriptRoot\ConventionNommageLogic.ps1"
+. "$PSScriptRoot\ConventionNommagePanel.ps1"
+
+Write-Verbose "[CN-Module] Module ConventionNommage chargé"
+
+
+
+================================================================================
+FICHIER: ConventionNommageLogic.ps1
+================================================================================
+# ConventionNommageLogic.ps1 - Logique métier
+
+function Invoke-CNRenameAction {
+    param(
+        [string]$TemplateId, 
+        [string]$FichierPDF, 
+        [string]$UserText, 
+        [datetime]$DateSelectionnee
+    )
+
+    $templatePath = Join-Path $PSScriptRoot "..\..\..\Data\templates.json"
+    
+    if (-not (Test-Path $templatePath)) {
+        Write-Host "[CN-Logic] templates.json non trouvé à: $templatePath" -ForegroundColor Red
+        throw "Fichier templates.json non trouvé"
+    }
+    
+    $templates = (Get-Content $templatePath -Raw | ConvertFrom-Json).templates
+    $template = $templates | Where-Object { $_.id -eq $TemplateId }
+
+    if (-not $template) {
+        throw "Template non trouvé : $TemplateId"
+    }
+
+    $cleanText = $UserText -replace '[\\/:*?"<>|]', '_'
+    $formattedDate = $DateSelectionnee.ToString($template.dateFormat)
+    $nouveauNom = $template.format -replace '{text}', $cleanText -replace '{date}', $formattedDate
+    
+    if (-not $nouveauNom.EndsWith(".pdf")) { 
+        $nouveauNom += ".pdf" 
+    }
+
+    $dossier = Split-Path $FichierPDF -Parent
+    $nouveauChemin = Join-Path $dossier $nouveauNom
+    
+    if (Test-Path $nouveauChemin) {
+        Add-Type -AssemblyName System.Windows.Forms
+        $result = [System.Windows.Forms.MessageBox]::Show(
+            "Le fichier '$nouveauNom' existe déjà. Voulez-vous le remplacer ?",
+            "Fichier existant",
+            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+            [System.Windows.Forms.MessageBoxIcon]::Question
+        )
+        if ($result -eq [System.Windows.Forms.DialogResult]::No) {
+            return $false
+        }
+    }
+
+    Rename-Item -Path $FichierPDF -NewName $nouveauNom -Force
+    return $true
+}
+
+Write-Host "[CN-Logic] Chargé" -ForegroundColor Cyan
+
+
+================================================================================
+FICHIER: ConventionNommagePanel.ps1
+================================================================================
+# ConventionNommagePanel.ps1 - VERSION FINALE
+
+function Show-ConventionNommagePanel {
+    param([string]$FichierPDF)
+
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = "Fill"
+    $panel.BackColor = $script:CouleurGrisFond
+    $panel.Padding = New-Object System.Windows.Forms.Padding(50)
+    # Données pour les gestionnaires d'événements : le CLR n'exécute pas les handlers dans la portée locale de cette fonction.
+    $panel.Tag = @{ FichierPDF = $FichierPDF }
+
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = "Renommer un PDF"
+    $lblTitle.Font = $script:PoliceTitre1
+    $lblTitle.ForeColor = $script:CouleurOrange
+    $lblTitle.Location = New-Object System.Drawing.Point(0, 0)
+    $lblTitle.Size = New-Object System.Drawing.Size(500, 50)
+    $panel.Controls.Add($lblTitle)
+
+    $txtCollecte = New-Object System.Windows.Forms.TextBox
+    $txtCollecte.Name = "txtCollecte"
+    $txtCollecte.Location = New-Object System.Drawing.Point(0, 110)
+    $txtCollecte.Size = New-Object System.Drawing.Size(550, 35)
+    $txtCollecte.Font = $script:PoliceNormal
+    $txtCollecte.PlaceholderText = "Renseigner le point de collecte"
+    $panel.Controls.Add($txtCollecte)
+
+    $btnCert = New-Object System.Windows.Forms.Button
+    Set-BtnCertificatStyle -BtnCertificat $btnCert
+    $btnCert.Location = New-Object System.Drawing.Point(0, 170)
+    $panel.Controls.Add($btnCert)
+
+    $btnPlan = New-Object System.Windows.Forms.Button
+    Set-BtnPlannerStyle -BtnPlanner $btnPlan
+    $btnPlan.Location = New-Object System.Drawing.Point(145, 170)
+    $panel.Controls.Add($btnPlan)
+
+    $btnFT = New-Object System.Windows.Forms.Button
+    Set-BtnFranceTravailStyle -BtnFranceTravail $btnFT
+    $btnFT.Location = New-Object System.Drawing.Point(290, 170)
+    $panel.Controls.Add($btnFT)
+
+    $lblDate = New-Object System.Windows.Forms.Label
+    $lblDate.Text = "Date :"
+    $lblDate.Font = $script:PoliceNormal
+    $lblDate.Location = New-Object System.Drawing.Point(0, 240)
+    $lblDate.Size = New-Object System.Drawing.Size(50, 30)
+    $panel.Controls.Add($lblDate)
+
+    $datePicker = New-Object System.Windows.Forms.DateTimePicker
+    $datePicker.Name = "datePicker"
+    $datePicker.Location = New-Object System.Drawing.Point(60, 240)
+    $datePicker.Size = New-Object System.Drawing.Size(180, 30)
+    $datePicker.Format = [System.Windows.Forms.DateTimePickerFormat]::Short
+    $datePicker.Font = $script:PoliceNormal
+    # Utiliser DateTime .NET pour éviter toute collision avec la fonction métier Get-Date.
+    $datePicker.Value = [datetime]::Now.AddDays(-1)
+    $panel.Controls.Add($datePicker)
+
+    # Mode forcé - label avec Name pour le retrouver
+    $lblModeForce = New-Object System.Windows.Forms.Label
+    $lblModeForce.Name = "lblModeForce"
+    $lblModeForce.Text = ""
+    $lblModeForce.Font = $script:PoliceNormal
+    $lblModeForce.ForeColor = $script:CouleurOrange
+    $lblModeForce.Location = New-Object System.Drawing.Point(260, 245)
+    $lblModeForce.Size = New-Object System.Drawing.Size(250, 25)
+    $lblModeForce.Visible = $false
+    $panel.Controls.Add($lblModeForce)
+
+    # Handlers : utiliser $sender.Parent + Name — les variables locales ne sont pas visibles depuis le délégué CLR.
+    $datePicker.Add_ValueChanged({
+        param($sender, $e)
+        $p = $sender.Parent
+        $label = $p.Controls["lblModeForce"]
+        if ($label) {
+            $label.Text = "Mode forcé : " + $sender.Value.ToString("dd/MM/yyyy")
+            $label.Visible = $true
+        }
+    })
+
+    $null = $btnCert.Add_Click({
+        param($sender, $e)
+        $p = [System.Windows.Forms.Panel]$sender.Parent
+        $txt = [System.Windows.Forms.TextBox]$p.Controls["txtCollecte"]
+        $dt = [System.Windows.Forms.DateTimePicker]$p.Controls["datePicker"]
+        if (-not $txt) { Write-Host "[DEBUG] txtCollecte NULL" -ForegroundColor Yellow; return }
+        if (-not $dt) { Write-Host "[DEBUG] datePicker NULL" -ForegroundColor Yellow; return }
+        $pdf = [string]$p.Tag.FichierPDF
+        $c = $txt.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($c)) {
+            [System.Windows.Forms.MessageBox]::Show("Veuillez saisir le point de collecte")
+            return
+        }
+        $d = $dt.Value
+        $n = "Certificat de Destruction-$c-du $($d.ToString('dd.MM.yyyy')).pdf"
+        Rename-Item -Path $pdf -NewName $n -Force
+        [System.Windows.Forms.MessageBox]::Show("✅ Fichier renommé : $n")
+        $p.FindForm().Close()
+    })
+
+    $null = $btnPlan.Add_Click({
+        param($sender, $e)
+        $p = [System.Windows.Forms.Panel]$sender.Parent
+        $txt = [System.Windows.Forms.TextBox]$p.Controls["txtCollecte"]
+        $dt = [System.Windows.Forms.DateTimePicker]$p.Controls["datePicker"]
+        if (-not $txt) { Write-Host "[DEBUG] txtCollecte NULL" -ForegroundColor Yellow; return }
+        if (-not $dt) { Write-Host "[DEBUG] datePicker NULL" -ForegroundColor Yellow; return }
+        $pdf = [string]$p.Tag.FichierPDF
+        $c = $txt.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($c)) {
+            [System.Windows.Forms.MessageBox]::Show("Veuillez saisir le point de collecte")
+            return
+        }
+        $d = $dt.Value
+        $n = "$($d.ToString('yyyyMMdd'))-$c.pdf"
+        Rename-Item -Path $pdf -NewName $n -Force
+        [System.Windows.Forms.MessageBox]::Show("✅ Fichier renommé : $n")
+        $p.FindForm().Close()
+    })
+
+    $null = $btnFT.Add_Click({
+        param($sender, $e)
+        $p = [System.Windows.Forms.Panel]$sender.Parent
+        $txt = [System.Windows.Forms.TextBox]$p.Controls["txtCollecte"]
+        $dt = [System.Windows.Forms.DateTimePicker]$p.Controls["datePicker"]
+        if (-not $txt) { Write-Host "[DEBUG] txtCollecte NULL" -ForegroundColor Yellow; return }
+        if (-not $dt) { Write-Host "[DEBUG] datePicker NULL" -ForegroundColor Yellow; return }
+        $pdf = [string]$p.Tag.FichierPDF
+        $c = $txt.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($c)) {
+            [System.Windows.Forms.MessageBox]::Show("Veuillez saisir le point de collecte")
+            return
+        }
+        $d = $dt.Value
+        $n = "$c-du $($d.ToString('dd.MM.yyyy')).pdf"
+        Rename-Item -Path $pdf -NewName $n -Force
+        [System.Windows.Forms.MessageBox]::Show("✅ Fichier renommé : $n")
+        $p.FindForm().Close()
+    })
+
+    $txtCollecte.Select()
+    $txtCollecte.Focus()
+
+    return ,$panel
+}
+
+
+================================================================================
+FICHIER: GUI.ps1
+================================================================================
+# GUI.ps1 - Version simplifiée
+
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+. "$scriptDir\Common\Styles.ps1"
+
+function Start-GUI {
+    param([string]$FichierPDF)
+
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+
+    . "$PSScriptRoot\Config.ps1"
+    . "$PSScriptRoot\ODM\ConventionNommage\ConventionNommage.ps1"
+    . "$PSScriptRoot\ODM\Agents\AgentPanel.ps1"
+    . "$PSScriptRoot\ODM\Agents\AgentRepository.ps1"
+    . "$PSScriptRoot\ODM\Vehicules\VehiculesPanel.ps1"
+    . "$PSScriptRoot\ODM\Vehicules\VehiculesRepository.ps1"
+    . "$PSScriptRoot\ODM\Affectations\Date.ps1"
+    . "$PSScriptRoot\ODM\Affectations\DatePanel.ps1"
+    . "$PSScriptRoot\ODM\Affectations\AffectationNbTournees.ps1"
+    . "$PSScriptRoot\ODM\Affectations\AffectationNbTourneesPanel.ps1"
+        
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Convention de nommage"
+    $form.Size = New-Object System.Drawing.Size(1400, 800)
+    $form.StartPosition = "CenterScreen"
+    $form.MinimumSize = New-Object System.Drawing.Size(1000, 650)
+    $form.Font = $script:PoliceNormal
+    $form.BackColor = $script:CouleurGrisFond
+
+    $tabControl = New-Object System.Windows.Forms.TabControl
+    $tabControl.Dock = "Fill"
+    $tabControl.Font = $script:PoliceNormal
+    $tabControl.Name = "MainTabControl"
+
+    # ONGLET 1 : Convention de nommage
+    $tabRename = New-Object System.Windows.Forms.TabPage
+    $tabRename.Text = "Convention de nommage"
+    $tabRename.BackColor = $script:CouleurGrisFond
+    
+    $panelResult = Show-ConventionNommagePanel -FichierPDF $FichierPDF
+    $realPanel = $panelResult[-1]
+    $tabRename.Controls.Add($realPanel)
+    $tabControl.TabPages.Add($tabRename)
+
+    # ONGLET 2 : Affectation
+    $tabAffectation = New-Object System.Windows.Forms.TabPage
+    $tabAffectation.Text = "Affectation"
+    $tabAffectation.BackColor = $script:CouleurGrisFond
+    $affectationContainer = New-Object System.Windows.Forms.Panel
+    $affectationContainer.Dock = "Fill"
+    $affectationContainer.Name = "AffectationContainer"
+    $panelDate = Show-DatePanel -NextPanel $null -CurrentPanel $null
+    $panelDate.Dock = "Fill"
+    $panelDate.Name = "DatePanel"
+    $panelTournees = Show-AffectationNbTourneesPanel -NextPanel $null -CurrentPanel $null
+    $panelTournees.Dock = "Fill"
+    $panelTournees.Name = "TourneesPanel"
+    $panelTournees.Visible = $false
+    $affectationContainer.Controls.Add($panelDate)
+    $affectationContainer.Controls.Add($panelTournees)
+    $tabAffectation.Controls.Add($affectationContainer)
+    $tabControl.TabPages.Add($tabAffectation)
+    $form.Tag = $affectationContainer
+
+    # ONGLET 3 : Agents
+    $tabAgents = New-Object System.Windows.Forms.TabPage
+    $tabAgents.Text = "Données agents"
+    $tabAgents.BackColor = $script:CouleurGrisFond
+    
+    $agentsPanel = Show-AgentsPanel
+    if ($agentsPanel) {
+        $agentsPanel.Dock = "Fill"
+        $tabAgents.Controls.Add($agentsPanel)
+    } else {
+        $lblError = New-Object System.Windows.Forms.Label
+        $lblError.Text = "Erreur de chargement du panneau des agents"
+        $lblError.Dock = "Fill"
+        $lblError.TextAlign = "MiddleCenter"
+        $lblError.ForeColor = [System.Drawing.Color]::Red
+        $tabAgents.Controls.Add($lblError)
+    }
+    $tabControl.TabPages.Add($tabAgents)
+
+    # ONGLET 4 : Vehicules
+    $tabVehicules = New-Object System.Windows.Forms.TabPage
+    $tabVehicules.Text = "Données véhicules"
+    $tabVehicules.BackColor = $script:CouleurGrisFond
+    $vehiculesPanel = Show-VehiculesPanel -Vehicules (Get-Vehicules)
+    if ($vehiculesPanel) {
+        $vehiculesPanel.Dock = "Fill"
+        $tabVehicules.Controls.Add($vehiculesPanel)
+    }
+    $tabControl.TabPages.Add($tabVehicules)
+
+    $form.Controls.Add($tabControl)
+
+    $form.Add_Shown({
+        Start-Sleep -Milliseconds 100
+        if ($realPanel) {
+            $txtBox = $realPanel.Controls | Where-Object { $_ -is [System.Windows.Forms.TextBox] }
+            if ($txtBox) { $txtBox.Focus() }
+        }
+    })
+
+    [System.Windows.Forms.Application]::Run($form)
+}
+
+function Show-PDFViewer {
+    param([string]$FilePath, [string]$Title = "Visionneuse PDF")
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    if (-not (Test-Path $FilePath)) {
+        [System.Windows.Forms.MessageBox]::Show("Fichier non trouve : $FilePath", "Erreur")
+        return
+    }
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = $Title
+    $form.Size = New-Object System.Drawing.Size(1000, 700)
+    $form.StartPosition = "CenterScreen"
+    $webBrowser = New-Object System.Windows.Forms.WebBrowser
+    $webBrowser.Dock = "Fill"
+    try { $webBrowser.Navigate($FilePath); $form.Controls.Add($webBrowser) }
+    catch { Start-Process $FilePath }
+    $btnClose = New-Object System.Windows.Forms.Button
+    $btnClose.Text = "FERMER"
+    $btnClose.Size = New-Object System.Drawing.Size(100, 40)
+    $btnClose.Anchor = "Bottom,Right"
+    $btnClose.Location = New-Object System.Drawing.Point($form.ClientSize.Width - 120, $form.ClientSize.Height - 50)
+    $btnClose.BackColor = $script:CouleurOrange
+    $btnClose.ForeColor = $script:CouleurBlanc
+    $btnClose.FlatStyle = "Flat"
+    $btnClose.Font = $script:PoliceBouton
+    $btnClose.Add_Click({ $form.Close() })
+    $form.Controls.Add($btnClose)
+    $form.ShowDialog()
+}
+
+
+
+================================================================================
+FICHIER: Main.ps1
+================================================================================
+# ========== MAIN.PS1 - POINT D'ENTRÉE PRINCIPAL NETTOYÉ ==========
+
+$scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+Write-Host "🚀 DÉMARRAGE DE L'APPLICATION..." -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+
+# ============================================
+# 1. CHARGEMENT DES STYLES ET CONFIGURATION
+# ============================================
+Write-Host "[MAIN] Chargement des styles..." -ForegroundColor Gray
+. "$scriptPath\Config.ps1"
+. "$scriptPath\Common\Styles.ps1"
+. "$scriptPath\Core\Logger.ps1"
+Write-Log "[MAIN] Application start" "INFO" @{ scriptPath = $scriptPath }
+
+# ============================================
+# 2. INITIALISATION DE LA BASE SQLITE
+# ============================================
+. "$scriptPath\Database\Database.ps1"
+try {
+    $ok = Initialize-Database
+    Write-Log "[MAIN] Initialize-Database result" "INFO" @{ ok = $ok }
+} catch {
+    Write-Log "[MAIN] Initialize-Database failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+    throw
+}
+
+# ============================================
+# 3. CHARGEMENT DES MODULES MÉTIER
+# ============================================
+Write-Host "[MAIN] Chargement des modules métier..." -ForegroundColor Gray
+. "$scriptPath\ODM\ConventionNommage\ConventionNommage.ps1"
+. "$scriptPath\ODM\Agents\AgentRepository.ps1"
+. "$scriptPath\ODM\Vehicules\VehiculesRepository.ps1"
+
+
+# ============================================
+# 4. CHARGEMENT ET LANCEMENT DE LA GUI
+# ============================================
+Write-Host "[MAIN] Chargement de l'interface..." -ForegroundColor Gray
+. "$scriptPath\GUI.ps1"
+
+# ============================================
+# 5. LANCEMENT
+# ============================================
+Write-Host "[MAIN] Lancement..." -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Green
+
+Start-GUI
+

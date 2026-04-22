@@ -7,15 +7,16 @@
 # ============================================================
 
 . (Join-Path $PSScriptRoot 'Extractors\PdfTextNormalizer.ps1')
-. (Join-Path $PSScriptRoot 'Anchors\AnchorEngine.ps1')
-. (Join-Path $PSScriptRoot 'Anchors\AnchorBlockBuilder.ps1')
-. (Join-Path $PSScriptRoot 'Anchors\AnchorBlockValidator.ps1')
-. (Join-Path $PSScriptRoot 'Anchors\AnchorEntityExtractor.ps1')
-. (Join-Path $PSScriptRoot 'Anchors\AnchorRoleResolver.ps1')
+# Code sous Obsolete\*.ignore (CleanPdfPlanningOptimizer.ps1)
+. (Join-Path $PSScriptRoot 'Obsolete\Anchors.ignore\AnchorEngine.ps1')
+. (Join-Path $PSScriptRoot 'Obsolete\Anchors.ignore\AnchorBlockBuilder.ps1')
+. (Join-Path $PSScriptRoot 'Obsolete\Anchors.ignore\AnchorBlockValidator.ps1')
+. (Join-Path $PSScriptRoot 'Obsolete\Anchors.ignore\AnchorEntityExtractor.ps1')
+. (Join-Path $PSScriptRoot 'Obsolete\Anchors.ignore\AnchorRoleResolver.ps1')
 . (Join-Path $PSScriptRoot 'Models\PdfExtractionResult.ps1')
-. (Join-Path $PSScriptRoot 'Scoring\EntityConfidenceScorer.ps1')
-. (Join-Path $PSScriptRoot 'Decision\EntityDecisionEngine.ps1')
-. (Join-Path $PSScriptRoot 'Routing\EntityRoutingEngine.ps1')
+. (Join-Path $PSScriptRoot 'Obsolete\Scoring.ignore\EntityConfidenceScorer.ps1')
+. (Join-Path $PSScriptRoot 'Obsolete\Decision.ignore\EntityDecisionEngine.ps1')
+. (Join-Path $PSScriptRoot 'Obsolete\Routing.ignore\EntityRoutingEngine.ps1')
 
 function Invoke-PdfExtractionPipeline {
     <#
@@ -72,11 +73,11 @@ function Invoke-PdfExtractionPipeline {
         $normLines = Normalize-PdfNoiseText -Lines @($linesForNorm.ToArray())
         $afterNorm = $normLines -join "`n"
         if ($afterNorm -ceq $unifiedInput) {
-            Write-Verbose "Pipeline [Normalisation]: fin — aucun changement ($($linesIn.Count) ligne(s)) ; entrée traitée comme déjà normalisée."
+            Write-Verbose ('Pipeline [Normalisation]: fin - aucun changement (' + $linesIn.Count + ' lignes) ; entree deja normalisee.')
         }
         else {
             $workingText = $afterNorm
-            Write-Verbose "Pipeline [Normalisation]: fin — texte ajusté ($($linesIn.Count) ligne(s)) via Normalize-PdfNoiseText."
+            Write-Verbose ('Pipeline [Normalisation]: fin - texte ajuste (' + $linesIn.Count + ' lignes) via Normalize-PdfNoiseText.')
         }
 
         # --- 2. Find-Anchors ---
@@ -99,7 +100,7 @@ function Invoke-PdfExtractionPipeline {
         # --- 5. Extraction + scoring (Get-BestAnchorMatch dans Extract-AnchorEntities) ---
         Write-Verbose 'Pipeline [Extract-AnchorEntities / scoring]: début.'
         $entities = @(Extract-AnchorEntities -ValidatedBlocks $validation -Blocks $blocks -Text $workingText -Verbose)
-        Write-Verbose "Pipeline [Extract-AnchorEntities / scoring]: fin — $($entities.Count) ligne(s) entité(s)."
+        Write-Verbose "Pipeline [Extract-AnchorEntities / scoring]: fin — $($entities.Count) lignes entite(s)."
 
         # --- 5b. Confiance entités (MVP) — rapports validation passés via -Blocks (alias BlockValidation) ---
         Write-Verbose 'Pipeline [Compute-EntityConfidence]: début.'
@@ -141,7 +142,7 @@ function Invoke-PdfExtractionPipeline {
     }
     catch {
         if ($sw.IsRunning) { $sw.Stop() }
-        throw "PdfExtractionPipeline: échec — $($_.Exception.Message)"
+        throw ('PdfExtractionPipeline: echec - ' + $_.Exception.Message)
     }
     finally {
         $ErrorActionPreference = $previousEap
@@ -156,10 +157,10 @@ if ($MyInvocation.InvocationName -ne '.') {
         Write-Warning "PdfExtractionPipeline: fichier d’exemple introuvable : $samplePath"
     }
     else {
-        Write-Host "=== PdfExtractionPipeline — test sur : $samplePath ===" -ForegroundColor Cyan
+        Write-Host ('=== PdfExtractionPipeline - test sur : ' + $samplePath + ' ===') -ForegroundColor Cyan
         $raw = Get-Content -LiteralPath $samplePath -Raw -Encoding UTF8
         $result = Invoke-PdfExtractionPipeline -Text $raw -SourceFile $samplePath -Verbose
-        Write-Host "--- Routage (nombre d'éléments par catégorie) ---" -ForegroundColor Cyan
+        Write-Host '--- Routage (elements par categorie) ---' -ForegroundColor Cyan
         Write-Host ("OkEntities    : {0}" -f @($result.Routing.OkEntities).Count)
         Write-Host ("ReviewQueue   : {0}" -f @($result.Routing.ReviewQueue).Count)
         Write-Host ("Rejected      : {0}" -f @($result.Routing.Rejected).Count)

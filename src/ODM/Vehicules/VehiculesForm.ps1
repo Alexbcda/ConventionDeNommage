@@ -1,4 +1,4 @@
-# VehiculesForm.ps1 - Formulaire d'ajout/modification de véhicule
+﻿# VehiculesForm.ps1 - Formulaire d'ajout/modification de véhicule
 
 . "$PSScriptRoot\..\..\Database\Database.ps1"
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
