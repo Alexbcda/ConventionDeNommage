@@ -7,16 +7,34 @@ if (-not (Get-Command Convert-ToUiText -ErrorAction SilentlyContinue)) {
 }
 . "$scriptDir\Common\Styles.ps1"
 
+function Ensure-WinFormsInitialized {
+    if (-not (Get-Command Initialize-ApplicationWinForms -ErrorAction SilentlyContinue)) {
+        $_boot = Join-Path $PSScriptRoot 'Common\WinFormsBootstrap.ps1'
+        if (Test-Path -LiteralPath $_boot) {
+            . $_boot
+        }
+    }
+    if (Get-Command Initialize-ApplicationWinForms -ErrorAction SilentlyContinue) {
+        Initialize-ApplicationWinForms
+    }
+    else {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+        Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
+        [System.Windows.Forms.Application]::EnableVisualStyles()
+        [System.Windows.Forms.Application]::SetCompatibleTextRenderingDefault($false)
+        $global:WinFormsInitialized = $true
+        $global:WinFormsApplicationInitialized = $true
+    }
+}
+
 function Start-GUI {
     param([string]$FichierPDF)
 
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
-    [System.Windows.Forms.Application]::EnableVisualStyles()
-    [System.Windows.Forms.Application]::SetCompatibleTextRenderingDefault($false)
+    Ensure-WinFormsInitialized
     Initialize-WinFormsUiCultureFrFr
 
     . "$PSScriptRoot\Config.ps1"
+    . "$scriptDir\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1"
     . "$PSScriptRoot\ODM\ConventionNommage\ConventionNommage.ps1"
     . "$PSScriptRoot\ODM\Agents\AgentPanel.ps1"
     . "$PSScriptRoot\ODM\Agents\AgentRepository.ps1"
@@ -27,37 +45,39 @@ function Start-GUI {
     . "$PSScriptRoot\ODM\Affectations\AffectationNbTournees.ps1"
     . "$PSScriptRoot\ODM\Affectations\AffectationNbTourneesPanel.ps1"
         
-    $form = New-Object System.Windows.Forms.Form
+    $form = [System.Windows.Forms.Form]::new()
     $form.Text = "Convention de nommage"
-    $form.Size = New-Object System.Drawing.Size(1400, 800)
+    $form.Size = [System.Drawing.Size]::new(1400, 800)
     $form.StartPosition = "CenterScreen"
-    $form.MinimumSize = New-Object System.Drawing.Size(1000, 650)
+    $form.MinimumSize = [System.Drawing.Size]::new(1000, 650)
     $form.Font = $script:PoliceNormal
     $form.BackColor = $script:CouleurGrisFond
     $null = $form.Add_Load({
         $null = [System.Text.Encoding]::Default
     })
 
-    $tabControl = New-Object System.Windows.Forms.TabControl
+    $tabControl = [System.Windows.Forms.TabControl]::new()
     $tabControl.Dock = "Fill"
     $tabControl.Font = $script:PoliceNormal
     $tabControl.Name = "MainTabControl"
 
     # ONGLET 1 : Convention de nommage
-    $tabRename = New-Object System.Windows.Forms.TabPage
+    $tabRename = [System.Windows.Forms.TabPage]::new()
+    $tabRename.Name = "TabConventionNommage"
     $tabRename.Text = "Convention de nommage"
     $tabRename.BackColor = $script:CouleurGrisFond
     
     $panelResult = Show-ConventionNommagePanel -FichierPDF $FichierPDF
     $realPanel = $panelResult[-1]
     $tabRename.Controls.Add($realPanel)
+    if ($realPanel) { $realPanel.Name = "ConventionNommageRootPanel" }
     $tabControl.TabPages.Add($tabRename)
 
     # ONGLET 2 : Affectation
-    $tabAffectation = New-Object System.Windows.Forms.TabPage
+    $tabAffectation = [System.Windows.Forms.TabPage]::new()
     $tabAffectation.Text = "Affectation"
     $tabAffectation.BackColor = $script:CouleurGrisFond
-    $affectationContainer = New-Object System.Windows.Forms.Panel
+    $affectationContainer = [System.Windows.Forms.Panel]::new()
     $affectationContainer.Dock = "Fill"
     $affectationContainer.Name = "AffectationContainer"
     $panelDate = Show-DatePanel -NextPanel $null -CurrentPanel $null
@@ -74,7 +94,7 @@ function Start-GUI {
     $form.Tag = $affectationContainer
 
     # ONGLET 3 : Agents
-    $tabAgents = New-Object System.Windows.Forms.TabPage
+    $tabAgents = [System.Windows.Forms.TabPage]::new()
     $tabAgents.Text = "Données agents"
     $tabAgents.BackColor = $script:CouleurGrisFond
     
@@ -83,7 +103,7 @@ function Start-GUI {
         $agentsPanel.Dock = "Fill"
         $tabAgents.Controls.Add($agentsPanel)
     } else {
-        $lblError = New-Object System.Windows.Forms.Label
+        $lblError = [System.Windows.Forms.Label]::new()
         $lblError.Text = "Erreur de chargement du panneau des agents"
         $lblError.Dock = "Fill"
         $lblError.TextAlign = "MiddleCenter"
@@ -93,7 +113,7 @@ function Start-GUI {
     $tabControl.TabPages.Add($tabAgents)
 
     # ONGLET 4 : Vehicules
-    $tabVehicules = New-Object System.Windows.Forms.TabPage
+    $tabVehicules = [System.Windows.Forms.TabPage]::new()
     $tabVehicules.Text = "Données véhicules"
     $tabVehicules.BackColor = $script:CouleurGrisFond
     $vehiculesPanel = Show-VehiculesPanel -Vehicules (Get-Vehicules)
@@ -103,13 +123,32 @@ function Start-GUI {
     }
     $tabControl.TabPages.Add($tabVehicules)
 
+    # ONGLET 5 : Edition planning
+    $tabPlanning = [System.Windows.Forms.TabPage]::new()
+    $tabPlanning.Text = "Edition planning"
+    $tabPlanning.BackColor = $script:CouleurGrisFond
+    $planningPanel = Show-PlanningRebuilderPanel
+    if ($planningPanel) {
+        $planningPanel.Dock = "Fill"
+        $tabPlanning.Controls.Add($planningPanel)
+    }
+    $tabControl.TabPages.Add($tabPlanning)
+
     $form.Controls.Add($tabControl)
     Update-WinFormsTreeUiTexts -RootControl $form
 
     $form.Add_Shown({
+        param($sender, $e)
         Start-Sleep -Milliseconds 100
-        if ($realPanel) {
-            $txtBox = $realPanel.Controls | Where-Object { $_ -is [System.Windows.Forms.TextBox] }
+        $frm = $sender
+        if ($null -eq $frm -or $frm -isnot [System.Windows.Forms.Form]) { return }
+        $tabs = $frm.Controls["MainTabControl"]
+        if ($null -eq $tabs -or $tabs -isnot [System.Windows.Forms.TabControl]) { return }
+        $tab = $tabs.TabPages["TabConventionNommage"]
+        if ($null -eq $tab) { return }
+        $rootPanel = $tab.Controls["ConventionNommageRootPanel"]
+        if ($null -ne $rootPanel) {
+            $txtBox = $rootPanel.Controls | Where-Object { $_ -is [System.Windows.Forms.TextBox] }
             if ($txtBox) { $txtBox.Focus() }
         }
     })
@@ -119,8 +158,7 @@ function Start-GUI {
 
 function Show-PDFViewer {
     param([string]$FilePath, [string]$Title = "Visionneuse PDF")
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
+    Ensure-WinFormsInitialized
     if (-not (Get-Command Convert-ToUiText -ErrorAction SilentlyContinue)) {
         $sd = Split-Path -Parent $MyInvocation.MyCommand.Path
         . (Join-Path $sd 'Common\TextEncoding.ps1')
@@ -133,25 +171,29 @@ function Show-PDFViewer {
         [System.Windows.Forms.MessageBox]::Show($msg, $cap)
         return
     }
-    $form = New-Object System.Windows.Forms.Form
+    $form = [System.Windows.Forms.Form]::new()
     $null = $form.Add_Load({ $null = [System.Text.Encoding]::Default })
     $form.Text = Convert-ToUiText -Text $Title
-    $form.Size = New-Object System.Drawing.Size(1000, 700)
+    $form.Size = [System.Drawing.Size]::new(1000, 700)
     $form.StartPosition = "CenterScreen"
-    $webBrowser = New-Object System.Windows.Forms.WebBrowser
+    $webBrowser = [System.Windows.Forms.WebBrowser]::new()
     $webBrowser.Dock = "Fill"
     try { $webBrowser.Navigate($FilePath); $form.Controls.Add($webBrowser) }
     catch { Start-Process $FilePath }
-    $btnClose = New-Object System.Windows.Forms.Button
+    $btnClose = [System.Windows.Forms.Button]::new()
     $btnClose.Text = Convert-ToUiText -Text 'FERMER'
-    $btnClose.Size = New-Object System.Drawing.Size(100, 40)
+    $btnClose.Size = [System.Drawing.Size]::new(100, 40)
     $btnClose.Anchor = "Bottom,Right"
-    $btnClose.Location = New-Object System.Drawing.Point($form.ClientSize.Width - 120, $form.ClientSize.Height - 50)
+    $btnClose.Location = [System.Drawing.Point]::new($form.ClientSize.Width - 120, $form.ClientSize.Height - 50)
     $btnClose.BackColor = $script:CouleurOrange
     $btnClose.ForeColor = $script:CouleurBlanc
     $btnClose.FlatStyle = "Flat"
     $btnClose.Font = $script:PoliceBouton
-    $btnClose.Add_Click({ $form.Close() })
+    $btnClose.Add_Click({
+        param($sender, $e)
+        $frm = $sender.FindForm()
+        if ($null -ne $frm) { $frm.Close() }
+    })
     $form.Controls.Add($btnClose)
     $form.ShowDialog()
 }

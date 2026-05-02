@@ -109,9 +109,9 @@ function Show-VehiculeForm {
         return ""
     }
 
-    $form = New-Object System.Windows.Forms.Form
+    $form = [System.Windows.Forms.Form]::new()
     $form.Text = "$Mode un véhicule"
-    $form.Size = New-Object System.Drawing.Size(650, 760)
+    $form.Size = [System.Drawing.Size]::new(650, 760)
     $form.StartPosition = "CenterParent"
     $form.BackColor = $script:CouleurGrisFond
     $form.FormBorderStyle = "FixedDialog"
@@ -123,7 +123,7 @@ function Show-VehiculeForm {
     $fieldWidth = 320
     $leftMargin = 30
     $fieldLeft = $leftMargin + $labelWidth
-    $smallErrorFont = New-Object System.Drawing.Font("Segoe UI", 8)
+    $smallErrorFont = [System.Drawing.Font]::new("Segoe UI", 8)
 
     function Add-Field {
         param(
@@ -133,26 +133,26 @@ function Show-VehiculeForm {
             [int]$MaxLength = 0,
             [ref]$CurrentY
         )
-        $lbl = New-Object System.Windows.Forms.Label
+        $lbl = [System.Windows.Forms.Label]::new()
         $lbl.Text = $LabelText
-        $lbl.Location = New-Object System.Drawing.Point($leftMargin, $CurrentY.Value)
-        $lbl.Size = New-Object System.Drawing.Size($labelWidth, 25)
+        $lbl.Location = [System.Drawing.Point]::new($leftMargin, $CurrentY.Value)
+        $lbl.Size = [System.Drawing.Size]::new($labelWidth, 25)
         $form.Controls.Add($lbl)
 
-        $txt = New-Object System.Windows.Forms.TextBox
-        $txt.Location = New-Object System.Drawing.Point($fieldLeft, $CurrentY.Value)
-        $txt.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+        $txt = [System.Windows.Forms.TextBox]::new()
+        $txt.Location = [System.Drawing.Point]::new($fieldLeft, $CurrentY.Value)
+        $txt.Size = [System.Drawing.Size]::new($fieldWidth, 25)
         if ($MaxLength -gt 0) { $txt.MaxLength = $MaxLength }
         $txt.Text = $InitialValue
         $form.Controls.Add($txt)
 
-        $info = New-Object System.Windows.Forms.Label
+        $info = [System.Windows.Forms.Label]::new()
         $info.Text = ""
         if ($Optional) { $info.Text = "Optionnel" }
         $info.ForeColor = if ($Optional) { $script:CouleurOrangeClair } else { $script:CouleurOrange }
         $info.Font = $smallErrorFont
-        $info.Location = New-Object System.Drawing.Point($fieldLeft, ($CurrentY.Value + 28))
-        $info.Size = New-Object System.Drawing.Size($fieldWidth, 15)
+        $info.Location = [System.Drawing.Point]::new($fieldLeft, ($CurrentY.Value + 28))
+        $info.Size = [System.Drawing.Size]::new($fieldWidth, 15)
         $form.Controls.Add($info)
 
         $script:__vehicule_lastErrorLabel = $info
@@ -180,15 +180,15 @@ function Show-VehiculeForm {
     $txtModele = $script:__vehicule_lastTextBox
     $lblModeleInfo = $script:__vehicule_lastErrorLabel
 
-    $lblMise = New-Object System.Windows.Forms.Label
+    $lblMise = [System.Windows.Forms.Label]::new()
     $lblMise.Text = "Mise en circulation * :"
-    $lblMise.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
-    $lblMise.Size = New-Object System.Drawing.Size($labelWidth, 25)
+    $lblMise.Location = [System.Drawing.Point]::new($leftMargin, $yPos)
+    $lblMise.Size = [System.Drawing.Size]::new($labelWidth, 25)
     $form.Controls.Add($lblMise)
 
-    $dtMise = New-Object System.Windows.Forms.DateTimePicker
-    $dtMise.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
-    $dtMise.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+    $dtMise = [System.Windows.Forms.DateTimePicker]::new()
+    $dtMise.Location = [System.Drawing.Point]::new($fieldLeft, $yPos)
+    $dtMise.Size = [System.Drawing.Size]::new($fieldWidth, 25)
     $dtMise.Format = [System.Windows.Forms.DateTimePickerFormat]::Custom
     $dtMise.CustomFormat = "dd/MM/yyyy"
     if ($Vehicule -and $Vehicule.dateMiseCirculation) {
@@ -199,24 +199,24 @@ function Show-VehiculeForm {
     }
     $form.Controls.Add($dtMise)
 
-    $lblMiseError = New-Object System.Windows.Forms.Label
+    $lblMiseError = [System.Windows.Forms.Label]::new()
     $lblMiseError.Text = ""
     $lblMiseError.ForeColor = $script:CouleurOrange
     $lblMiseError.Font = $smallErrorFont
-    $lblMiseError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
-    $lblMiseError.Size = New-Object System.Drawing.Size($fieldWidth, 15)
+    $lblMiseError.Location = [System.Drawing.Point]::new($fieldLeft, ($yPos + 28))
+    $lblMiseError.Size = [System.Drawing.Size]::new($fieldWidth, 15)
     $form.Controls.Add($lblMiseError)
     $yPos += 55
 
-    $lblDateEntree = New-Object System.Windows.Forms.Label
+    $lblDateEntree = [System.Windows.Forms.Label]::new()
     $lblDateEntree.Text = "Date d'entrée * :"
-    $lblDateEntree.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
-    $lblDateEntree.Size = New-Object System.Drawing.Size($labelWidth, 25)
+    $lblDateEntree.Location = [System.Drawing.Point]::new($leftMargin, $yPos)
+    $lblDateEntree.Size = [System.Drawing.Size]::new($labelWidth, 25)
     $form.Controls.Add($lblDateEntree)
 
-    $dtDateEntree = New-Object System.Windows.Forms.DateTimePicker
-    $dtDateEntree.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
-    $dtDateEntree.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+    $dtDateEntree = [System.Windows.Forms.DateTimePicker]::new()
+    $dtDateEntree.Location = [System.Drawing.Point]::new($fieldLeft, $yPos)
+    $dtDateEntree.Size = [System.Drawing.Size]::new($fieldWidth, 25)
     $dtDateEntree.Format = [System.Windows.Forms.DateTimePickerFormat]::Custom
     $dtDateEntree.CustomFormat = "dd/MM/yyyy"
     if ($Vehicule -and $Vehicule.dateEntree) {
@@ -227,24 +227,24 @@ function Show-VehiculeForm {
     }
     $form.Controls.Add($dtDateEntree)
 
-    $lblDateEntreeError = New-Object System.Windows.Forms.Label
+    $lblDateEntreeError = [System.Windows.Forms.Label]::new()
     $lblDateEntreeError.Text = ""
     $lblDateEntreeError.ForeColor = $script:CouleurOrange
     $lblDateEntreeError.Font = $smallErrorFont
-    $lblDateEntreeError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
-    $lblDateEntreeError.Size = New-Object System.Drawing.Size($fieldWidth, 15)
+    $lblDateEntreeError.Location = [System.Drawing.Point]::new($fieldLeft, ($yPos + 28))
+    $lblDateEntreeError.Size = [System.Drawing.Size]::new($fieldWidth, 15)
     $form.Controls.Add($lblDateEntreeError)
     $yPos += 55
 
-    $lblSortie = New-Object System.Windows.Forms.Label
+    $lblSortie = [System.Windows.Forms.Label]::new()
     $lblSortie.Text = "Date de sortie :"
-    $lblSortie.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
-    $lblSortie.Size = New-Object System.Drawing.Size($labelWidth, 25)
+    $lblSortie.Location = [System.Drawing.Point]::new($leftMargin, $yPos)
+    $lblSortie.Size = [System.Drawing.Size]::new($labelWidth, 25)
     $form.Controls.Add($lblSortie)
 
-    $dtSortie = New-Object System.Windows.Forms.DateTimePicker
-    $dtSortie.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
-    $dtSortie.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+    $dtSortie = [System.Windows.Forms.DateTimePicker]::new()
+    $dtSortie.Location = [System.Drawing.Point]::new($fieldLeft, $yPos)
+    $dtSortie.Size = [System.Drawing.Size]::new($fieldWidth, 25)
     $dtSortie.Format = [System.Windows.Forms.DateTimePickerFormat]::Custom
     $dtSortie.CustomFormat = "dd/MM/yyyy"
     $dtSortie.ShowCheckBox = $true
@@ -258,24 +258,24 @@ function Show-VehiculeForm {
     }
     $form.Controls.Add($dtSortie)
 
-    $lblDateSortieError = New-Object System.Windows.Forms.Label
+    $lblDateSortieError = [System.Windows.Forms.Label]::new()
     $lblDateSortieError.Text = ""
     $lblDateSortieError.ForeColor = $script:CouleurOrange
     $lblDateSortieError.Font = $smallErrorFont
-    $lblDateSortieError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
-    $lblDateSortieError.Size = New-Object System.Drawing.Size($fieldWidth, 15)
+    $lblDateSortieError.Location = [System.Drawing.Point]::new($fieldLeft, ($yPos + 28))
+    $lblDateSortieError.Size = [System.Drawing.Size]::new($fieldWidth, 15)
     $form.Controls.Add($lblDateSortieError)
     $yPos += 55
 
-    $lblFinCtrl = New-Object System.Windows.Forms.Label
+    $lblFinCtrl = [System.Windows.Forms.Label]::new()
     $lblFinCtrl.Text = "Contrôle technique (date limite) :"
-    $lblFinCtrl.Location = New-Object System.Drawing.Point($leftMargin, $yPos)
-    $lblFinCtrl.Size = New-Object System.Drawing.Size($labelWidth, 25)
+    $lblFinCtrl.Location = [System.Drawing.Point]::new($leftMargin, $yPos)
+    $lblFinCtrl.Size = [System.Drawing.Size]::new($labelWidth, 25)
     $form.Controls.Add($lblFinCtrl)
 
-    $dtFinControleTechnique = New-Object System.Windows.Forms.DateTimePicker
-    $dtFinControleTechnique.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
-    $dtFinControleTechnique.Size = New-Object System.Drawing.Size($fieldWidth, 25)
+    $dtFinControleTechnique = [System.Windows.Forms.DateTimePicker]::new()
+    $dtFinControleTechnique.Location = [System.Drawing.Point]::new($fieldLeft, $yPos)
+    $dtFinControleTechnique.Size = [System.Drawing.Size]::new($fieldWidth, 25)
     $dtFinControleTechnique.Format = [System.Windows.Forms.DateTimePickerFormat]::Custom
     $dtFinControleTechnique.CustomFormat = "dd/MM/yyyy"
     $dtFinControleTechnique.ShowCheckBox = $true
@@ -289,25 +289,29 @@ function Show-VehiculeForm {
     }
     $form.Controls.Add($dtFinControleTechnique)
 
-    $lblFinControleTechniqueError = New-Object System.Windows.Forms.Label
+    $lblFinControleTechniqueError = [System.Windows.Forms.Label]::new()
     $lblFinControleTechniqueError.Text = ""
     $lblFinControleTechniqueError.ForeColor = $script:CouleurOrangeClair
     $lblFinControleTechniqueError.Font = $smallErrorFont
-    $lblFinControleTechniqueError.Location = New-Object System.Drawing.Point($fieldLeft, ($yPos + 28))
-    $lblFinControleTechniqueError.Size = New-Object System.Drawing.Size($fieldWidth, 15)
+    $lblFinControleTechniqueError.Location = [System.Drawing.Point]::new($fieldLeft, ($yPos + 28))
+    $lblFinControleTechniqueError.Size = [System.Drawing.Size]::new($fieldWidth, 15)
     $form.Controls.Add($lblFinControleTechniqueError)
     $yPos += 55
 
-    $btnOk = New-Object System.Windows.Forms.Button
+    $btnOk = [System.Windows.Forms.Button]::new()
     Set-BtnValiderStyle -BtnValider $btnOk
-    $btnOk.Location = New-Object System.Drawing.Point($fieldLeft, $yPos)
+    $btnOk.Location = [System.Drawing.Point]::new($fieldLeft, $yPos)
     $form.Controls.Add($btnOk)
     $form.AcceptButton = $btnOk
 
-    $btnCancel = New-Object System.Windows.Forms.Button
+    $btnCancel = [System.Windows.Forms.Button]::new()
     Set-BtnQuitterStyle -BtnQuitter $btnCancel
-    $btnCancel.Location = New-Object System.Drawing.Point(($fieldLeft + 120), $yPos)
-    $btnCancel.Add_Click({ $form.Close() })
+    $btnCancel.Location = [System.Drawing.Point]::new(($fieldLeft + 120), $yPos)
+    $btnCancel.Add_Click({
+        param($sender, $e)
+        $frm = $sender.FindForm()
+        if ($null -ne $frm) { $frm.Close() }
+    })
     $form.Controls.Add($btnCancel)
 
     $form.Tag = $null

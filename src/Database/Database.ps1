@@ -8,6 +8,7 @@ $script:DbPath  = Join-Path $PSScriptRoot "..\..\Data\gestion.db"
 $script:DllPath = Join-Path $PSScriptRoot "..\..\lib\System.Data.SQLite.dll"
 . (Join-Path $PSScriptRoot '..\Common\DesktopSecurity.ps1')
 . (Join-Path $PSScriptRoot "..\Core\Logger.ps1")
+. (Join-Path $PSScriptRoot "..\Common\ScalarGuard.ps1")
 
 $script:POSTES = @(
     'Collecteur',
@@ -190,7 +191,201 @@ SET actif = CASE
 END
 "@
     $rows = $cmd.ExecuteNonQuery()
-    Write-Log "[DB] Synced Vehicule.actif from date_sortie" "INFO" @{ rows = $rows }
+    Write-Log "[DB] Synced Vehicule.actif from date_sortie" "INFO" @{ rows = $rows     }
+}
+
+function Initialize-CalendarIndexTable {
+    <#
+    .SYNOPSIS
+        Table d’index planning (fichier Excel importé) : cache SQLite pour résolution date → colonne.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        $Connection
+    )
+    $cmd = $Connection.CreateCommand()
+    $cmd.CommandText = @"
+CREATE TABLE IF NOT EXISTS calendar_index (
+  file_id TEXT NOT NULL,
+  sheet TEXT NOT NULL,
+  semaine TEXT NOT NULL,
+  date TEXT NOT NULL,
+  column_index INTEGER NOT NULL,
+  header_row INTEGER NOT NULL,
+  header_text TEXT
+);
+"@
+    $null = $cmd.ExecuteNonQuery()
+    $c2 = $Connection.CreateCommand()
+    $c2.CommandText = "CREATE UNIQUE INDEX IF NOT EXISTS uq_calendar_file_date ON calendar_index (file_id, date);"
+    $null = $c2.ExecuteNonQuery()
+    $c3 = $Connection.CreateCommand()
+    $c3.CommandText = "CREATE INDEX IF NOT EXISTS idx_calendar_semaine_date ON calendar_index (semaine, date);"
+    $null = $c3.ExecuteNonQuery()
+    $c4 = $Connection.CreateCommand()
+    $c4.CommandText = "CREATE INDEX IF NOT EXISTS idx_calendar_file_id ON calendar_index (file_id);"
+    $null = $c4.ExecuteNonQuery()
+}
+
+function Get-CalendarIndexFileRowCount {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FileId
+    )
+    $FileId = [string](Normalize-Scalar -Value $FileId -Name "Get-CalendarIndexFileRowCount.file_id")
+    Ensure-SqliteLoaded | Out-Null
+    $conn = Open-Connection
+    try {
+        $null = Initialize-CalendarIndexTable -Connection $conn
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = "SELECT COUNT(1) FROM calendar_index WHERE file_id = @fid"
+        $cmd.Parameters.AddWithValue("@fid", $FileId) | Out-Null
+        $n = $cmd.ExecuteScalar()
+        if ($null -eq $n -or [System.DBNull]::Value.Equals($n)) { return 0L }
+        return [int64][Math]::Round([double]("$n"))
+    } finally {
+        Close-Connection $conn
+    }
+}
+
+function Get-CalendarIndexPlanningRow {
+    <#
+    .SYNOPSIS
+        Recherche index planning : d’abord (file_id, date, semaine), puis (file_id, date) seul.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FileId,
+        [Parameter(Mandatory = $true)]
+        [string]$DateNorm,
+        [Parameter(Mandatory = $true)]
+        [string]$Semaine
+    )
+    $FileId = [string](Normalize-Scalar -Value $FileId -Name "Get-CalendarIndexPlanningRow.file_id")
+    $DateNorm = [string](Normalize-Scalar -Value $DateNorm -Name "Get-CalendarIndexPlanningRow.date")
+    $Semaine = [string](Normalize-Scalar -Value $Semaine -Name "Get-CalendarIndexPlanningRow.semaine")
+    Ensure-SqliteLoaded | Out-Null
+    $conn = Open-Connection
+    try {
+        $null = Initialize-CalendarIndexTable -Connection $conn
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+SELECT sheet, column_index, header_row, header_text, semaine
+FROM calendar_index
+WHERE file_id = @fid AND date = @d AND semaine = @w
+LIMIT 1
+"@
+        $cmd.Parameters.AddWithValue("@fid", $FileId) | Out-Null
+        $cmd.Parameters.AddWithValue("@d", $DateNorm) | Out-Null
+        $cmd.Parameters.AddWithValue("@w", $Semaine) | Out-Null
+        $r = $cmd.ExecuteReader()
+        try {
+                if ($r.Read()) {
+                $hRaw = $r["header_text"]
+                $hTxt = if ($null -eq $hRaw -or [System.DBNull]::Value.Equals($hRaw)) { '' } else { [string]$hRaw }
+                $ci = (ConvertTo-SafeInt -Value $r["column_index"] -Name "calendar_index.column_index")
+                $hr = (ConvertTo-SafeInt -Value $r["header_row"] -Name "calendar_index.header_row")
+                return [pscustomobject]@{
+                    sheet         = [string](Normalize-Scalar -Value $r["sheet"] -Name "calendar_index.sheet")
+                    column_index  = $ci
+                    header_row    = $hr
+                    header_text   = $hTxt
+                    semaine       = [string](Normalize-Scalar -Value $r["semaine"] -Name "calendar_index.semaine")
+                }
+            }
+        } finally { if ($r) { $r.Close() } }
+
+        $cmd2 = $conn.CreateCommand()
+        $cmd2.CommandText = @"
+SELECT sheet, column_index, header_row, header_text, semaine
+FROM calendar_index
+WHERE file_id = @fid AND date = @d
+LIMIT 1
+"@
+        $cmd2.Parameters.AddWithValue("@fid", $FileId) | Out-Null
+        $cmd2.Parameters.AddWithValue("@d", $DateNorm) | Out-Null
+        $r2 = $cmd2.ExecuteReader()
+        try {
+            if ($r2.Read()) {
+                $h2 = $r2["header_text"]
+                $h2t = if ($null -eq $h2 -or [System.DBNull]::Value.Equals($h2)) { '' } else { [string]$h2 }
+                $ci2 = (ConvertTo-SafeInt -Value $r2["column_index"] -Name "calendar_index.column_index.b")
+                $hr2 = (ConvertTo-SafeInt -Value $r2["header_row"] -Name "calendar_index.header_row.b")
+                return [pscustomobject]@{
+                    sheet         = [string](Normalize-Scalar -Value $r2["sheet"] -Name "calendar_index.sheet.b")
+                    column_index  = $ci2
+                    header_row    = $hr2
+                    header_text   = $h2t
+                    semaine       = [string](Normalize-Scalar -Value $r2["semaine"] -Name "calendar_index.semaine.b")
+                }
+            }
+        } finally { if ($r2) { $r2.Close() } }
+        return $null
+    } finally {
+        Close-Connection $conn
+    }
+}
+
+function Save-CalendarIndexForFile {
+    <#
+    .SYNOPSIS
+        Remplace toutes les entrées d’index pour un file_id (réimport Excel).
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FileId,
+        [Parameter(Mandatory = $true)]
+        [object[]]$Rows
+    )
+    $FileId = [string](Normalize-Scalar -Value $FileId -Name "Save-CalendarIndexForFile.file_id")
+    Ensure-SqliteLoaded | Out-Null
+    $parent = Split-Path -Parent -Path $script:DbPath
+    if (-not [string]::IsNullOrEmpty($parent) -and -not (Test-Path -LiteralPath $parent)) {
+        $null = New-Item -ItemType Directory -Path $parent -Force
+    }
+    if (-not (Test-Path -LiteralPath $script:DbPath)) {
+        $null = [System.IO.File]::WriteAllBytes($script:DbPath, [byte[]]@())
+    }
+    $conn = Open-Connection
+    $trans = $null
+    try {
+        $null = Initialize-CalendarIndexTable -Connection $conn
+        $trans = $conn.BeginTransaction()
+        $cmdDel = $conn.CreateCommand()
+        $cmdDel.Transaction = $trans
+        $cmdDel.CommandText = "DELETE FROM calendar_index WHERE file_id = @fid"
+        $cmdDel.Parameters.AddWithValue("@fid", $FileId) | Out-Null
+        $null = $cmdDel.ExecuteNonQuery()
+
+        $ins = @"
+INSERT INTO calendar_index (file_id, sheet, semaine, date, column_index, header_row, header_text)
+VALUES (@fid, @s, @sem, @d, @ci, @hr, @ht)
+"@
+        foreach ($row in $Rows) {
+            if ($null -eq $row) { continue }
+            $cmdI = $conn.CreateCommand()
+            $cmdI.Transaction = $trans
+            $cmdI.CommandText = $ins
+            $cmdI.Parameters.AddWithValue("@fid", $FileId) | Out-Null
+            $cmdI.Parameters.AddWithValue("@s", [string](Normalize-Scalar -Value $row.sheet -Name "row.sheet")) | Out-Null
+            $cmdI.Parameters.AddWithValue("@sem", [string](Normalize-Scalar -Value $row.semaine -Name "row.semaine")) | Out-Null
+            $cmdI.Parameters.AddWithValue("@d", [string](Normalize-Scalar -Value $row.date -Name "row.date")) | Out-Null
+            $ciIns = (ConvertTo-SafeInt -Value $row.column_index -Name "row.column_index")
+            $hrIns = (ConvertTo-SafeInt -Value $row.header_row -Name "row.header_row")
+            $cmdI.Parameters.AddWithValue("@ci", $ciIns) | Out-Null
+            $cmdI.Parameters.AddWithValue("@hr", $hrIns) | Out-Null
+            $ht = if ($null -ne $row.PSObject.Properties['header_text'] -and $null -ne $row.header_text) { [string]$row.header_text } else { [string]::Empty }
+            $cmdI.Parameters.AddWithValue("@ht", $ht) | Out-Null
+            $null = $cmdI.ExecuteNonQuery()
+        }
+        $trans.Commit()
+        $trans = $null
+    } catch {
+        if ($null -ne $trans) { try { $trans.Rollback() } catch { } }
+        throw
+    } finally {
+        Close-Connection $conn
+    }
 }
 
 function Invoke-DatabaseMigrations {
@@ -210,6 +405,8 @@ WHERE numero_parc IS NULL OR TRIM(numero_parc) = ''
         $null = $cmdFixParc.ExecuteNonQuery()
 
         Update-VehiculeActifFromDates -Connection $conn
+
+        $null = Initialize-CalendarIndexTable -Connection $conn
     } finally {
         Close-Connection $conn
     }
@@ -242,7 +439,7 @@ function Initialize-Database {
 
 function Open-Connection {
     Ensure-SqliteLoaded | Out-Null
-    $conn = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$script:DbPath;Version=3;")
+    $conn = [System.Data.SQLite.SQLiteConnection]::new("Data Source=$script:DbPath;Version=3;")
     $conn.Open()
     return $conn
 }

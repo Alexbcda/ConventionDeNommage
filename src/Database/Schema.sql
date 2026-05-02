@@ -45,3 +45,17 @@ CREATE INDEX IF NOT EXISTS idx_agent_poste ON Agent(poste);
 CREATE INDEX IF NOT EXISTS idx_agent_actif ON Agent(actif);
 CREATE INDEX IF NOT EXISTS idx_vehicule_immat ON Vehicule(immatriculation);
 CREATE INDEX IF NOT EXISTS idx_vehicule_parc ON Vehicule(numero_parc);
+
+-- Cache planning (import Excel) — voir Database.ps1 Initialize-CalendarIndexTable / migrations
+CREATE TABLE IF NOT EXISTS calendar_index (
+  file_id TEXT NOT NULL,
+  sheet TEXT NOT NULL,
+  semaine TEXT NOT NULL,
+  date TEXT NOT NULL,
+  column_index INTEGER NOT NULL,
+  header_row INTEGER NOT NULL,
+  header_text TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_calendar_file_date ON calendar_index (file_id, date);
+CREATE INDEX IF NOT EXISTS idx_calendar_semaine_date ON calendar_index (semaine, date);
+CREATE INDEX IF NOT EXISTS idx_calendar_file_id ON calendar_index (file_id);

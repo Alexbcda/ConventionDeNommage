@@ -15,9 +15,9 @@ function Show-AgentForm {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
-    $form = New-Object System.Windows.Forms.Form
+    $form = [System.Windows.Forms.Form]::new()
     $form.Text = "$Mode un agent"
-    $form.Size = New-Object System.Drawing.Size(650, 650)
+    $form.Size = [System.Drawing.Size]::new(650, 650)
     $form.StartPosition = "CenterParent"
     $form.BackColor = $script:CouleurGrisFond
     $form.FormBorderStyle = "FixedDialog"
@@ -28,7 +28,7 @@ function Show-AgentForm {
     $labelW = 150
     $fieldW = 350
     $errorColor = [System.Drawing.Color]::FromArgb(180, 0, 0)
-    $errorFont = New-Object System.Drawing.Font("Arial", 8, [System.Drawing.FontStyle]::Regular)
+    $errorFont = [System.Drawing.Font]::new("Arial", 8, [System.Drawing.FontStyle]::Regular)
 
     $script:__telUpdating = $false
     $script:__telAllowFormatted = $false
@@ -37,10 +37,10 @@ function Show-AgentForm {
 
     function Add-ErrorLabel {
         param([int]$x, [int]$yPos)
-        $lbl = New-Object System.Windows.Forms.Label
+        $lbl = [System.Windows.Forms.Label]::new()
         $lbl.AutoSize = $false
-        $lbl.Size = New-Object System.Drawing.Size($fieldW, 18)
-        $lbl.Location = New-Object System.Drawing.Point($x, ($yPos + 24))
+        $lbl.Size = [System.Drawing.Size]::new($fieldW, 18)
+        $lbl.Location = [System.Drawing.Point]::new($x, ($yPos + 24))
         $lbl.ForeColor = $errorColor
         $lbl.Font = $errorFont
         $lbl.Text = ""
@@ -134,17 +134,17 @@ function Show-AgentForm {
     }
 
     function Add-Label($text) {
-        $lbl = New-Object System.Windows.Forms.Label
+        $lbl = [System.Windows.Forms.Label]::new()
         $lbl.Text = $text
-        $lbl.Location = New-Object System.Drawing.Point($left, $y)
-        $lbl.Size = New-Object System.Drawing.Size($labelW, 25)
+        $lbl.Location = [System.Drawing.Point]::new($left, $y)
+        $lbl.Size = [System.Drawing.Size]::new($labelW, 25)
         $form.Controls.Add($lbl)
     }
 
     function Add-TextBox($value) {
-        $txt = New-Object System.Windows.Forms.TextBox
-        $txt.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
-        $txt.Size = New-Object System.Drawing.Size($fieldW, 25)
+        $txt = [System.Windows.Forms.TextBox]::new()
+        $txt.Location = [System.Drawing.Point]::new(($left + $labelW), $y)
+        $txt.Size = [System.Drawing.Size]::new($fieldW, 25)
         $txt.Text = $value
         $form.Controls.Add($txt)
         return $txt
@@ -177,9 +177,9 @@ function Show-AgentForm {
 
     # CONTRAT
     Add-Label "Contrat :"
-    $cmbContrat = New-Object System.Windows.Forms.ComboBox
-    $cmbContrat.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
-    $cmbContrat.Size = New-Object System.Drawing.Size($fieldW, 25)
+    $cmbContrat = [System.Windows.Forms.ComboBox]::new()
+    $cmbContrat.Location = [System.Drawing.Point]::new(($left + $labelW), $y)
+    $cmbContrat.Size = [System.Drawing.Size]::new($fieldW, 25)
     $cmbContrat.DropDownStyle = "DropDownList"
     $cmbContrat.Items.AddRange(@("CDI","CDD","Interim","Apprentissage"))
     if ($Agent -and $Agent.type_contrat) {
@@ -192,8 +192,8 @@ function Show-AgentForm {
 
     # HEURES
     Add-Label "Heures/semaine :"
-    $numHeures = New-Object System.Windows.Forms.NumericUpDown
-    $numHeures.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+    $numHeures = [System.Windows.Forms.NumericUpDown]::new()
+    $numHeures.Location = [System.Drawing.Point]::new(($left + $labelW), $y)
     $numHeures.Minimum = 0
     $numHeures.Maximum = 60
     if ($Agent -and $Agent.base_heures_semaine) {
@@ -206,9 +206,9 @@ function Show-AgentForm {
 
     # POSTE
     Add-Label "Poste :"
-    $cmbPoste = New-Object System.Windows.Forms.ComboBox
-    $cmbPoste.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
-    $cmbPoste.Size = New-Object System.Drawing.Size($fieldW, 25)
+    $cmbPoste = [System.Windows.Forms.ComboBox]::new()
+    $cmbPoste.Location = [System.Drawing.Point]::new(($left + $labelW), $y)
+    $cmbPoste.Size = [System.Drawing.Size]::new($fieldW, 25)
     $cmbPoste.DropDownStyle = "DropDownList"
     $cmbPoste.Items.AddRange(@(Get-PostesListe))
     if ($Agent -and $Agent.poste) {
@@ -221,8 +221,8 @@ function Show-AgentForm {
 
     # DATE ENTREE (objet DateTime normal)
     Add-Label "Date entrée :"
-    $dtEntree = New-Object System.Windows.Forms.DateTimePicker
-    $dtEntree.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+    $dtEntree = [System.Windows.Forms.DateTimePicker]::new()
+    $dtEntree.Location = [System.Drawing.Point]::new(($left + $labelW), $y)
     # Format explicite pour éviter les saisies ambiguës (ex: "01 avril 2026" peut être rejeté et revenir à aujourd'hui)
     $dtEntree.Format = [System.Windows.Forms.DateTimePickerFormat]::Custom
     $dtEntree.CustomFormat = "dd/MM/yyyy"
@@ -234,8 +234,8 @@ function Show-AgentForm {
 
     # DATE SORTIE (objet DateTime normal)
     Add-Label "Date sortie :"
-    $dtSortie = New-Object System.Windows.Forms.DateTimePicker
-    $dtSortie.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+    $dtSortie = [System.Windows.Forms.DateTimePicker]::new()
+    $dtSortie.Location = [System.Drawing.Point]::new(($left + $labelW), $y)
     $dtSortie.Format = "Short"
     $dtSortie.ShowCheckBox = $true
     $dtSortie.Checked = $false
@@ -247,18 +247,22 @@ function Show-AgentForm {
     $y += 60
 
     # BOUTONS
-    $btnOk = New-Object System.Windows.Forms.Button
+    $btnOk = [System.Windows.Forms.Button]::new()
     $btnOk.Text = "VALIDER"
-    $btnOk.Location = New-Object System.Drawing.Point(($left + $labelW), $y)
+    $btnOk.Location = [System.Drawing.Point]::new(($left + $labelW), $y)
     Set-BtnValiderStyle -BtnValider $btnOk
     $form.Controls.Add($btnOk)
     $form.AcceptButton = $btnOk
 
-    $btnCancel = New-Object System.Windows.Forms.Button
+    $btnCancel = [System.Windows.Forms.Button]::new()
     $btnCancel.Text = "QUITTER"
-    $btnCancel.Location = New-Object System.Drawing.Point(($left + $labelW + 120), $y)
+    $btnCancel.Location = [System.Drawing.Point]::new(($left + $labelW + 120), $y)
     Set-BtnQuitterStyle -BtnQuitter $btnCancel
-    $btnCancel.Add_Click({ $form.Close() })
+    $btnCancel.Add_Click({
+        param($sender, $e)
+        $frm = $sender.FindForm()
+        if ($null -ne $frm) { $frm.Close() }
+    })
     $form.Controls.Add($btnCancel)
 
     # Stocker le résultat sur le Form pour éviter les soucis de scope dans les handlers WinForms

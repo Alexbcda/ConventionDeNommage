@@ -33,7 +33,7 @@ function Refresh-AgentsGrid {
         # Style texte: actifs en police normale, inactifs en gris clair (placeholder)
         $baseFont = $script:PoliceNormal
         if (-not $baseFont) { $baseFont = (if ($Grid.DefaultCellStyle.Font) { $Grid.DefaultCellStyle.Font } else { $Grid.Font }) }
-        $normalFont = New-Object System.Drawing.Font($baseFont, ([System.Drawing.FontStyle]::Regular))
+        $normalFont = [System.Drawing.Font]::new($baseFont, ([System.Drawing.FontStyle]::Regular))
         $inactiveColor = [System.Drawing.Color]::FromArgb(150, 150, 150)
 
         $i = 0
@@ -80,51 +80,51 @@ function Show-AgentsPanel {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
-    $mainPanel = New-Object System.Windows.Forms.Panel
+    $mainPanel = [System.Windows.Forms.Panel]::new()
     $mainPanel.Dock = "Fill"
     $mainPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
-    $mainPanel.Padding = New-Object System.Windows.Forms.Padding(20)
+    $mainPanel.Padding = [System.Windows.Forms.Padding]::new(20)
 
-    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle = [System.Windows.Forms.Label]::new()
     $lblTitle.Text = $script:TitrePanelAgents
     $lblTitle.Font = $script:PoliceTitreGestionFenetre
     $lblTitle.ForeColor = $script:CouleurOrange
-    $lblTitle.Location = New-Object System.Drawing.Point(20, 20)
-    $lblTitle.Size = New-Object System.Drawing.Size(400, 50)
+    $lblTitle.Location = [System.Drawing.Point]::new(20, 20)
+    $lblTitle.Size = [System.Drawing.Size]::new(400, 50)
     $mainPanel.Controls.Add($lblTitle)
 
     # ===== Option historique (actifs + inactifs) =====
-    $lblHistorique = New-Object System.Windows.Forms.Label
+    $lblHistorique = [System.Windows.Forms.Label]::new()
     $lblHistorique.Text = "Afficher l’historique des agents"
     $lblHistorique.Font = $script:PoliceLabelSecondaireFenetre
     $lblHistorique.ForeColor = $script:CouleurTexteSecondairePanel
     # [AgentsUI] UI spacing adjusted +15px for history mode
-    $lblHistorique.Location = New-Object System.Drawing.Point(20, 77)
-    $lblHistorique.Size = New-Object System.Drawing.Size(260, 20)
+    $lblHistorique.Location = [System.Drawing.Point]::new(20, 77)
+    $lblHistorique.Size = [System.Drawing.Size]::new(260, 20)
     $mainPanel.Controls.Add($lblHistorique)
 
-    $chkHistoriqueAgents = New-Object System.Windows.Forms.CheckBox
+    $chkHistoriqueAgents = [System.Windows.Forms.CheckBox]::new()
     $chkHistoriqueAgents.Name = "chkHistoriqueAgents"
-    $chkHistoriqueAgents.Location = New-Object System.Drawing.Point(285, 78)
-    $chkHistoriqueAgents.Size = New-Object System.Drawing.Size(20, 20)
+    $chkHistoriqueAgents.Location = [System.Drawing.Point]::new(285, 78)
+    $chkHistoriqueAgents.Size = [System.Drawing.Size]::new(20, 20)
     $chkHistoriqueAgents.Checked = $false
     $chkHistoriqueAgents.Cursor = [System.Windows.Forms.Cursors]::Hand
     $mainPanel.Controls.Add($chkHistoriqueAgents)
 
-    $btnAjouter = New-Object System.Windows.Forms.Button
+    $btnAjouter = [System.Windows.Forms.Button]::new()
     $btnAjouter.Text = "+ AJOUTER UN AGENT"
-    $btnAjouter.Location = New-Object System.Drawing.Point(900, 20)
-    $btnAjouter.Size = New-Object System.Drawing.Size(200, 45)
+    $btnAjouter.Location = [System.Drawing.Point]::new(900, 20)
+    $btnAjouter.Size = [System.Drawing.Size]::new(200, 45)
     Set-BtnAjouterStyle -BtnAjouter $btnAjouter
     $btnAjouter.Cursor = [System.Windows.Forms.Cursors]::Hand
     $mainPanel.Controls.Add($btnAjouter)
 
-    $grid = New-Object System.Windows.Forms.DataGridView
+    $grid = [System.Windows.Forms.DataGridView]::new()
     $grid.Name = "AgentsGrid"
     # [UI] DataGridView fixed to responsive Fill layout
-    $grid.Location = New-Object System.Drawing.Point(20, 110)
+    $grid.Location = [System.Drawing.Point]::new(20, 110)
     # Taille de départ raisonnable (ne doit pas dépasser la fenêtre); Anchor gère le responsive ensuite
-    $grid.Size = New-Object System.Drawing.Size(1100, 560)
+    $grid.Size = [System.Drawing.Size]::new(1100, 560)
     $grid.Anchor = "Top,Bottom,Left,Right"
     $grid.AllowUserToAddRows = $false
     $grid.RowHeadersVisible = $false

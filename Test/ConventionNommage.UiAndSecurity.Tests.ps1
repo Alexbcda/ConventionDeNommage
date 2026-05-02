@@ -35,10 +35,8 @@ function Get-CNButtonFromPanel {
 Describe 'ConventionNommage — UI handlers (capture sans MessageBox)' {
 
     BeforeAll {
-        Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
-        Add-Type -AssemblyName System.Drawing -ErrorAction Stop
-        [System.Windows.Forms.Application]::EnableVisualStyles()
-        [System.Windows.Forms.Application]::SetCompatibleTextRenderingDefault($false)
+        $boot = Join-Path $script:RepoRoot 'src\Bootstrap.ps1'
+        . $boot
         . $script:StylesPath
         . $script:PlaceholderPath
         . $script:LogicPath
@@ -53,7 +51,7 @@ Describe 'ConventionNommage — UI handlers (capture sans MessageBox)' {
     It 'CAS 1 — collecte vide : Certificat / Planner / France Travail → message unique attendu' {
         Start-CNConventionNommageUiTestCapture
         $panel = Get-CNTestPanel -FichierPDF ''
-        $form = New-Object System.Windows.Forms.Form
+        $form = [System.Windows.Forms.Form]::new()
         $form.Controls.Add($panel)
         foreach ($btnName in @('btnCert', 'btnPlan', 'btnFT')) {
             $btn = Get-CNButtonFromPanel -Panel $panel -Name $btnName
@@ -78,7 +76,7 @@ Describe 'ConventionNommage — UI handlers (capture sans MessageBox)' {
         $txt.Text = 'Lyon'
         $txt.ForeColor = [System.Drawing.SystemColors]::WindowText
         if ($txt.Tag -is [hashtable]) { $txt.Tag['CN_PlaceholderActive'] = $false }
-        $form = New-Object System.Windows.Forms.Form
+        $form = [System.Windows.Forms.Form]::new()
         $form.Controls.Add($panel)
         $btn = Get-CNButtonFromPanel -Panel $panel -Name 'btnPlan'
         Invoke-CNConventionRenameClick -Sender $btn -TemplateId 'planner'
@@ -102,7 +100,7 @@ Describe 'ConventionNommage — UI handlers (capture sans MessageBox)' {
             $d = $dtCtl.Value
             $expectedName = ('{0}-Lyon.pdf' -f $d.ToString('yyyyMMdd'))
             $expected = Join-Path $tmp $expectedName
-            $form = New-Object System.Windows.Forms.Form
+            $form = [System.Windows.Forms.Form]::new()
             $form.Controls.Add($panel)
             $btn = Get-CNButtonFromPanel -Panel $panel -Name 'btnPlan'
             Invoke-CNConventionRenameClick -Sender $btn -TemplateId 'planner'
@@ -244,7 +242,7 @@ Describe 'ConventionNommage — logs (rotation + anonymisation code)' {
         $log = Join-Path ([System.IO.Path]::GetTempPath()) ('cn_rot_' + [Guid]::NewGuid().ToString('n') + '.log')
         $fs = [System.IO.File]::Open($log, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write)
         try {
-            $chunk = New-Object byte[] (1048576)
+            $chunk = [byte[]]::new(1048576)
             1..11 | ForEach-Object { $fs.Write($chunk, 0, $chunk.Length) }
         }
         finally {

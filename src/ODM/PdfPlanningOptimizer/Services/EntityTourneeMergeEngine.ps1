@@ -23,6 +23,8 @@ if (-not (Test-Path -LiteralPath $_fre)) {
     throw "EntityTourneeMergeEngine: FieldResolutionEngine.ps1 introuvable: $_fre"
 }
 . $_fre
+$_ss = Join-Path $PSScriptRoot '..\..\..\Common\SortSafe.ps1'
+if (Test-Path -LiteralPath $_ss) { . $_ss }
 
 # Dependances archivees sous ../Obsolete (voir CleanPdfPlanningOptimizer.ps1)
 $_etmeObsolete = Join-Path (Split-Path $PSScriptRoot -Parent) 'Obsolete'
@@ -336,7 +338,7 @@ function Merge-EntityTournees {
         }
 
         $stopsOut = [System.Collections.Generic.List[object]]::new()
-        $stopsOrdered = @($excelTour.Stops) | Sort-Object -Property @{ Expression = { [int]$_.Position }; Ascending = $true }
+        $stopsOrdered = @($excelTour.Stops) | Sort-Object -Property @{ Expression = { (Get-SortSafeKeyInt $_.Position) }; Ascending = $true }
 
         foreach ($stop in $stopsOrdered) {
             if ($null -eq $stop) { continue }

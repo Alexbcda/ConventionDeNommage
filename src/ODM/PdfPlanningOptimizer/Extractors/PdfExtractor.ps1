@@ -1,10 +1,18 @@
 ﻿# ============================================================
 # PdfExtractor.ps1
 # Rôle : Extraire le texte brut d'un PDF, découpé en lignes par page.
+$script:_cnGhostResolve = Join-Path $PSScriptRoot '..\..\..\Core\GhostscriptResolve.ps1'
+if (Test-Path -LiteralPath $script:_cnGhostResolve) { . $script:_cnGhostResolve }
 # Pipeline unique : pdftotext (-enc UTF-8) → lecture UTF-8 (Get-Content -Encoding UTF8) ;
 # si validation UTF-8 stricte échoue ou caractères de remplacement : correction unique
 # UTF8.GetString( CP1252.GetBytes( CP1252.GetString(octets) ) ) sur les octets du fichier temporaire.
 # Diagnostic hors flux : Debug\PdfRawEncodingInspector.ps1
+# Découpage : une page = un tableau de lignes (pdftotext -layout) ; l’alignement sémantique client/adresse
+# relève d’EntityExtractor (parsing par blocs), pas du moteur ligne à ligne ici.
+#
+# Observabilité (diagnostic) : $env:PDF_SCORING = "1" sur EntityExtractor\ConvertTo-PageEntity
+# (score par page vs RawLines) + cumul. Avant de parcourir un PDF : Reset-PdfExtractionScoringSession ;
+# après toutes les pages : Write-PdfExtractionScoringSessionGlobalReport (fichier EntityExtractor.ps1).
 # ============================================================
 
 # pdftotext : -enc UTF-8 ; lecture + reparation CP1252 ci-dessous. Normalisation UI (Convert-ToUiText) en sortie.
@@ -45,7 +53,7 @@ function script:Remove-Utf8BomFromByteArray {
             return [byte[]]@()
         }
         $n = $Bytes.Length - 3
-        $out = New-Object byte[] $n
+        $out = [byte[]]::new($n)
         [Array]::Copy($Bytes, 3, $out, 0, $n)
         return $out
     }
@@ -57,7 +65,7 @@ function script:Test-PdfFileBytesAreStrictUtf8 {
     if ($null -eq $Bytes -or $Bytes.Length -eq 0) {
         return $true
     }
-    $enc = New-Object System.Text.UTF8Encoding @($false, $true)
+    $enc = [System.Text.UTF8Encoding]::new($false, $true)
     try {
         $null = $enc.GetString($Bytes)
         return $true
@@ -142,6 +150,73 @@ function Get-PdfExtractedUtf8LinesFromFile {
     return @(Read-PdftotextOutputFileAsUtf8Lines -LiteralPath $resolved)
 }
 
+function script:Test-PdfPageCountDebug {
+    return ($env:PDF_PAGECOUNT_DEBUG -in @('1', 'true'))
+}
+
+function script:Write-PdfPageCountDebug {
+    param([string]$Message)
+    if (script:Test-PdfPageCountDebug) {
+        Write-Host ("[PDF-PAGECOUNT] {0}" -f $Message) -ForegroundColor DarkCyan
+    }
+}
+
+function script:Parse-GhostscriptPdfPageCountStrict {
+    <#
+    N'accepte pas le premier nombre arbitraire dans toute la sortie : lignes pertinentes uniquement,
+    valeurs strictement positives et < seuil GS (sécurité bruit banners / IDS).
+    #>
+    param(
+        [string]$JoinedText,
+        [int]$GsMaxInclusive = 4999
+    )
+    if ([string]::IsNullOrWhiteSpace($JoinedText)) { return $null }
+
+    $lines = $JoinedText -split "`r?`n"
+
+    foreach ($ln in @($lines)) {
+        $ll = "$ln".Trim()
+        if ($ll.Length -eq 0) { continue }
+        if (-not ($ll -match '(?i)page\s*count|pdf\s*pages?|pdfpagecount')) {
+            continue
+        }
+        foreach ($mm in [regex]::Matches($ll, '(?<!\d)(\d{1,9})(?!\d)')) {
+            $v = 0
+            if (-not [int]::TryParse($mm.Value, [ref]$v)) { continue }
+            if ($v -ge 1 -and $v -le $GsMaxInclusive) {
+                return $v
+            }
+        }
+    }
+
+    $solitaryInts = foreach ($ln in @($lines)) {
+        $t = "$ln".Trim()
+        if ($t.Length -eq 0 -or "$t".Length -gt 14) { continue }
+        if ($t -match '^\d{1,9}$') {
+            [int]$t
+        }
+    }
+    $solitaryInts = @($solitaryInts)
+    if ($solitaryInts.Count -eq 1) {
+        $v = $solitaryInts[0]
+        if ($v -ge 1 -and $v -le $GsMaxInclusive) { return $v }
+    }
+
+    for ($idx = ($lines.Length - 1); $idx -ge 0; $idx--) {
+        $t = "$($lines[$idx])".Trim()
+        if ($t.Length -eq 0 -or "$t".Length -gt 14) { continue }
+        if ($t -match '^\d{1,9}$') {
+            $v = [int]$t
+            if ($v -ge 1 -and $v -le $GsMaxInclusive) {
+                return $v
+            }
+            break
+        }
+    }
+
+    return $null
+}
+
 function script:Get-PdfPageCountInternal {
     param([string]$FichierPDF)
 
@@ -149,58 +224,78 @@ function script:Get-PdfPageCountInternal {
         return 0
     }
 
-    $gsPaths = [System.Collections.Generic.List[string]]::new()
-    $gsRoot = Join-Path $env:ProgramFiles 'gs'
-    if (Test-Path -LiteralPath $gsRoot) {
-        foreach ($dir in (Get-ChildItem -LiteralPath $gsRoot -Directory -ErrorAction SilentlyContinue)) {
-            foreach ($name in @('gswin64c.exe', 'gswin32c.exe')) {
-                $candidate = Join-Path $dir.FullName "bin\$name"
-                if (Test-Path -LiteralPath $candidate) {
-                    $gsPaths.Add($candidate)
-                }
-            }
-        }
-    }
-    foreach ($extra in @(
-            "${env:ProgramFiles}\Ghostscript\bin\gswin64c.exe",
-            "${env:ProgramFiles}\Ghostscript\bin\gswin32c.exe"
-        )) {
-        if (Test-Path -LiteralPath $extra) {
-            $gsPaths.Add($extra)
-        }
-    }
-
-    foreach ($gsPath in $gsPaths) {
-        if (-not (Test-Path -LiteralPath $gsPath)) { continue }
-        try {
-            $psPath = $FichierPDF -replace '\\', '/'
-            $output = & $gsPath -dNODISPLAY -q -c "($psPath) (r) file runpdfbegin pdfpagecount = quit" 2>&1
-            $joined = if ($output -is [array]) { $output -join "`n" } else { [string]$output }
-            if ($joined -match '(\d+)') {
-                return [int]$Matches[1]
-            }
-        }
-        catch {
-            continue
-        }
-    }
+    $maxTrustedPagesPdfinfoScan = 50000
+    $gsMaxInclusive = 4999
+    script:Write-PdfPageCountDebug -Message "--- Get-PdfPageCountInternal start ---"
 
     $pdfinfo = Get-Command pdfinfo.exe -ErrorAction SilentlyContinue
     if ($pdfinfo -and $pdfinfo.Source) {
         try {
             $info = & $pdfinfo.Source $FichierPDF 2>&1
             $text = if ($info -is [array]) { $info -join "`n" } else { [string]$info }
+            $infoClip = if ($text.Length -le 1200) { $text } else { $text.Substring(0, 1200) }
+            script:Write-PdfPageCountDebug -Message ('pdfinfo raw (truncate 1200)="{0}"' -f ($infoClip -replace "[\r\n]+", ' '))
+
             $m = [regex]::Match($text, '(?im)^Pages:\s*(\d+)\s*$')
+            if (-not $m.Success) {
+                $m = [regex]::Match($text, '(?im)Pages\s*[:=]\s*(\d+)')
+            }
             if ($m.Success) {
-                return [int]$m.Groups[1].Value
+                $pv = [int]$m.Groups[1].Value
+                script:Write-PdfPageCountDebug -Message ('pdfinfo candidate={0}' -f $pv)
+                if ($pv -ge 1 -and $pv -le $maxTrustedPagesPdfinfoScan) {
+                    script:Write-PdfPageCountDebug -Message ('METHOD=pdfinfo FINAL={0}' -f $pv)
+                    return $pv
+                }
+                script:Write-PdfPageCountDebug -Message 'pdfinfo reject: out of trusted range'
             }
         }
         catch {
-            # ignore
+            script:Write-PdfPageCountDebug -Message ('pdfinfo exception: {0}' -f $_.Exception.Message)
+        }
+    }
+    else {
+        script:Write-PdfPageCountDebug -Message 'pdfinfo: not on PATH / not found'
+    }
+
+    $gsCandidate = $null
+    if (Get-Command Get-ResolvedGhostscriptPath -ErrorAction SilentlyContinue) {
+        $gsPath = Get-ResolvedGhostscriptPath
+        if ($gsPath) {
+            try {
+                $psPath = $FichierPDF -replace '\\', '/'
+                $output = & $gsPath -dNODISPLAY -q -c "($psPath) (r) file runpdfbegin pdfpagecount = quit" 2>&1
+                $joined = if ($output -is [array]) { $output -join "`n" } else { [string]$output }
+                $clip = $joined
+                if ($clip.Length -gt 2000) { $clip = $clip.Substring(0, 2000) + '...' }
+                script:Write-PdfPageCountDebug -Message ('GS raw (trunc)="{0}"' -f ($clip -replace "[\r\n]+", ' | '))
+
+                $gsCandidate = script:Parse-GhostscriptPdfPageCountStrict -JoinedText $joined -GsMaxInclusive $gsMaxInclusive
+                if ($null -ne $gsCandidate) {
+                    script:Write-PdfPageCountDebug -Message ('GS candidate (strict)={0}' -f $gsCandidate)
+                    script:Write-PdfPageCountDebug -Message ('METHOD=ghostscript FINAL={0}' -f $gsCandidate)
+                    return [int]$gsCandidate
+                }
+                script:Write-PdfPageCountDebug -Message 'GS: no strict match - fallback next'
+            }
+            catch {
+                script:Write-PdfPageCountDebug -Message ('GS exception: {0}' -f $_.Exception.Message)
+            }
+        }
+        else {
+            script:Write-PdfPageCountDebug -Message 'Ghostscript path not resolved'
         }
     }
 
-    return Get-PdfPageCountFromRawScan -FichierPDF $FichierPDF
+    $scanVal = Get-PdfPageCountFromRawScan -FichierPDF $FichierPDF
+    script:Write-PdfPageCountDebug -Message ('scan /Count MAX candidate={0}' -f $scanVal)
+    if ($scanVal -ge 1 -and $scanVal -le $maxTrustedPagesPdfinfoScan) {
+        script:Write-PdfPageCountDebug -Message ('METHOD=rawscan FINAL={0}' -f $scanVal)
+    }
+    else {
+        script:Write-PdfPageCountDebug -Message 'METHOD=rawscan rejected or zero'
+    }
+    return $scanVal
 }
 
 function script:Get-PdfPageCountFromRawScan {
@@ -211,11 +306,19 @@ function script:Get-PdfPageCountFromRawScan {
 
         $enc = [System.Text.Encoding]::GetEncoding(28591)
         $chunks = [System.Collections.Generic.List[byte[]]]::new()
-        $headLen = [Math]::Min($bytes.Length, 262144)
+        $headLen = [Math]::Min($bytes.Length, 524288)
         $chunks.Add($bytes[0..($headLen - 1)])
         if ($bytes.Length -gt $headLen) {
             $tailLen = [Math]::Min($bytes.Length, 524288)
             $chunks.Add($bytes[($bytes.Length - $tailLen)..($bytes.Length - 1)])
+        }
+        if ($bytes.Length -gt ($headLen + $tailLen + 4096)) {
+            $midSpan = [Math]::Min(262144, $bytes.Length)
+            $midStart = [Math]::Max(0, [int][Math]::Floor($bytes.Length / 2.0) - [int][Math]::Floor($midSpan / 2.0))
+            $midEnd = [Math]::Min($bytes.Length - 1, $midStart + $midSpan - 1)
+            if ($midEnd -ge $midStart) {
+                $chunks.Add($bytes[$midStart..$midEnd])
+            }
         }
 
         $best = 0
@@ -236,77 +339,133 @@ function script:Get-PdfPageCountFromRawScan {
     }
 }
 
-function script:Resolve-PdfToTextPathSafe {
+function script:Get-ResolvedPdfToTextPath {
     <#
-    Résout pdftotext.exe : PDFTOTEXT_PATH (fichier validé strictement) ou emplacements contrôlés sous le dépôt / Xpdf.
-    Ne suit pas le PATH machine ; n’accepte pas un dossier dans PDFTOTEXT_PATH (évite exécution non validée).
+    Résout pdftotext.exe selon un ordre strict :
+      1) PDFTOTEXT_PATH
+      2) PATH machine (si PDFTOTEXT_ALLOW_PATH actif)
+      3) chemins standards repo / Program Files / WinGet
     #>
-    param()
+    [CmdletBinding()]
+    param(
+        [ref]$TraceOut = ([ref]$null)
+    )
 
+    $trace = [System.Collections.Generic.List[string]]::new()
+    $debugResolve = ($env:CN_DEBUG_PIPELINE -in @('1', 'true'))
     $repoRoot = $PSScriptRoot
     for ($i = 0; $i -lt 4; $i++) {
         $repoRoot = Split-Path -Parent $repoRoot
     }
 
-    $defaultPaths = @(
-        (Join-Path $repoRoot 'tools\pdftotext.exe'),
-        (Join-Path $repoRoot 'tools\Poppler\Library\bin\pdftotext.exe'),
-        'C:\Program Files\Xpdf\pdftotext.exe'
-    )
+    $allowPathRaw = [string]$env:PDFTOTEXT_ALLOW_PATH
+    $allowPath = -not [string]::IsNullOrWhiteSpace($allowPathRaw) -and ($allowPathRaw.Trim().ToLowerInvariant() -in @('1', 'true', 'yes', 'on'))
+
+    [void]$trace.Add(("PDFTOTEXT_PATH={0}" -f [string]$env:PDFTOTEXT_PATH))
+    [void]$trace.Add(("PDFTOTEXT_ALLOW_PATH={0} (enabled={1})" -f $allowPathRaw, $allowPath))
+    if ($debugResolve) {
+        Write-Host "[PDF] Checking Poppler explicit path..." -ForegroundColor Cyan
+    }
+
+    $popplerExplicit = 'C:\Users\alexa\Downloads\Release-25.12.0-0\poppler-25.12.0\Library\bin\pdftotext.exe'
+    if (Test-Path -LiteralPath $popplerExplicit -PathType Leaf) {
+        $resolvedExplicit = (Resolve-Path -LiteralPath $popplerExplicit).Path
+        [void]$trace.Add(("EXPLICIT hit: {0}" -f $resolvedExplicit))
+        if ($TraceOut) { $TraceOut.Value = @($trace.ToArray()) }
+        return $resolvedExplicit
+    }
+    [void]$trace.Add(("EXPLICIT miss: {0}" -f $popplerExplicit))
 
     $fromEnv = [string]$env:PDFTOTEXT_PATH
-
     if (-not [string]::IsNullOrWhiteSpace($fromEnv)) {
-        $path = $fromEnv.Trim()
-
-        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        $envPath = $fromEnv.Trim().Trim('"')
+        if (Test-Path -LiteralPath $envPath -PathType Container) {
+            $envPath = Join-Path $envPath 'pdftotext.exe'
+            [void]$trace.Add(("ENV dir -> {0}" -f $envPath))
+        }
+        if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
+            [void]$trace.Add(("ENV missing: {0}" -f $envPath))
             throw "PDFTOTEXT_PATH invalide (fichier introuvable)."
         }
-
-        if ((Split-Path -Leaf $path).ToLower() -cne 'pdftotext.exe') {
+        if ((Split-Path -Leaf $envPath).ToLowerInvariant() -cne 'pdftotext.exe') {
+            [void]$trace.Add(("ENV bad name: {0}" -f $envPath))
             throw "PDFTOTEXT_PATH doit pointer vers pdftotext.exe uniquement."
         }
-
-        if ([System.IO.Path]::GetExtension($path).ToLower() -cne '.exe') {
+        if ([System.IO.Path]::GetExtension($envPath).ToLowerInvariant() -cne '.exe') {
+            [void]$trace.Add(("ENV bad extension: {0}" -f $envPath))
             throw "Fichier non exécutable interdit."
         }
-
-        $resolvedExe = (Resolve-Path -LiteralPath $path).Path
-
-        try {
-            $sig = Get-AuthenticodeSignature -LiteralPath $resolvedExe
-            if ($sig.Status -ne 'Valid') {
-                Write-Warning "pdftotext.exe non signé"
-            }
-        }
-        catch { }
-
-        return $resolvedExe
+        $resolvedEnv = (Resolve-Path -LiteralPath $envPath).Path
+        [void]$trace.Add(("ENV hit: {0}" -f $resolvedEnv))
+        if ($TraceOut) { $TraceOut.Value = @($trace.ToArray()) }
+        return $resolvedEnv
     }
 
-    foreach ($p in $defaultPaths) {
-        if ([string]::IsNullOrWhiteSpace($p)) { continue }
-        if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { continue }
-
-        $resolvedExe = (Resolve-Path -LiteralPath $p).Path
-
-        try {
-            $sig = Get-AuthenticodeSignature -LiteralPath $resolvedExe
-            if ($sig.Status -ne 'Valid') {
-                Write-Warning "pdftotext.exe non signé"
-            }
+    if ($allowPath) {
+        if ($debugResolve) {
+            Write-Host "[PDF] Checking PATH..." -ForegroundColor Cyan
         }
-        catch { }
-
-        return $resolvedExe
+        $cmd = Get-Command pdftotext.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($null -ne $cmd -and -not [string]::IsNullOrWhiteSpace($cmd.Source) -and (Test-Path -LiteralPath $cmd.Source -PathType Leaf)) {
+            [void]$trace.Add(("PATH hit: {0}" -f $cmd.Source))
+            if ($TraceOut) { $TraceOut.Value = @($trace.ToArray()) }
+            return [string]$cmd.Source
+        }
+        [void]$trace.Add("PATH miss: Get-Command pdftotext.exe")
+    }
+    else {
+        [void]$trace.Add("PATH check skipped (PDFTOTEXT_ALLOW_PATH disabled)")
     }
 
+    if ($debugResolve) {
+        Write-Host "[PDF] Checking fallback directories..." -ForegroundColor Cyan
+    }
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    foreach ($p in @(
+            (Join-Path $repoRoot 'tools\Poppler\Library\bin\pdftotext.exe'),
+            (Join-Path $repoRoot 'tools\pdftotext.exe'),
+            (Join-Path $repoRoot 'vendor\poppler\Library\bin\pdftotext.exe'),
+            "${env:LOCALAPPDATA}\Microsoft\WinGet\Links\pdftotext.exe",
+            'C:\Program Files\Xpdf\pdftotext.exe'
+        )) {
+        if (-not [string]::IsNullOrWhiteSpace($p)) { [void]$candidates.Add($p) }
+    }
+    foreach ($base in @($env:ProgramFiles, $env:ProgramFilesx86, ${env:ProgramFiles(x86)})) {
+        if ([string]::IsNullOrWhiteSpace([string]$base)) { continue }
+        $popplerRoot = Join-Path $base 'poppler'
+        if (-not (Test-Path -LiteralPath $popplerRoot -PathType Container)) {
+            [void]$trace.Add(("STD miss root: {0}" -f $popplerRoot))
+            continue
+        }
+        $direct = Join-Path $popplerRoot 'Library\bin\pdftotext.exe'
+        [void]$candidates.Add($direct)
+        foreach ($d in @(Get-ChildItem -LiteralPath $popplerRoot -Directory -ErrorAction SilentlyContinue)) {
+            [void]$candidates.Add((Join-Path $d.FullName 'Library\bin\pdftotext.exe'))
+        }
+    }
+
+    $seen = @{}
+    foreach ($cand in $candidates) {
+        if ([string]::IsNullOrWhiteSpace($cand)) { continue }
+        $k = $cand.ToLowerInvariant()
+        if ($seen.ContainsKey($k)) { continue }
+        $seen[$k] = $true
+        if (Test-Path -LiteralPath $cand -PathType Leaf) {
+            $resolved = (Resolve-Path -LiteralPath $cand).Path
+            [void]$trace.Add(("STD hit: {0}" -f $resolved))
+            if ($TraceOut) { $TraceOut.Value = @($trace.ToArray()) }
+            return $resolved
+        }
+        [void]$trace.Add(("STD miss: {0}" -f $cand))
+    }
+
+    if ($TraceOut) { $TraceOut.Value = @($trace.ToArray()) }
     return $null
 }
 
 function script:Resolve-PdfTotextPath {
     try {
-        return Resolve-PdfToTextPathSafe
+        return Get-ResolvedPdfToTextPath
     }
     catch {
         if ($_.Exception.Message -like 'PDFTOTEXT_PATH*') {
@@ -350,7 +509,7 @@ function script:Add-PdfExtractionDiagLine {
 }
 
 function script:Format-PdftotextArgsForLog {
-    param([System.Collections.Generic.List[string]]$ArgList)
+    param([string[]]$ArgList)
     $parts = foreach ($a in $ArgList) {
         if ($null -eq $a) { continue }
         $s = [string]$a
@@ -415,22 +574,32 @@ function script:Get-PdfPageLinesWithPdftotextArgs {
     $ctx = if ([string]::IsNullOrWhiteSpace($LogContext)) { 'pdftotext' } else { $LogContext }
 
     try {
-        $argList = [System.Collections.Generic.List[string]]::new()
-        [void]$argList.AddRange(@(
-                '-f', "$PageNumber",
-                '-l', "$PageNumber",
-                '-enc', 'UTF-8',
-                '-q'
-            ))
+        if ([string]::IsNullOrWhiteSpace($PdftotextExe)) {
+            Add-PdfExtractionDiagLine -Message ("[{0}] ECHEC: PdftotextExe vide." -f $ctx)
+            return @()
+        }
+        if (-not (Test-Path -LiteralPath $PdftotextExe -PathType Leaf)) {
+            Add-PdfExtractionDiagLine -Message ("[{0}] ECHEC: PdftotextExe introuvable ou non fichier: {1}" -f $ctx, $PdftotextExe)
+            return @()
+        }
+
+        $arguments = @(
+            '-f', "$PageNumber",
+            '-l', "$PageNumber",
+            '-enc', 'UTF-8',
+            '-q'
+        )
         if ($ExtraArgs -and $ExtraArgs.Count -gt 0) {
             foreach ($a in $ExtraArgs) {
-                if (-not [string]::IsNullOrWhiteSpace($a)) { [void]$argList.Add($a.Trim()) }
+                if (-not [string]::IsNullOrWhiteSpace($a)) {
+                    $arguments += $a.Trim()
+                }
             }
         }
-        [void]$argList.Add($PdfPath)
-        [void]$argList.Add($tempOut)
+        $arguments += $PdfPath
+        $arguments += $tempOut
 
-        $argLine = Format-PdftotextArgsForLog -ArgList $argList
+        $argLine = Format-PdftotextArgsForLog -ArgList $arguments
         Add-PdfExtractionDiagLine -Message ("[{0}] pdftotext.exe={1}" -f $ctx, $PdftotextExe) -DebugOnly
         Add-PdfExtractionDiagLine -Message ("[{0}] args: {1}" -f $ctx, $argLine) -DebugOnly
         Add-PdfExtractionDiagLine -Message ("[{0}] tempOut={1}" -f $ctx, $tempOut) -DebugOnly
@@ -439,7 +608,7 @@ function script:Get-PdfPageLinesWithPdftotextArgs {
             Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
         }
 
-        $null = & $PdftotextExe $argList.ToArray() 2>$stderrPath
+        $null = & $PdftotextExe $arguments 2>$stderrPath
         $exitCode = $LASTEXITCODE
 
         $stderrText = ''
@@ -723,13 +892,55 @@ function Invoke-PdfExtraction {
             throw "Impossible de déterminer le nombre de pages pour : $resolved"
         }
 
-        $pdftotext = Resolve-PdfTotextPath
+        $resolveTrace = @()
+        $pdftotext = Get-ResolvedPdfToTextPath -TraceOut ([ref]$resolveTrace)
         $pages = [System.Collections.Generic.List[object]]::new()
         $note = $null
         $winningMode = 'none'
         $extraArgs = @('-layout')
 
-        if ($pdftotext) {
+        if (-not $pdftotext) {
+            [void]$diag.Add('[PDF] FATAL: pdftotext introuvable')
+            Write-Host "[PDF] Recherche pdftotext..." -ForegroundColor Cyan
+            Write-Host (" - PDFTOTEXT_PATH = {0}" -f [string]$env:PDFTOTEXT_PATH) -ForegroundColor DarkGray
+            Write-Host (" - PDFTOTEXT_ALLOW_PATH = {0}" -f [string]$env:PDFTOTEXT_ALLOW_PATH) -ForegroundColor DarkGray
+            foreach ($ln in @($resolveTrace)) {
+                Write-Host (" - PATH test = {0}" -f $ln) -ForegroundColor DarkGray
+                [void]$diag.Add("[PDF][Resolve] $ln")
+            }
+
+            $allowEmpty = ([string]$env:CN_ALLOW_EMPTY_PDF).Trim().ToLowerInvariant() -in @('1', 'true', 'yes', 'on')
+            if ($allowEmpty) {
+                $note = '[WARN] Extraction desactivee — mode fallback CN_ALLOW_EMPTY_PDF=1 (pages vides).'
+                Write-Host $note -ForegroundColor Yellow
+                for ($i = 1; $i -le $pageCount; $i++) {
+                    $empty = [string[]]@()
+                    $pages.Add([pscustomobject]@{
+                        PageNumber    = $i
+                        Lines         = $empty
+                        RawLines      = $empty
+                        FilteredLines = $empty
+                    })
+                }
+            }
+            else {
+                throw @"
+[FATAL] pdftotext introuvable
+
+Solutions :
+1. Installer Poppler (recommandé)
+2. Définir PDFTOTEXT_PATH
+3. Mettre pdftotext.exe dans le PATH + PDFTOTEXT_ALLOW_PATH=1
+4. Déployer tools\Poppler\Library\bin\pdftotext.exe
+
+Debug :
+- PATH = $env:PATH
+- PDFTOTEXT_PATH = $env:PDFTOTEXT_PATH
+- PDFTOTEXT_ALLOW_PATH = $env:PDFTOTEXT_ALLOW_PATH
+"@
+            }
+        }
+        else {
             $pick = Select-BestPdftotextModeForPdf -PdfPath $resolved -PdftotextExe $pdftotext
             $winningMode = [string]$pick.Mode
             $extraArgs = Get-PdftotextArgsFromModeLabel -Label $winningMode
@@ -755,17 +966,9 @@ function Invoke-PdfExtraction {
                 })
             }
         }
-        else {
-            $note = 'pdftotext (Poppler) introuvable : pages créées avec lignes vides. Installez Poppler pour extraire le texte.'
-            for ($i = 1; $i -le $pageCount; $i++) {
-                $empty = [string[]]@()
-                $pages.Add([pscustomobject]@{
-                    PageNumber    = $i
-                    Lines         = $empty
-                    RawLines      = $empty
-                    FilteredLines = $empty
-                })
-            }
+
+        if (@($pages).Count -lt 1) {
+            throw "[FATAL] Extraction PDF vide ou invalide (aucune page collectee)"
         }
 
         $allLines = [System.Collections.Generic.List[string]]::new()

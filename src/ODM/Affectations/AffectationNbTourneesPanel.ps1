@@ -5,38 +5,54 @@ function Show-AffectationNbTourneesPanel {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     
-    $panel = New-Object System.Windows.Forms.Panel
+    $panel = [System.Windows.Forms.Panel]::new()
+    $panel.Name = "NbTourneesPanelRoot"
     $panel.Dock = "Fill"
     $panel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
-    $panel.Padding = New-Object System.Windows.Forms.Padding(50)
+    $panel.Padding = [System.Windows.Forms.Padding]::new(50)
     
-    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle = [System.Windows.Forms.Label]::new()
     $lblTitle.Text = "Nombre de tournées"
-    $lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
+    $lblTitle.Font = [System.Drawing.Font]::new("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
     $lblTitle.ForeColor = [System.Drawing.Color]::FromArgb(226, 110, 42)
-    $lblTitle.Location = New-Object System.Drawing.Point(0, 0)
-    $lblTitle.Size = New-Object System.Drawing.Size(400, 50)
+    $lblTitle.Location = [System.Drawing.Point]::new(0, 0)
+    $lblTitle.Size = [System.Drawing.Size]::new(400, 50)
     $panel.Controls.Add($lblTitle)
     
-    $numTournees = New-Object System.Windows.Forms.NumericUpDown
-    $numTournees.Location = New-Object System.Drawing.Point(0, 70)
-    $numTournees.Size = New-Object System.Drawing.Size(100, 30)
+    $numTournees = [System.Windows.Forms.NumericUpDown]::new()
+    $numTournees.Name = "NbTourneesNumeric"
+    $numTournees.Location = [System.Drawing.Point]::new(0, 70)
+    $numTournees.Size = [System.Drawing.Size]::new(100, 30)
     $numTournees.Minimum = 1
     $numTournees.Maximum = 10
     $numTournees.Value = Get-NbTournees
     $panel.Controls.Add($numTournees)
     
-    $btnValider = New-Object System.Windows.Forms.Button
+    $btnValider = [System.Windows.Forms.Button]::new()
+    $btnValider.Name = "NbTourneesValidateButton"
     $btnValider.Text = "VALIDER"
-    $btnValider.Location = New-Object System.Drawing.Point(0, 120)
-    $btnValider.Size = New-Object System.Drawing.Size(100, 40)
+    $btnValider.Location = [System.Drawing.Point]::new(0, 120)
+    $btnValider.Size = [System.Drawing.Size]::new(100, 40)
     $btnValider.BackColor = [System.Drawing.Color]::FromArgb(175, 71, 11)
     $btnValider.ForeColor = [System.Drawing.Color]::White
     $btnValider.FlatStyle = "Flat"
+    $panel.Tag = @{
+        NextPanel = $NextPanel
+        CurrentPanel = $CurrentPanel
+    }
     $btnValider.Add_Click({
-        Set-NbTournees -NbTournees $numTournees.Value
-        if ($NextPanel) { $NextPanel.Visible = $true }
-        if ($CurrentPanel) { $CurrentPanel.Visible = $false }
+        param($sender, $e)
+        $root = $sender.Parent
+        if ($null -eq $root) { return }
+        $num = $root.Controls["NbTourneesNumeric"]
+        if ($null -ne $num -and $num -is [System.Windows.Forms.NumericUpDown]) {
+            Set-NbTournees -NbTournees $num.Value
+        }
+        $tag = $root.Tag
+        if ($tag -is [hashtable]) {
+            if ($tag.NextPanel) { $tag.NextPanel.Visible = $true }
+            if ($tag.CurrentPanel) { $tag.CurrentPanel.Visible = $false }
+        }
     })
     $panel.Controls.Add($btnValider)
     

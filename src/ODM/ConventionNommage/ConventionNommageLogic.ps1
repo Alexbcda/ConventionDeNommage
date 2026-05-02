@@ -167,7 +167,7 @@ function Remove-StringDiacritics {
     param([string]$Text)
     if ([string]::IsNullOrEmpty($Text)) { return $Text }
     $normalized = $Text.Normalize([Text.NormalizationForm]::FormD)
-    $sb = New-Object System.Text.StringBuilder
+    $sb = [System.Text.StringBuilder]::new()
     foreach ($ch in $normalized.ToCharArray()) {
         $cat = [System.Globalization.CharUnicodeInfo]::GetUnicodeCategory($ch)
         if ($cat -ne [System.Globalization.UnicodeCategory]::NonSpacingMark) {
