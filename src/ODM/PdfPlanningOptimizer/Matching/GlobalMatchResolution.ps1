@@ -7,8 +7,32 @@
 
 . (Join-Path $PSScriptRoot "..\Models\WorkOrderEntity.ps1")
 . (Join-Path $PSScriptRoot "..\Models\MatchResult.ps1")
+$_ss = Join-Path $PSScriptRoot '..\..\..\Common\SortSafe.ps1'
+if (Test-Path -LiteralPath $_ss) { . $_ss }
 # MatchResult doit précéder FinalAssignment (FinalAssignmentTrace référence MatchResult).
 . (Join-Path $PSScriptRoot "..\Models\FinalAssignment.ps1")
+$script:TypeLeakLogged = $false
+
+function script:Trace-TypeLeak {
+    param(
+        $Value,
+        [string]$Name,
+        [string]$Location
+    )
+    if ($env:CN_OBJECT_TRACE -notin @('1', 'true')) { return $Value }
+    if ($script:TypeLeakLogged) { return $Value }
+    if ($Value -is [System.Object[]]) {
+        $script:TypeLeakLogged = $true
+        $count = [int]@($Value).Count
+        $first = if ($count -gt 0) { $Value[0] } else { $null }
+        $stack = (Get-PSCallStack | Select-Object -First 20 | Out-String)
+        if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+            Write-Log ("[TYPE-LEAK] Name={0} Location={1} Type={2} Count={3} First={4} Stack={5}" -f $Name, $Location, $Value.GetType().FullName, $count, $first, $stack) "ERROR" $null
+            Write-Log ("[SORT-EXPR-LEAK] Location={0} KeyType={1} Type={2} Count={3}" -f $Location, $Name, $Value.GetType().FullName, $count) "ERROR" $null
+        }
+    }
+    return $Value
+}
 
 function script:Get-MatchResultTieBreakRank {
     <#
@@ -142,10 +166,10 @@ function Resolve-WorkOrderExcelFinalAssignments {
     $sorted = @(
         $candidates.ToArray() |
             Sort-Object `
-                @{ Expression = { -$_.MatchScore }; Ascending = $true },
-                @{ Expression = { -(Get-MatchResultTieBreakRank -MatchedFields @($_.MatchedFields)) }; Ascending = $true },
-                @{ Expression = { [string]$_.WorkOrder }; Ascending = $true },
-                @{ Expression = { [string]$_.ExcelRowId }; Ascending = $true }
+                @{ Expression = { $k = - (Get-SortSafeKeyInt $_.MatchScore); [void](script:Trace-TypeLeak -Value $k -Name "MatchScore" -Location "GlobalMatchResolution.Sort.MatchScore"); $k }; Ascending = $true },
+                @{ Expression = { $k = -(Get-MatchResultTieBreakRank -MatchedFields @($_.MatchedFields)); [void](script:Trace-TypeLeak -Value $k -Name "OrderIndex" -Location "GlobalMatchResolution.Sort.TieBreak"); $k }; Ascending = $true },
+                @{ Expression = { $k = (Get-SortSafeKeyString $_.WorkOrder); [void](script:Trace-TypeLeak -Value $k -Name "WorkOrder" -Location "GlobalMatchResolution.Sort.WorkOrder"); $k }; Ascending = $true },
+                @{ Expression = { $k = (Get-SortSafeKeyString $_.ExcelRowId); [void](script:Trace-TypeLeak -Value $k -Name "ExcelOrder" -Location "GlobalMatchResolution.Sort.ExcelRowId"); $k }; Ascending = $true }
     )
 
     $usedWorkOrder = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)

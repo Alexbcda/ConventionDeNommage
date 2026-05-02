@@ -6,9 +6,23 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::InputEncoding = [System.Text.Encoding]::UTF8
 
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# WinForms : bootstrap Application en premier (aucun proxy New-Object — audit statique : Tools\Find-WinFormsLeaks.ps1).
+. (Join-Path $scriptPath 'Bootstrap.ps1')
+. (Join-Path $scriptPath 'Common\WinFormsGuard.ps1')
+
+if ($env:CN_WINFORMS_TRACE -eq '1' -or $env:CN_WINFORMS_TRACE -eq 'true') {
+    Write-Host "[WINFORMS TRACE] Loaded: Main.ps1 (Bootstrap + diagnostics WinFormsGuard)" -ForegroundColor Magenta
+}
 . (Join-Path $scriptPath 'Common\TextEncoding.ps1')
 . (Join-Path $scriptPath 'Common\UiText.ps1')
 Initialize-ConventionAppConsoleUtf8
+
+# Planning PDF + Excel (PdfPlanningOptimizer) : lecture .xlsx/.xlsm sans Excel installe
+if (-not (Get-Module -Name ImportExcel -ListAvailable -ErrorAction SilentlyContinue)) {
+    Write-Host "[MAIN] Conseil: installez le module ImportExcel pour l'onglet *Edition planning* (fichiers Excel sans Microsoft Excel)." -ForegroundColor Yellow
+    Write-Host "      Install-Module -Name ImportExcel -Scope CurrentUser -Force" -ForegroundColor DarkGray
+}
 
 Write-Host "🚀 DÉMARRAGE DE L'APPLICATION..." -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
@@ -56,4 +70,18 @@ Write-Host "[MAIN] Chargement de l'interface..." -ForegroundColor Gray
 Write-Host "[MAIN] Lancement..." -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 
-Start-GUI -FichierPDF $args[0]
+try {
+    Start-GUI -FichierPDF $args[0]
+}
+catch {
+    if (Get-Command Write-WinFormsInitStateDiagnostic -ErrorAction SilentlyContinue) {
+        Write-WinFormsInitStateDiagnostic
+    }
+    else {
+        Write-Host '=== WINFORMS INIT STATE ===' -ForegroundColor Yellow
+        Write-Host ("WinFormsInitialized = {0}" -f $global:WinFormsInitialized)
+        Write-Host ("WinFormsApplicationInitialized = {0}" -f $global:WinFormsApplicationInitialized)
+        Get-PSCallStack | Format-List *
+    }
+    throw
+}

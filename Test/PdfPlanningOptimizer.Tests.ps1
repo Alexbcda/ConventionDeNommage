@@ -54,7 +54,7 @@ function Get-PdfPlanningOptimizerE2EPlanningPdfBytes {
     $trailer = "trailer${nl}<<${nl}/Size 6${nl}/Root 1 0 R${nl}>>${nl}startxref${nl}$xrefPos${nl}%%EOF${nl}"
     $trailerBytes = $enc.GetBytes($trailer)
 
-    $all = New-Object byte[] ($bodyBytes.Length + $xrefBytes.Length + $trailerBytes.Length)
+    $all = [byte[]]::new(($bodyBytes.Length + $xrefBytes.Length + $trailerBytes.Length))
     [Array]::Copy($bodyBytes, 0, $all, 0, $bodyBytes.Length)
     [Array]::Copy($xrefBytes, 0, $all, $bodyBytes.Length, $xrefBytes.Length)
     [Array]::Copy($trailerBytes, 0, $all, $bodyBytes.Length + $xrefBytes.Length, $trailerBytes.Length)
@@ -181,6 +181,20 @@ Describe 'PdfPlanningOptimizer - EntityExtractor multiligne (libelle / valeur li
         $e = ConvertTo-PageEntity -PageNumber 1 -Lines $lines
         $e.VisitDate | Should Not Be $null
         $e.VisitDate.ToString('dd/MM/yyyy') | Should Be '17/04/2026'
+    }
+
+    It 'ClientName : ligne ANDERLAINE avec N+ordinal-U+00BA et id 5 chiffres (pas confondu avec CP)' {
+        $lines = @(
+            '4/10/26 16:03',
+            'ANDERLAINE ALBERTVILLE SR CONSEIL - Nº24896',
+            '108 Rue de la Liberation',
+            '73400 SAINT JEAN',
+            'Date de passage : 22/04/2026'
+        )
+        $e = ConvertTo-PageEntity -PageNumber 1 -Lines $lines
+        $e.ClientID | Should Be '24896'
+        $e.ClientName | Should Match 'ANDERLAINE.*ALBERTVILLE.*CONSEIL'
+        $e.Address['PostalCode'] | Should Be '73400'
     }
 }
 

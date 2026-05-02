@@ -80,6 +80,10 @@ function Normalize-PdfNoiseText {
             }
         }
 
+        # « Nº » (ordinal U+00BA) et signe NUMERO « № » (U+2116) : pdftotext les utilise souvent à la place de N°
+        $t = [regex]::Replace($t, '(?i)N\s*\u00BA\s*', 'N°')
+        $t = [regex]::Replace($t, '(?i)\u2116\s*', 'N°')
+
         $t = $t -replace [char]0x00A0, ' '
         $t = $t -replace [char]0x202F, ' '
         $t = $t -replace [char]0x2007, ' '

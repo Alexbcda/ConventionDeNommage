@@ -351,12 +351,12 @@ Describe 'Test-CNDateFormat' {
 
 Describe 'Classification IOException (Win32)' {
     It 'Test-IsFileCollisionException est vrai pour ERROR_FILE_EXISTS (80)' {
-        $e = New-Object System.ComponentModel.Win32Exception(80)
+        $e = [System.ComponentModel.Win32Exception]::new(80)
         (Test-IsFileCollisionException -Exception $e) | Should Be $true
     }
 
     It 'Test-IsFatalSystemIOException est vrai pour ERROR_DISK_FULL (112)' {
-        $e = New-Object System.ComponentModel.Win32Exception(112)
+        $e = [System.ComponentModel.Win32Exception]::new(112)
         (Test-IsFatalSystemIOException -Exception $e) | Should Be $true
     }
 }

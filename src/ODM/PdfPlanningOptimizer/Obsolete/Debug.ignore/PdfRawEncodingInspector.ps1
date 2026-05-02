@@ -164,11 +164,11 @@ function script:Split-ByteArrayIntoLinesInspector {
             $lines.Add([byte[]]@())
         }
         else {
-            $buf = New-Object byte[] $len
+            $buf = [byte[]]::new($len)
             [Array]::Copy($AllBytes, $start, $buf, 0, $len)
             if ($buf[$len - 1] -eq 13) {
                 $nl = $len - 1
-                $buf2 = New-Object byte[] $nl
+                $buf2 = [byte[]]::new($nl)
                 [Array]::Copy($buf, 0, $buf2, 0, $nl)
                 $lines.Add($buf2)
             }
@@ -182,11 +182,11 @@ function script:Split-ByteArrayIntoLinesInspector {
 
     if ($start -lt $AllBytes.Length) {
         $len = $AllBytes.Length - $start
-        $buf = New-Object byte[] $len
+        $buf = [byte[]]::new($len)
         [Array]::Copy($AllBytes, $start, $buf, 0, $len)
         if ($len -ge 1 -and $buf[$len - 1] -eq 13) {
             $nl = $len - 1
-            $buf2 = New-Object byte[] $nl
+            $buf2 = [byte[]]::new($nl)
             [Array]::Copy($buf, 0, $buf2, 0, $nl)
             $lines.Add($buf2)
         }
@@ -225,7 +225,7 @@ function script:Test-StrictUtf8LineBytesInspector {
     if ($null -eq $LineBytes -or $LineBytes.Length -eq 0) {
         return $true
     }
-    $strict = New-Object System.Text.UTF8Encoding @($false, $true)
+    $strict = [System.Text.UTF8Encoding]::new($false, $true)
     try {
         $null = $strict.GetString($LineBytes)
         return $true
@@ -368,10 +368,10 @@ function Invoke-PdfRawEncodingInspection {
         }
     }
 
-    $utf8NoBom = New-Object System.Text.UTF8Encoding @($false, $false)
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false, $false)
     $cp1252 = [System.Text.Encoding]::GetEncoding(1252)
-    $encFb = New-Object System.Text.EncoderReplacementFallback @([string][char]0xFFFD)
-    $decFb = New-Object System.Text.DecoderReplacementFallback @([string][char]0xFFFD)
+    $encFb = [System.Text.EncoderReplacementFallback]::new([string][char]0xFFFD)
+    $decFb = [System.Text.DecoderReplacementFallback]::new([string][char]0xFFFD)
     $utf8Replacement = [System.Text.Encoding]::GetEncoding(65001, $encFb, $decFb)
 
     $pageList = [System.Collections.Generic.List[object]]::new()

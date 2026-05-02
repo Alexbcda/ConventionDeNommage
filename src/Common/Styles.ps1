@@ -1,4 +1,4 @@
-﻿# ============================================
+# ============================================
 # STYLES.PS1 - VERSION CORRIGEE
 # ============================================
 
@@ -18,15 +18,15 @@ $script:CouleurLigneAlternee = [System.Drawing.Color]::FromArgb(255, 245, 235)
 $script:CouleurSelection = [System.Drawing.Color]::FromArgb(229, 90, 42)
 
 # POLICES
-$script:PoliceTitre1 = New-Object System.Drawing.Font("Arial", 20, [System.Drawing.FontStyle]::Bold)
-$script:PoliceTitre2 = New-Object System.Drawing.Font("Arial", 16, [System.Drawing.FontStyle]::Bold)
-$script:PoliceTitre3 = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold)
-$script:PoliceNormal = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Regular)
-$script:PoliceBouton = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+$script:PoliceTitre1 = [System.Drawing.Font]::new("Arial", 20, [System.Drawing.FontStyle]::Bold)
+$script:PoliceTitre2 = [System.Drawing.Font]::new("Arial", 16, [System.Drawing.FontStyle]::Bold)
+$script:PoliceTitre3 = [System.Drawing.Font]::new("Arial", 12, [System.Drawing.FontStyle]::Bold)
+$script:PoliceNormal = [System.Drawing.Font]::new("Arial", 10, [System.Drawing.FontStyle]::Regular)
+$script:PoliceBouton = [System.Drawing.Font]::new("Arial", 10, [System.Drawing.FontStyle]::Bold)
 
 # Titres / textes secondaires des panneaux de gestion (Agents, Véhicules) — source unique
-$script:PoliceTitreGestionFenetre = New-Object System.Drawing.Font("Arial", 18, [System.Drawing.FontStyle]::Bold)
-$script:PoliceLabelSecondaireFenetre = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Regular)
+$script:PoliceTitreGestionFenetre = [System.Drawing.Font]::new("Arial", 18, [System.Drawing.FontStyle]::Bold)
+$script:PoliceLabelSecondaireFenetre = [System.Drawing.Font]::new("Arial", 10, [System.Drawing.FontStyle]::Regular)
 $script:CouleurTexteSecondairePanel = [System.Drawing.Color]::FromArgb(60, 60, 60)
 if (Get-Command Convert-ToUiText -ErrorAction SilentlyContinue) {
     $script:TitrePanelAgents = Convert-ToUiText -Text 'Gestion des agents'
@@ -58,7 +58,7 @@ function Set-BtnBorderStyle {
     else {
         $Button.Text = $Text
     }
-    $Button.Size = New-Object System.Drawing.Size($Width, $Height)
+    $Button.Size = [System.Drawing.Size]::new($Width, $Height)
     $Button.BackColor = $script:CouleurBlanc
     $Button.FlatStyle = "Flat"
     $Button.FlatAppearance.BorderColor = $BorderColor
@@ -70,12 +70,19 @@ function Set-BtnBorderStyle {
     $Button.Cursor = [System.Windows.Forms.Cursors]::Hand
 
     # ✅ STOCKAGE SAFE
+    $Button.AccessibleDescription = "CN_BORDER_COLOR"
     $Button.Tag = $BorderColor
 
     # ✅ EVENTS SAFE
     $Button.Add_MouseEnter({
-        if ($this.Tag -ne $null) {
+        if ($this.Tag -is [System.Drawing.Color]) {
             $this.BackColor = $this.Tag
+        }
+        elseif ($this.FlatAppearance.BorderColor -is [System.Drawing.Color]) {
+            $this.BackColor = $this.FlatAppearance.BorderColor
+        }
+        elseif ($this.Tag -is [string]) {
+            Write-Warning "[BUG] BackColor guard: Tag contient une string non-couleur sur control '$($this.Name)'"
         }
         $this.ForeColor = $script:CouleurBlanc
     })
@@ -163,3 +170,4 @@ $script:TailleFenetreMiniLargeur = 1000
 $script:TailleFenetreMiniHauteur = 650
 
 Write-Host "[STYLES] Version corrigee" -ForegroundColor Green
+

@@ -10,6 +10,8 @@ if (-not (Test-Path -LiteralPath $_modelsDir)) {
 }
 . (Join-Path $_modelsDir 'TourneeStop.ps1')
 . (Join-Path $_modelsDir 'Tournee.ps1')
+$_ss = Join-Path $PSScriptRoot '..\..\..\Common\SortSafe.ps1'
+if (Test-Path -LiteralPath $_ss) { . $_ss }
 
 function script:Get-TourneeRowProperty {
     param(
@@ -164,10 +166,10 @@ function Build-TourneesFromExcel {
 
     foreach ($g in $groups) {
         $ordered = $g.Group | Sort-Object -Property @{
-            Expression = { Get-TourneeStopPosition -Row $_.Row -FallbackIndex $_.Index }
+            Expression = { (Get-SortSafeKeyInt (Get-TourneeStopPosition -Row $_.Row -FallbackIndex $_.Index)) }
             Ascending  = $true
         }, @{
-            Expression = { $_.Index }
+            Expression = { (Get-SortSafeKeyInt $_.Index) }
             Ascending  = $true
         }
 
@@ -201,7 +203,7 @@ function Build-TourneesFromExcel {
         Write-Verbose "Build-TourneesFromExcel: tournée $tid — $($t.Stops.Count) arrêt(s)."
     }
 
-    $arr = @($list.ToArray()) | Sort-Object -Property TourneeId
+    $arr = Sort-Safe -InputObject @($list.ToArray()) -Property TourneeId -KeyType String
     Write-Verbose "Build-TourneesFromExcel: fin — $($arr.Count) tournée(s)."
     return $arr
 }

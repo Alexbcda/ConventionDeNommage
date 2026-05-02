@@ -44,7 +44,7 @@ function Refresh-VehiculesGrid {
         # Style texte: actifs en police normale, inactifs en gris clair
         $baseFont = $script:PoliceNormal
         if (-not $baseFont) { $baseFont = (if ($Grid.DefaultCellStyle.Font) { $Grid.DefaultCellStyle.Font } else { $Grid.Font }) }
-        $normalFont = New-Object System.Drawing.Font($baseFont, ([System.Drawing.FontStyle]::Regular))
+        $normalFont = [System.Drawing.Font]::new($baseFont, ([System.Drawing.FontStyle]::Regular))
         $inactiveColor = [System.Drawing.Color]::FromArgb(150, 150, 150)
 
         $i = 0
@@ -100,53 +100,53 @@ function Show-VehiculesPanel {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
-    $mainPanel = New-Object System.Windows.Forms.Panel
+    $mainPanel = [System.Windows.Forms.Panel]::new()
     $mainPanel.Dock = "Fill"
     $mainPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
-    $mainPanel.Padding = New-Object System.Windows.Forms.Padding(20)
+    $mainPanel.Padding = [System.Windows.Forms.Padding]::new(20)
 
     # ===== TITRE =====
-    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle = [System.Windows.Forms.Label]::new()
     $lblTitle.Text = $script:TitrePanelVehicules
     $lblTitle.Font = $script:PoliceTitreGestionFenetre
     $lblTitle.ForeColor = $script:CouleurOrange
-    $lblTitle.Location = New-Object System.Drawing.Point(20, 20)
-    $lblTitle.Size = New-Object System.Drawing.Size(400, 50)
+    $lblTitle.Location = [System.Drawing.Point]::new(20, 20)
+    $lblTitle.Size = [System.Drawing.Size]::new(400, 50)
     $mainPanel.Controls.Add($lblTitle)
 
     # ===== Option historique (actifs + inactifs) — même ordre que AgentPanel =====
-    $lblHistorique = New-Object System.Windows.Forms.Label
+    $lblHistorique = [System.Windows.Forms.Label]::new()
     $lblHistorique.Text = "Afficher l’historique des véhicules"
     $lblHistorique.Font = $script:PoliceLabelSecondaireFenetre
     $lblHistorique.ForeColor = $script:CouleurTexteSecondairePanel
-    $lblHistorique.Location = New-Object System.Drawing.Point(20, 77)
-    $lblHistorique.Size = New-Object System.Drawing.Size(260, 20)
+    $lblHistorique.Location = [System.Drawing.Point]::new(20, 77)
+    $lblHistorique.Size = [System.Drawing.Size]::new(260, 20)
     $mainPanel.Controls.Add($lblHistorique)
 
-    $chkHistoriqueVehicules = New-Object System.Windows.Forms.CheckBox
+    $chkHistoriqueVehicules = [System.Windows.Forms.CheckBox]::new()
     $chkHistoriqueVehicules.Name = "chkHistoriqueVehicules"
-    $chkHistoriqueVehicules.Location = New-Object System.Drawing.Point(285, 78)
-    $chkHistoriqueVehicules.Size = New-Object System.Drawing.Size(20, 20)
+    $chkHistoriqueVehicules.Location = [System.Drawing.Point]::new(285, 78)
+    $chkHistoriqueVehicules.Size = [System.Drawing.Size]::new(20, 20)
     $chkHistoriqueVehicules.Checked = $false
     $chkHistoriqueVehicules.Cursor = [System.Windows.Forms.Cursors]::Hand
     $mainPanel.Controls.Add($chkHistoriqueVehicules)
 
-    $btnAjouter = New-Object System.Windows.Forms.Button
+    $btnAjouter = [System.Windows.Forms.Button]::new()
     $btnAjouter.Text = "Ajouter un véhicule"
-    $btnAjouter.Location = New-Object System.Drawing.Point(900, 20)
-    $btnAjouter.Size = New-Object System.Drawing.Size(200, 45)
+    $btnAjouter.Location = [System.Drawing.Point]::new(900, 20)
+    $btnAjouter.Size = [System.Drawing.Size]::new(200, 45)
     Set-BtnAjouterStyle -BtnAjouter $btnAjouter
     $btnAjouter.Text = "Ajouter un véhicule"
-    $btnAjouter.Size = New-Object System.Drawing.Size(220, 45)
+    $btnAjouter.Size = [System.Drawing.Size]::new(220, 45)
     $btnAjouter.Cursor = [System.Windows.Forms.Cursors]::Hand
     $mainPanel.Controls.Add($btnAjouter)
 
     # ===== DATA GRID =====
-    $grid = New-Object System.Windows.Forms.DataGridView
+    $grid = [System.Windows.Forms.DataGridView]::new()
     $grid.Name = "VehiculesGrid"
     # [UI] DataGridView fixed to responsive Fill layout (charte AgentPanel)
-    $grid.Location = New-Object System.Drawing.Point(20, 110)
-    $grid.Size = New-Object System.Drawing.Size(1100, 560)
+    $grid.Location = [System.Drawing.Point]::new(20, 110)
+    $grid.Size = [System.Drawing.Size]::new(1100, 560)
     $grid.Anchor = "Top,Bottom,Left,Right"
     $grid.AllowUserToAddRows = $false
     $grid.RowHeadersVisible = $false
@@ -194,11 +194,11 @@ function Show-VehiculesPanel {
     $mainPanel.Controls.Add($grid)
 
     # Liste vide (optionnel, charte lisible)
-    $lblVehiculesEmpty = New-Object System.Windows.Forms.Label
+    $lblVehiculesEmpty = [System.Windows.Forms.Label]::new()
     $lblVehiculesEmpty.Name = "lblVehiculesEmpty"
     $lblVehiculesEmpty.Text = "Aucun véhicule à afficher."
     $lblVehiculesEmpty.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-    $lblVehiculesEmpty.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Regular)
+    $lblVehiculesEmpty.Font = [System.Drawing.Font]::new("Segoe UI", 11, [System.Drawing.FontStyle]::Regular)
     $lblVehiculesEmpty.ForeColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
     $lblVehiculesEmpty.BackColor = [System.Drawing.Color]::White
     $lblVehiculesEmpty.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
