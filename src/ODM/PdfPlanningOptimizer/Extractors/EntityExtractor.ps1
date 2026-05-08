@@ -1301,16 +1301,49 @@ function script:Build-ContactFromLines {
     return @{ Name = $name; Email = $email }
 }
 
+function script:Test-EntityExtractorLineOpensNewCarrierBlock {
+    <#
+    .SYNOPSIS
+        Ligne sans code ODM : début d'un nouveau bloc prestation tel que PDF réel multi-ligne
+        (nouveau bloc = rejette les lignes suivantes précédentes ex. Bac / consignes).
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Line)
+    if ([string]::IsNullOrWhiteSpace($Line)) { return $false }
+    [string]$ln = $Line.Trim()
+    # Accents usuels ADV + ASCII — début « mot » après espaces début ligne
+    if ($ln -match '(?i)^(?:Collecte|Destruction|Ramassage|Enlèvement|Enlevement|Tri|Piles|Récupération|Recuperation|r[ée]cup[ée]ration)\b') {
+        return $true
+    }
+    return $false
+}
+
 function script:Find-ServicesFromLines {
     param([string[]]$Lines)
     $list = [System.Collections.Generic.List[object]]::new()
     if (-not $Lines) { return $list.ToArray() }
 
+    $pendingFragments = [System.Collections.Generic.List[string]]::new()
+
     foreach ($line in $Lines) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
 
         $matches = $script:RxOdmPair.Matches($line)
-        if ($matches.Count -eq 0) { continue }
+        if ($matches.Count -eq 0) {
+            [string]$ln = $line.Trim()
+            if ($ln.Length -eq 0) { continue }
+            if (Test-EntityExtractorLineOpensNewCarrierBlock -Line $ln) {
+                $pendingFragments.Clear()
+                [void]$pendingFragments.Add($ln)
+            }
+            else {
+                [void]$pendingFragments.Add($ln)
+            }
+            continue
+        }
+
+        [string]$joinedPending = (($pendingFragments.ToArray() | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' ').Trim()
+        [string]$pref = ''
+        if (-not [string]::IsNullOrWhiteSpace($joinedPending)) { $pref = $joinedPending }
 
         $lastIndex = 0
         for ($mi = 0; $mi -lt $matches.Count; $mi++) {
@@ -1320,7 +1353,19 @@ function script:Find-ServicesFromLines {
             $len = $m.Length
 
             $typePart = $line.Substring($lastIndex, $idx - $lastIndex)
-            $type = Get-TrimmedOrNull $typePart
+            $typeMid = Get-TrimmedOrNull $typePart
+
+            [string]$typeUse = ''
+            [string]$effectivePref = if ($mi -eq 0) { $pref } else { '' }
+            if ([string]::IsNullOrWhiteSpace($effectivePref)) {
+                $typeUse = $typeMid
+            }
+            elseif ($null -eq $typeMid) {
+                $typeUse = Get-TrimmedOrNull $effectivePref
+            }
+            else {
+                $typeUse = Get-TrimmedOrNull (($effectivePref.Trim() + ' ' + [string]$typeMid.Trim()).Trim())
+            }
 
             $nextIdx = if (($mi + 1) -lt $matches.Count) { $matches[$mi + 1].Index } else { $line.Length }
             $segment = $line.Substring($idx, $nextIdx - $idx)
@@ -1334,13 +1379,15 @@ function script:Find-ServicesFromLines {
             }
 
             $list.Add(@{
-                Type     = $type
+                Type     = $typeUse
                 ODM      = $odm
                 Quantity = $qty
             })
 
             $lastIndex = $idx + $len
         }
+
+        $pendingFragments.Clear()
     }
 
     return $list.ToArray()
