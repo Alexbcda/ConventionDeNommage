@@ -172,6 +172,63 @@ function Write-PdfReorganiserGhostscriptInputDiagnosticsIfEnabled {
     catch { }
 }
 
+function Get-PdfReorganiserPageNumberBatches {
+    <#
+    .SYNOPSIS
+        Regroupe une sequence de numeros de pages source en lots pour Ghostscript sans changer l'ordre final.
+        - Plages contigues ascendante stricte (p, p+1, p+2, ...) → un lot FirstPage..LastPage.
+        - Suites de meme page consecutives (p, p, ...) → une extraction puis N references dans le merge.
+        Autres motifs (pas de +1 entre voisins) tombent en lots mono-page comme avant (ex. [10],[12]).
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [int[]]$PageNumbers
+    )
+
+    $batches = [System.Collections.Generic.List[object]]::new()
+    $n = @($PageNumbers).Count
+    $i = 0
+    while ($i -lt $n) {
+        $pn = [int]$PageNumbers[$i]
+
+        # Suite de meme page physique consecutives (doublons contigus)
+        if (($i + 1) -lt $n -and [int]$PageNumbers[$i + 1] -eq $pn) {
+            $rep = 1
+            $j = $i
+            while (($j + 1) -lt $n -and [int]$PageNumbers[$j + 1] -eq $pn) {
+                $rep++
+                $j++
+            }
+            [void]$batches.Add([PSCustomObject]@{
+                    Kind        = 'SamePageRun'
+                    FirstPage   = $pn
+                    LastPage    = $pn
+                    MergeRepeat = $rep
+                })
+            $i = $j + 1
+            continue
+        }
+
+        # Suite contigue dans le fichier source (delta +1 entre occurrences consecutives)
+        $first = $pn
+        $last = $pn
+        $j = $i
+        while (($j + 1) -lt $n -and ([int]$PageNumbers[$j + 1] -eq ([int]$PageNumbers[$j] + 1))) {
+            $j++
+            $last = [int]$PageNumbers[$j]
+        }
+        [void]$batches.Add([PSCustomObject]@{
+                Kind        = 'RangePages'
+                FirstPage   = $first
+                LastPage    = $last
+                MergeRepeat = 1
+            })
+        $i = $j + 1
+    }
+
+    return @($batches.ToArray())
+}
+
 function Reorganiser-PDF {
     param(
         [string]$SourcePDF, 
@@ -255,7 +312,7 @@ function Reorganiser-PDF {
     if ($gsPath) {
         # GS 10 SAFER (defaut) : sans --permit-file-read|--permit-file-write, echec frequent
         # "Could not open the file ..." sur sortie (ex. Downloads) ou sur entrees merge / @rsp.
-        # Opt. : $env:CN_DEBUG_GHOSTSCRIPT_INPUT = '1' | $env:CN_GS_PREMERGE_DELAY_MS millisecondes avant merge @rsp.
+        # Opt. : $env:CN_DEBUG_GHOSTSCRIPT_INPUT = '1' | CN_GS_PREMERGE_DELAY_MS avant merge @rsp | CN_GS_BATCH_SLICES=0 pour desactiver le lotissement.
         Write-Host "[PDF] Ghostscript (exécution) : $gsPath" -ForegroundColor Green
         if (-not (Test-Path -LiteralPath $gsPath -PathType Leaf)) {
             Write-Warning "PDFReorganizer: binaire GS résolu introuvable : $gsPath"
@@ -276,7 +333,8 @@ function Reorganiser-PDF {
         }
 
         # Une seule paire -dFirstPage/-dLastPage est prise en compte par invocation : plusieurs paires écrase la précédente
-        # → extraction 1 page / fichier temp puis fusion multi -f en une deuxième passe.
+        # → une ou plusieurs extractions (lots : plages contigues +1 et doublons consecutifs) puis fusion multi -f.
+        # CN_GS_BATCH_SLICES=0 : desactive le lotissement (1 processus par occurrence de page, comme avant).
         $errFile = Join-Path $env:TEMP ("cn_gs_err_{0}.txt" -f [Guid]::NewGuid().ToString('N'))
         if (Test-Path -LiteralPath $errFile) { Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue }
 
@@ -303,37 +361,94 @@ function Reorganiser-PDF {
                 $process = Start-Process -FilePath $gsPath -ArgumentList $gsArgsSingle -NoNewWindow -Wait -PassThru -RedirectStandardError $errFile
             }
             else {
-                $pi = 0
-                foreach ($pageNum in $pageNumbers) {
-                    $pnI = [int]$pageNum
-                    $sliceOut = Join-Path $env:TEMP ("cn_gs_slice_{0}_{1:D5}.pdf" -f $runGuid, $pi)
-                    $pi++
-                    $permSlice = @(Get-PdfReorganiserGhostscriptPermitArgs -ResolvedSourcePdf $resolvedSource -OutputPdfAbsPath $sliceOut)
-                    $argSlice = @(
-                        '-dNOPAUSE', '-dBATCH'
-                    ) + $permSlice + @(
-                        '-sDEVICE=pdfwrite',
-                        ("-sOutputFile=$sliceOut"),
-                        ("-dFirstPage=$pnI"), ("-dLastPage=$pnI"),
-                        $resolvedSource
-                    )
-                    if ($pi -eq 1 -or ($pi % 50 -eq 0)) {
-                        Write-Host ("[PDF] Ghostscript extraction page {0}/{1}" -f $pi, $pageNumbers.Count) -ForegroundColor Gray
-                    }
-                    $prSlice = Start-Process -FilePath $gsPath -ArgumentList $argSlice -NoNewWindow -Wait -PassThru -RedirectStandardError $errFile
-                    if ($null -eq $prSlice -or $prSlice.ExitCode -ne 0) {
-                        $ec = if ($null -eq $prSlice) { '(null)' } else { "$($prSlice.ExitCode)" }
-                        Write-Host "[ERROR] Ghostscript extraction echouee : page=$pnI ExitCode=$ec" -ForegroundColor Red
-                        if (Test-Path -LiteralPath $errFile) {
-                            Write-Host ([string](Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue)) -ForegroundColor DarkRed
+                $disableBatchSlices = ([string]::Equals(([string]$env:CN_GS_BATCH_SLICES).Trim(), '0', [System.StringComparison]::OrdinalIgnoreCase))
+                $pageArray = [int[]]@($pageNumbers)
+
+                if (-not $disableBatchSlices) {
+                    $sliceBatches = @(Get-PdfReorganiserPageNumberBatches -PageNumbers $pageArray)
+                    $nb = @($sliceBatches).Length
+                    $savedProcsApprox = [int]$pageNumbers.Count - $nb
+                    Write-Host (
+                        "[GS-PREP] batch slices lots={0}, pages_logiques={1}, approx_extractions_gs_evitees_vs_page_a_page={2}" -f $nb, @($pageNumbers).Count, [Math]::Max(0, $savedProcsApprox)
+                    ) -ForegroundColor Cyan
+
+                    $bi = 0
+                    foreach ($sb in @($sliceBatches)) {
+                        $fP = [int]$sb.FirstPage
+                        $lP = [int]$sb.LastPage
+                        $mRep = 1
+                        if ($null -ne $sb.MergeRepeat) { try { $mRep = [int]$sb.MergeRepeat } catch { $mRep = 1 } }
+                        if ($mRep -lt 1) { $mRep = 1 }
+
+                        $sliceOut = Join-Path $env:TEMP ("cn_gs_slice_{0}_{1:D5}.pdf" -f $runGuid, $bi)
+                        $bi++
+                        $permSlice = @(Get-PdfReorganiserGhostscriptPermitArgs -ResolvedSourcePdf $resolvedSource -OutputPdfAbsPath $sliceOut)
+                        $argSlice = @(
+                            '-dNOPAUSE', '-dBATCH'
+                        ) + $permSlice + @(
+                            '-sDEVICE=pdfwrite',
+                            ("-sOutputFile=$sliceOut"),
+                            ("-dFirstPage=$fP"), ("-dLastPage=$lP"),
+                            $resolvedSource
+                        )
+                        if ($bi -eq 1 -or ($bi % 25 -eq 0) -or ($bi -eq $nb)) {
+                            Write-Host (
+                                "[PDF] Ghostscript extraction lot {0}/{1} FirstPage={2} LastPage={3} mergeRefs={4}" -f $bi, $nb, $fP, $lP, $mRep
+                            ) -ForegroundColor Gray
                         }
-                        return $false
+
+                        $prSlice = Start-Process -FilePath $gsPath -ArgumentList $argSlice -NoNewWindow -Wait -PassThru -RedirectStandardError $errFile
+                        if ($null -eq $prSlice -or $prSlice.ExitCode -ne 0) {
+                            $ec = if ($null -eq $prSlice) { '(null)' } else { "$($prSlice.ExitCode)" }
+                            Write-Host ("[ERROR] Ghostscript extraction echouee lot : First=$fP Last=$lP ExitCode=$ec") -ForegroundColor Red
+                            if (Test-Path -LiteralPath $errFile) {
+                                Write-Host ([string](Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue)) -ForegroundColor DarkRed
+                            }
+                            return $false
+                        }
+                        if (-not (Test-Path -LiteralPath $sliceOut)) {
+                            Write-Host "[ERROR] Fichier lot extrait absent : $sliceOut" -ForegroundColor Red
+                            return $false
+                        }
+                        for ($ri = 0; $ri -lt $mRep; $ri++) {
+                            [void]$tempSingles.Add($sliceOut)
+                        }
                     }
-                    if (-not (Test-Path -LiteralPath $sliceOut)) {
-                        Write-Host "[ERROR] Fichier page extrait absent : $sliceOut" -ForegroundColor Red
-                        return $false
+                }
+                else {
+                    Write-Host '[GS-PREP] CN_GS_BATCH_SLICES=0 : extraction page par page (comportement historique)' -ForegroundColor DarkYellow
+                    $pi = 0
+                    foreach ($pageNum in @($pageNumbers)) {
+                        $pnI = [int]$pageNum
+                        $sliceOut = Join-Path $env:TEMP ("cn_gs_slice_{0}_{1:D5}.pdf" -f $runGuid, $pi)
+                        $pi++
+                        $permSlice = @(Get-PdfReorganiserGhostscriptPermitArgs -ResolvedSourcePdf $resolvedSource -OutputPdfAbsPath $sliceOut)
+                        $argSlice = @(
+                            '-dNOPAUSE', '-dBATCH'
+                        ) + $permSlice + @(
+                            '-sDEVICE=pdfwrite',
+                            ("-sOutputFile=$sliceOut"),
+                            ("-dFirstPage=$pnI"), ("-dLastPage=$pnI"),
+                            $resolvedSource
+                        )
+                        if ($pi -eq 1 -or ($pi % 50 -eq 0)) {
+                            Write-Host ("[PDF] Ghostscript extraction page {0}/{1}" -f $pi, $pageNumbers.Count) -ForegroundColor Gray
+                        }
+                        $prSlice = Start-Process -FilePath $gsPath -ArgumentList $argSlice -NoNewWindow -Wait -PassThru -RedirectStandardError $errFile
+                        if ($null -eq $prSlice -or $prSlice.ExitCode -ne 0) {
+                            $ec = if ($null -eq $prSlice) { '(null)' } else { "$($prSlice.ExitCode)" }
+                            Write-Host "[ERROR] Ghostscript extraction echouee : page=$pnI ExitCode=$ec" -ForegroundColor Red
+                            if (Test-Path -LiteralPath $errFile) {
+                                Write-Host ([string](Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue)) -ForegroundColor DarkRed
+                            }
+                            return $false
+                        }
+                        if (-not (Test-Path -LiteralPath $sliceOut)) {
+                            Write-Host "[ERROR] Fichier page extrait absent : $sliceOut" -ForegroundColor Red
+                            return $false
+                        }
+                        [void]$tempSingles.Add($sliceOut)
                     }
-                    [void]$tempSingles.Add($sliceOut)
                 }
 
                 $mergeReadCandidates = @($tempSingles.ToArray())

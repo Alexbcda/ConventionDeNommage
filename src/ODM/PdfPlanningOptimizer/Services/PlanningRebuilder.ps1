@@ -3102,16 +3102,18 @@ function Start-PlanningRebuild {
         }
     }
 
-    $pdfEntities = @()
-    Trace-DeepObjectLeak -Value $pdfEntities -Name "PdfEntities" -Location "Start-PlanningRebuild.init.pdfEntities"
+    $pdfEntitiesBag = @()
+    Trace-DeepObjectLeak -Value $pdfEntitiesBag -Name "PdfEntities" -Location "Start-PlanningRebuild.init.pdfEntities"
+    $pdfEntitiesList = [System.Collections.Generic.List[object]]::new()
     foreach ($page in @($pdfData.Pages)) {
         $entity = ConvertTo-PageEntity -PageNumber $page.PageNumber -Lines @($page.Lines)
         if ($null -ne $entity) {
             $entity | Add-Member -NotePropertyName NormalizedKey -NotePropertyValue (Normalize-ClientKey $entity) -Force
-            $pdfEntities += $entity
-            Trace-DeepObjectLeak -Value $pdfEntities -Name "PdfEntities" -Location "Start-PlanningRebuild.afterForEach.pdfEntities"
+            [void]$pdfEntitiesList.Add($entity)
         }
     }
+    $pdfEntities = $pdfEntitiesList.ToArray()
+    Trace-DeepObjectLeak -Value $pdfEntities -Name "PdfEntities" -Location "Start-PlanningRebuild.afterPageEntityLoop.pdfEntities"
 
     Write-PlanningDebugLog -Message "Extracting VisitDate from PDF" -Level "DEBUG"
     $visitDate = Get-VisitDateFromEntities -PdfEntities $pdfEntities
