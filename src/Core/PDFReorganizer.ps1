@@ -30,6 +30,148 @@ function Test-PlausibleGeneratedPdf {
     finally { if ($null -ne $fs) { $fs.Dispose() } }
 }
 
+function Convert-PdfReorganiserPathToGhostscriptLiteral {
+    param([AllowEmptyString()][string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return '' }
+    try { return ([System.IO.Path]::GetFullPath($Path) -replace '\\', '/') }
+    catch { return '' }
+}
+
+function Get-PdfReorganiserGhostscriptPermitArgs {
+    <#
+    .SYNOPSIS
+        Ghostscript 10 + default SAFER : autoriser lecture (source, slices @f, fichier @rsp, TEMP)
+        et ecriture (repertoire de sortie, TEMP) sans elargir hors repertoires pipeline.
+    .NOTES
+        Sans ces options, erreur typique : "Could not open the file …" sur -sOutputFile ou sur entree merge.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ResolvedSourcePdf,
+        [Parameter(Mandatory = $true)]
+        [string]$OutputPdfAbsPath,
+        [AllowEmptyCollection()]
+        [string[]]$AdditionalReadCandidates = @()
+    )
+    $readLit = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $writeLit = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $emit = New-Object System.Collections.Generic.List[string]
+
+    $addReadDir = {
+        param([string]$Dir)
+        if ([string]::IsNullOrWhiteSpace($Dir)) { return }
+        $lit = Convert-PdfReorganiserPathToGhostscriptLiteral -Path $Dir
+        if ([string]::IsNullOrWhiteSpace($lit)) { return }
+        if ($readLit.Add($lit)) { [void]$emit.Add("--permit-file-read=$lit") }
+    }
+    $addWriteDir = {
+        param([string]$Dir)
+        if ([string]::IsNullOrWhiteSpace($Dir)) { return }
+        $lit = Convert-PdfReorganiserPathToGhostscriptLiteral -Path $Dir
+        if ([string]::IsNullOrWhiteSpace($lit)) { return }
+        if ($writeLit.Add($lit)) { [void]$emit.Add("--permit-file-write=$lit") }
+    }
+
+    try {
+        $srcAbs = [System.IO.Path]::GetFullPath($ResolvedSourcePdf)
+        $sd = Split-Path -Path $srcAbs -Parent
+        if (-not [string]::IsNullOrWhiteSpace($sd)) { & $addReadDir $sd }
+    }
+    catch { }
+
+    try {
+        $outAbs = [System.IO.Path]::GetFullPath($OutputPdfAbsPath)
+        $od = Split-Path -Path $outAbs -Parent
+        if (-not [string]::IsNullOrWhiteSpace($od)) { & $addWriteDir $od }
+    }
+    catch { }
+
+    foreach ($cand in @($AdditionalReadCandidates)) {
+        if ([string]::IsNullOrWhiteSpace($cand)) { continue }
+        try {
+            $full = [System.IO.Path]::GetFullPath($cand)
+            $pd = Split-Path -Path $full -Parent
+            if (-not [string]::IsNullOrWhiteSpace($pd)) { & $addReadDir $pd }
+        }
+        catch { }
+    }
+
+    try {
+        & $addReadDir $env:TEMP
+        & $addWriteDir $env:TEMP
+    }
+    catch { }
+
+    return @($emit.ToArray())
+}
+
+function Write-PdfReorganiserGhostscriptResponseFileUtf8NoBom {
+    param([Parameter(Mandatory = $true)][string]$RspPath, [Parameter(Mandatory = $true)][string[]]$BodyLines)
+    $utf = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllLines($RspPath, $BodyLines, $utf)
+}
+
+function Write-PdfReorganiserGhostscriptInputDiagnosticsIfEnabled {
+    param(
+        [Parameter(Mandatory = $true)][string]$ResolvedSourcePdf,
+        [Parameter(Mandatory = $true)][string]$OutputPdfAbsPath,
+        [AllowEmptyString()][string]$RspPath = ''
+    )
+    if ($null -eq $env:CN_DEBUG_GHOSTSCRIPT_INPUT -or $env:CN_DEBUG_GHOSTSCRIPT_INPUT -notin @('1', 'true')) {
+        return
+    }
+
+    Write-Host '[GS-DEBUG] CN_DEBUG_GHOSTSCRIPT_INPUT active' -ForegroundColor Magenta
+
+    foreach ($lbl in @( @{ L = 'source'; P = $ResolvedSourcePdf }, @{ L = 'sortie '; P = $OutputPdfAbsPath } )) {
+        $p = [string]$lbl.P
+        $ln = [string]$lbl.L
+        try {
+            $tp = Test-Path -LiteralPath $p -PathType Leaf
+            $it = Get-Item -LiteralPath $p -ErrorAction SilentlyContinue
+            $sz = if ($null -eq $it) { 'n/a' } else { [string]$it.Length }
+            Write-Host ("[GS-DEBUG] Test-Path Leaf {0} ({1}) = {2} ; Length={3}" -f $ln, $p, $tp, $sz) -ForegroundColor Magenta
+            if (-not [string]::IsNullOrWhiteSpace($p)) {
+                $dir = Split-Path -Path ([System.IO.Path]::GetFullPath($p)) -Parent
+                if (-not [string]::IsNullOrWhiteSpace($dir)) {
+                    $td = Test-Path -LiteralPath $dir
+                    Write-Host ("[GS-DEBUG] Repertoire parent existe : {0} = {1}" -f $dir, $td) -ForegroundColor Magenta
+                }
+            }
+        }
+        catch {
+            Write-Host ("[GS-DEBUG] Erreur diagnostic {0} : {1}" -f $ln, $_.Exception.Message) -ForegroundColor Magenta
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($RspPath)) {
+        Write-Host "[GS-DEBUG] Fichier reponse Ghostscript @$RspPath :" -ForegroundColor Magenta
+        if (Test-Path -LiteralPath $RspPath -PathType Leaf) {
+            $raw = Get-Content -LiteralPath $RspPath -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+            $lines = @(Get-Content -LiteralPath $RspPath -ErrorAction SilentlyContinue)
+            $max = [Math]::Min([int]$lines.Count, [int]40)
+            for ($li = 0; $li -lt $max; $li++) {
+                Write-Host ("[GS-DEBUG]   rsp[{0:D4}]={1}" -f $li, $lines[$li]) -ForegroundColor DarkMagenta
+            }
+            Write-Host ("[GS-DEBUG]   octets bruts (Raw.Length) ~= {0}" -f $(if ($raw) { $raw.Length } else { 0 })) -ForegroundColor DarkMagenta
+        }
+        else {
+            Write-Host '[GS-DEBUG]   rsp introuvable' -ForegroundColor Magenta
+        }
+    }
+
+    $leafHint = Split-Path $OutputPdfAbsPath -Leaf
+    try {
+        $procs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object { $null -ne $_.CommandLine -and $leafHint.Length -gt 2 -and $_.CommandLine -like ('*' + $leafHint + '*') }
+        foreach ($xp in @($procs)) {
+            Write-Host ("[GS-DEBUG] Processus dont la ligne de commande mentionne `{0}` : PID={1} Name={2}" -f `
+                    $leafHint, $xp.ProcessId, $xp.Name) -ForegroundColor Yellow
+        }
+    }
+    catch { }
+}
+
 function Reorganiser-PDF {
     param(
         [string]$SourcePDF, 
@@ -111,6 +253,9 @@ function Reorganiser-PDF {
 
     $gsPath = Get-ResolvedGhostscriptPath
     if ($gsPath) {
+        # GS 10 SAFER (defaut) : sans --permit-file-read|--permit-file-write, echec frequent
+        # "Could not open the file ..." sur sortie (ex. Downloads) ou sur entrees merge / @rsp.
+        # Opt. : $env:CN_DEBUG_GHOSTSCRIPT_INPUT = '1' | $env:CN_GS_PREMERGE_DELAY_MS millisecondes avant merge @rsp.
         Write-Host "[PDF] Ghostscript (exécution) : $gsPath" -ForegroundColor Green
         if (-not (Test-Path -LiteralPath $gsPath -PathType Leaf)) {
             Write-Warning "PDFReorganizer: binaire GS résolu introuvable : $gsPath"
@@ -143,8 +288,11 @@ function Reorganiser-PDF {
             if ($pageNumbers.Count -eq 1) {
                 $only = [int]$pageNumbers[0]
                 Write-Host "[GS-PREP] single-page shortcut FirstPage=$only" -ForegroundColor DarkCyan
+                $permSingle = @(Get-PdfReorganiserGhostscriptPermitArgs -ResolvedSourcePdf $resolvedSource -OutputPdfAbsPath $outAbs)
                 $gsArgsSingle = @(
-                    '-dNOPAUSE', '-dBATCH', '-sDEVICE=pdfwrite',
+                    '-dNOPAUSE', '-dBATCH'
+                ) + $permSingle + @(
+                    '-sDEVICE=pdfwrite',
                     ("-sOutputFile=$outAbs"),
                     ("-dFirstPage=$only"), ("-dLastPage=$only"),
                     $resolvedSource
@@ -160,8 +308,11 @@ function Reorganiser-PDF {
                     $pnI = [int]$pageNum
                     $sliceOut = Join-Path $env:TEMP ("cn_gs_slice_{0}_{1:D5}.pdf" -f $runGuid, $pi)
                     $pi++
+                    $permSlice = @(Get-PdfReorganiserGhostscriptPermitArgs -ResolvedSourcePdf $resolvedSource -OutputPdfAbsPath $sliceOut)
                     $argSlice = @(
-                        '-dNOPAUSE', '-dBATCH', '-sDEVICE=pdfwrite',
+                        '-dNOPAUSE', '-dBATCH'
+                    ) + $permSlice + @(
+                        '-sDEVICE=pdfwrite',
                         ("-sOutputFile=$sliceOut"),
                         ("-dFirstPage=$pnI"), ("-dLastPage=$pnI"),
                         $resolvedSource
@@ -185,8 +336,12 @@ function Reorganiser-PDF {
                     [void]$tempSingles.Add($sliceOut)
                 }
 
+                $mergeReadCandidates = @($tempSingles.ToArray())
+                $permMerge = @(Get-PdfReorganiserGhostscriptPermitArgs -ResolvedSourcePdf $resolvedSource -OutputPdfAbsPath $outAbs -AdditionalReadCandidates $mergeReadCandidates)
                 $mergeArgs = [System.Collections.Generic.List[string]]::new()
-                [void]$mergeArgs.AddRange([string[]]@('-dNOPAUSE', '-dBATCH', '-sDEVICE=pdfwrite', ("-sOutputFile=$outAbs")))
+                [void]$mergeArgs.AddRange([string[]]@('-dNOPAUSE', '-dBATCH'))
+                [void]$mergeArgs.AddRange([string[]]$permMerge)
+                [void]$mergeArgs.AddRange([string[]]@('-sDEVICE=pdfwrite', ("-sOutputFile=$outAbs")))
                 foreach ($tp in $tempSingles) {
                     [void]$mergeArgs.Add('-f')
                     [void]$mergeArgs.Add($tp)
@@ -199,13 +354,42 @@ function Reorganiser-PDF {
                     $rspPath = Join-Path $env:TEMP ("cn_gs_merge_{0}.rsp" -f $runGuid)
                     $rspBody = New-Object System.Collections.Generic.List[string]
                     foreach ($tp in @($tempSingles)) {
+                        $tpNorm = [System.IO.Path]::GetFullPath($tp)
                         [void]$rspBody.Add('-f')
-                        [void]$rspBody.Add("`"$tp`"")
+                        [void]$rspBody.Add(('"' + $tpNorm + '"').Trim())
                     }
-                    [System.IO.File]::WriteAllLines($rspPath, $rspBody.ToArray())
+                    Write-PdfReorganiserGhostscriptResponseFileUtf8NoBom -RspPath $rspPath -BodyLines @($rspBody.ToArray())
                     Write-Host "[GS-PREP] merge utilise fichier arguments (liste longue ou >50 fichiers)" -ForegroundColor DarkYellow
-                    $atMerge = "@$rspPath"
-                    $mergeArgsRsp = @('-dNOPAUSE', '-dBATCH', '-sDEVICE=pdfwrite', ("-sOutputFile=$outAbs"), $atMerge )
+
+                    $permRsp = @(Get-PdfReorganiserGhostscriptPermitArgs -ResolvedSourcePdf $resolvedSource -OutputPdfAbsPath $outAbs -AdditionalReadCandidates (@($tempSingles.ToArray()) + @($rspPath)))
+
+                    [int]$preMs = 0
+                    try {
+                        if (-not [string]::IsNullOrWhiteSpace($env:CN_GS_PREMERGE_DELAY_MS)) {
+                            $parsed = [int]0
+                            if ([int]::TryParse(([string]$env:CN_GS_PREMERGE_DELAY_MS).Trim(), [ref]$parsed)) {
+                                $preMs = [Math]::Max(0, [Math]::Min(10000, $parsed))
+                            }
+                        }
+                    }
+                    catch { $preMs = 0 }
+
+                    Write-PdfReorganiserGhostscriptInputDiagnosticsIfEnabled -ResolvedSourcePdf $resolvedSource -OutputPdfAbsPath $outAbs -RspPath $rspPath
+
+                    if ($preMs -gt 0) {
+                        Write-Host ("[GS-PREP] Pause pre-merge CN_GS_PREMERGE_DELAY_MS={0}ms (flush FS / fermeture fichier)" -f $preMs) -ForegroundColor DarkGray
+                        Start-Sleep -Milliseconds $preMs
+                    }
+
+                    $rspResolved = [System.IO.Path]::GetFullPath($rspPath)
+                    $atMerge = if ($rspResolved.Contains(' ')) {
+                        ('"' + '@' + $rspResolved + '"')
+                    }
+                    else {
+                        ('@' + $rspResolved)
+                    }
+
+                    $mergeArgsRsp = @('-dNOPAUSE', '-dBATCH') + @($permRsp) + @('-sDEVICE=pdfwrite', ("-sOutputFile=$outAbs"), $atMerge )
                     $process = Start-Process -FilePath $gsPath -ArgumentList $mergeArgsRsp -NoNewWindow -Wait -PassThru -RedirectStandardError $errFile
                     if (Test-Path -LiteralPath $rspPath) {
                         Remove-Item -LiteralPath $rspPath -Force -ErrorAction SilentlyContinue

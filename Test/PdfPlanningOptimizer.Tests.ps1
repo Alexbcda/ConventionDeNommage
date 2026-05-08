@@ -196,6 +196,24 @@ Describe 'PdfPlanningOptimizer - EntityExtractor multiligne (libelle / valeur li
         $e.ClientName | Should Match 'ANDERLAINE.*ALBERTVILLE.*CONSEIL'
         $e.Address['PostalCode'] | Should Be '73400'
     }
+
+    It 'Prestations Collecte et Destruction avec code ODM ligne suivante (ODM réel)' {
+        $lines = @(
+            'Collecte de Papier',
+            'confidentiel',
+            '5330151-19160224',
+            'Bac 360L fermé /2 kg',
+            'Prendre le protocole de collecte',
+            'Destruction confidentielle de Papier confidentiel',
+            '5330151-19160235'
+        )
+        $e = ConvertTo-PageEntity -PageNumber 1 -Lines $lines
+        @($e.Services).Count | Should Be 2
+        $e.Services[0].Type | Should Match '(?i)Collecte.*confidentiel'
+        $e.Services[0].ODM | Should Be '5330151-19160224'
+        $e.Services[1].Type | Should Match '(?i)Destruction confidentielle de Papier confidentiel'
+        $e.Services[1].ODM | Should Be '5330151-19160235'
+    }
 }
 
 Describe 'PdfPlanningOptimizer - Compare-PdftotextExtractionModes (layout vs default)' {
@@ -808,5 +826,125 @@ Describe 'PdfPlanningOptimizer - ReplayDiffEngine' {
         $d = Compare-HumanReplayStates -ReplayA $rA -ReplayB $rB
         @($d.FieldLevelDiffs | Where-Object { $_.Field -eq 'ClientId' }).Count | Should Be 1
         [int]$d.Summary.FieldImpact.ClientId | Should Be 1
+    }
+}
+
+Describe 'PdfPlanningOptimizer - tournee cover (prestations speciales ODM)' {
+
+    BeforeAll {
+        $scalarPath = Join-Path $PSScriptRoot '..\src\Common\ScalarGuard.ps1' | Resolve-Path
+        $sortSafePath = Join-Path $PSScriptRoot '..\src\Common\SortSafe.ps1' | Resolve-Path
+        $segPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\PlanningExcelTourneeSegments.ps1' | Resolve-Path
+        $coverComposerPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\PdfTourneeCoverComposer.ps1' | Resolve-Path
+        . ([string]$scalarPath)
+        . ([string]$sortSafePath)
+        . ([string]$segPath)
+        . ([string]$coverComposerPath)
+    }
+
+    It 'Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder : DEEE via Type' {
+        $wo = [pscustomobject]@{
+            ClientName = 'ACME'
+            Services   = @(@{ Type = 'Tri DEEE express'; ODM = '123-1' })
+        }
+        $f = @(Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder -WorkOrderEntity $wo)
+        $f.Count | Should Be 1
+        $f[0].Type | Should Be 'DEEE'
+        $f[0].Client | Should Be 'ACME'
+    }
+
+    It 'Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder : Destruction confidentielle via libelle Type (mot destruction)' {
+        $wo = [pscustomobject]@{ ClientName = 'X'; Services = @(@{ Type = 'Destruction confidentielle de Papier confidentiel'; ODM = '9890123-19811636' }) }
+        $f = @(Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder -WorkOrderEntity $wo)
+        @($f | Where-Object { $_.Type -eq 'Destruction confidentielle' }).Count | Should Be 1
+    }
+
+    It 'Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder : Piles + Neon (tube)' {
+        $wo = [pscustomobject]@{ ClientName = ''; Services = @(@{ Type = 'RAMASSAGE PILES'; ODM = '1-2' }, @{ Type = 'tubes fluo'; ODM = '1-3' }) }
+        $f = @(Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder -WorkOrderEntity $wo)
+        ($f | ForEach-Object { $_.Type }) -contains 'Piles' | Should Be $true
+        ($f | ForEach-Object { $_.Type }) -contains 'Néon' | Should Be $true
+    }
+
+    It 'Get-CnsPlanningWorkOrderKeyFromMatchWorkOrderField : entite vs chaine' {
+        $ent = [pscustomobject]@{ WorkOrder = 'WO-99' }
+        Get-CnsPlanningWorkOrderKeyFromMatchWorkOrderField -WorkOrderField $ent | Should Be 'WO-99'
+        Get-CnsPlanningWorkOrderKeyFromMatchWorkOrderField -WorkOrderField '  AB  ' | Should Be 'AB'
+    }
+
+    It 'Get-CnsDestructionPrestationMatchDetail : code + destruction dans fenetre ±3 lignes' {
+        $wo = [pscustomobject]@{
+            WorkOrder = 'WO-A'
+            Services  = @(
+                @{ Type = 'Livraison'; ODM = 'note' },
+                @{ Type = 'Autre'; ODM = '123456-789012' },
+                @{ Type = 'Suite'; ODM = 'x' },
+                @{ Type = 'Prestation'; ODM = 'y' },
+                @{ Type = 'Destruction de Papier confidentiel'; ODM = 'z' }
+            )
+        }
+        $d = Get-CnsDestructionPrestationMatchDetail -WorkOrderEntity $wo
+        $d.HasMatch | Should Be $true
+        $d.CodePrestation | Should Be '123456-789012'
+        $d.TypePrestationDetected | Should Match '(?i)destruction'
+    }
+
+    It 'Get-CnsDestructionPrestationMatchDetail : workorder- prefixe sur ligne service + Type destruction' {
+        $wo = [pscustomobject]@{ WorkOrder = 'x'; Services = @(@{ Type = 'Destruction corbeille'; ODM = 'WORKORDER-1000000-2000000 suite' }) }
+        $d = Get-CnsDestructionPrestationMatchDetail -WorkOrderEntity $wo
+        $d.HasMatch | Should Be $true
+        $d.CodePrestation | Should Match '(?i)workorder'
+    }
+
+    It 'Get-CnsDestructionPrestationMatchDetail : faux si code sans destruction dans fenetre' {
+        $wo = [pscustomobject]@{ WorkOrder = 'WO'; Services = @(@{ Type = 't'; ODM = '123456-789012' }, @{ Type = 'a'; ODM = 'b' }, @{ Type = 'c'; ODM = 'd' }, @{ Type = 'e'; ODM = 'f' }, @{ Type = 'g'; ODM = 'h' }) }
+        $d = Get-CnsDestructionPrestationMatchDetail -WorkOrderEntity $wo
+        $d.HasMatch | Should Be $false
+    }
+
+    It 'Get-CnsDestructionPrestationMatchDetail : vrai sur Type destruction meme sans code prestation' {
+        $wo = [pscustomobject]@{ WorkOrder = 'WO-1'; Services = @(@{ Type = 'Destruction papier'; ODM = 'pas-de-code' }) }
+        $d = Get-CnsDestructionPrestationMatchDetail -WorkOrderEntity $wo
+        $d.HasMatch | Should Be $true
+        $d.TypePrestationDetected | Should Match '(?i)destruction'
+    }
+
+    It 'Build-CdsCode128BSequence : checksum ISO (ex. 5249947 -> 104 + donnees + 6)' {
+        [int[]]$s = @(Build-CdsCode128BSequence -Text '5249947')
+        ($s.Length -eq 9) | Should Be $true
+        $s[0] | Should Be 104
+        $s[-1] | Should Be 6
+    }
+
+    It 'Test-CnsWorkOrderRequiresDestructionCertificate : Type Destruction sans casse' {
+        $wo = [pscustomobject]@{ Services = @(@{ Type = 'deSTRUCTION'; ODM = 'z' }) }
+        Test-CnsWorkOrderRequiresDestructionCertificate -WorkOrderEntity $wo | Should Be $true
+    }
+
+    It 'Test-CnsWorkOrderRequiresDestructionCertificate : libelle complet Destruction confidentielle de Papier confidentiel' {
+        $wo = [pscustomobject]@{ Services = @(@{ Type = 'Destruction confidentielle de Papier confidentiel'; ODM = '1-2' }) }
+        Test-CnsWorkOrderRequiresDestructionCertificate -WorkOrderEntity $wo | Should Be $true
+    }
+
+    It 'Test-CnsWorkOrderRequiresDestructionCertificate : heuristique code prestation + libelle encore reconnue' {
+        $wo = [pscustomobject]@{
+            WorkOrder = 'WO-X'
+            Services  = @(
+                @{ Type = 'x'; ODM = '123456-789012' },
+                @{ Type = 'Suite'; ODM = 'y' },
+                @{ Type = 'Destruction de Papier confidential'; ODM = 'z' }
+            )
+        }
+        Test-CnsWorkOrderRequiresDestructionCertificate -WorkOrderEntity $wo | Should Be $true
+    }
+
+    It 'Test-CnsWorkOrderRequiresDestructionCertificate : faux si aucun critere destruction' {
+        $wo = [pscustomobject]@{ Services = @(@{ Type = 'Livraison'; ODM = 'plain' }) }
+        Test-CnsWorkOrderRequiresDestructionCertificate -WorkOrderEntity $wo | Should Be $false
+    }
+
+    It 'Test-CnsWorkOrderRequiresDestructionCertificate : faux si mot destruction seulement dans ODM pas dans Type' {
+        $wo = [pscustomobject]@{ Services = @(@{ Type = 'Collecte standard'; ODM = 'destruction archives' }) }
+        Test-CnsWorkOrderRequiresDestructionCertificate -WorkOrderEntity $wo | Should Be $false
     }
 }

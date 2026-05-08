@@ -24,6 +24,10 @@ $_pdfReorganizer  = Join-Path $PSScriptRoot '..\..\..\Core\PDFReorganizer.ps1'
 if (Test-Path -LiteralPath $_pdfReorganizer) {
     . $_pdfReorganizer
 }
+$_tourneeCovers = Join-Path $PSScriptRoot 'PdfTourneeCoverComposer.ps1'
+if (Test-Path -LiteralPath $_tourneeCovers) {
+    . $_tourneeCovers
+}
 if (Test-Path -LiteralPath $_planningLogger) {
     . $_planningLogger
 }
@@ -3539,6 +3543,25 @@ function Start-PlanningRebuild {
             return ( & $newPlanningResult -OutPdf $null )
         }
         Write-Host ("[SUCCESS] PDF genere : {0} ({1} octets)" -f $outputPdfPath, $fileSize) -ForegroundColor Green
+
+        Write-Host '[PIPELINE] STEP 5: Composition pages de garde tournées (+ page 1 globale)' -ForegroundColor Cyan
+        if (Get-Command Invoke-PlanningTourneePdfCoverComposition -ErrorAction SilentlyContinue) {
+            $coverOk = Invoke-PlanningTourneePdfCoverComposition -MainPdfPath $outputPdfPath `
+                -SortedGsPairs @($sortedGsPairs) -Reordered @($reordered) -ExcelOrder @($excelOrder) `
+                -ExcelData $excelData -ColumnInfo $column -VisitDate $visitDate -DeclaredPdfPageCount $pdfRealPageCount `
+                -WorkOrders @($workOrders) -MatchResult $match
+            if (-not $coverOk) {
+                Write-Warning '[TOURNEE] La composition des couvertures a echoue — le fichier _reordonne.pdf brut (sans pages de garde) est conserve.'
+            }
+            else {
+                $fileItem = Get-Item -LiteralPath $outputPdfPath
+                $fileSize = $fileItem.Length
+                Write-Host ("[SUCCESS] PDF apres composition couvertures : {0} ({1} octets)" -f $outputPdfPath, $fileSize) -ForegroundColor Green
+            }
+        }
+        else {
+            Write-Host '[PIPELINE] STEP 5: PdfTourneeCoverComposer non charge — couvertures ignorees.' -ForegroundColor Yellow
+        }
     }
     catch {
         Write-Host ("[ERROR] Erreur generation PDF : {0}" -f $_.Exception.Message) -ForegroundColor Red
