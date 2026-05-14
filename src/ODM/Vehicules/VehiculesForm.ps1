@@ -14,32 +14,6 @@ function Show-VehiculeForm {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
-    function Convert-DbToFrDate {
-        param([string]$DateUs)
-        if ([string]::IsNullOrWhiteSpace($DateUs)) { return "" }
-        try {
-            return ([datetime]::ParseExact($DateUs, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture)).ToString("dd/MM/yyyy")
-        } catch {
-            return $DateUs
-        }
-    }
-
-    function Convert-FrToDbDate {
-        param([string]$DateFr)
-        if ([string]::IsNullOrWhiteSpace($DateFr)) { return $null }
-        try {
-            $dt = [datetime]::ParseExact($DateFr, "dd/MM/yyyy", [System.Globalization.CultureInfo]::InvariantCulture)
-            return $dt.ToString("yyyy-MM-dd")
-        } catch {
-            return $null
-        }
-    }
-
-    function Test-DateFr {
-        param([string]$DateStr)
-        return ($null -ne (Convert-FrToDbDate $DateStr))
-    }
-
     function Set-Error {
         param($Label, [string]$Message)
         $Label.Text = $Message

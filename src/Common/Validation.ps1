@@ -111,6 +111,59 @@ function Normalize-Whitespace {
     return $t
 }
 
+function Test-NomValide {
+    param([string]$Nom)
+    if ([string]::IsNullOrWhiteSpace($Nom)) { return $false }
+    return $Nom.Trim().Length -ge 2
+}
+
+function Test-PrenomValide {
+    param([string]$Prenom)
+    if ([string]::IsNullOrWhiteSpace($Prenom)) { return $false }
+    return $Prenom.Trim().Length -ge 2
+}
+
+function Test-TelephoneValide {
+    param([string]$Telephone)
+    if ([string]::IsNullOrWhiteSpace($Telephone)) { return $true }
+    $formatted = Format-Telephone $Telephone
+    return ($null -ne $formatted)
+}
+
+function Test-EmailValide {
+    param([string]$Email)
+    return (Test-Email $Email)
+}
+
+<#
+Conversion date YYYY-MM-DD (BDD) <-> dd/MM/yyyy (affichage FR).
+#>
+function Convert-DbToFrDate {
+    param([string]$DateUs)
+    if ([string]::IsNullOrWhiteSpace($DateUs)) { return "" }
+    try {
+        return ([datetime]::ParseExact($DateUs, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture)).ToString("dd/MM/yyyy")
+    } catch {
+        return $DateUs
+    }
+}
+
+function Convert-FrToDbDate {
+    param([string]$DateFr)
+    if ([string]::IsNullOrWhiteSpace($DateFr)) { return $null }
+    try {
+        $dt = [datetime]::ParseExact($DateFr, "dd/MM/yyyy", [System.Globalization.CultureInfo]::InvariantCulture)
+        return $dt.ToString("yyyy-MM-dd")
+    } catch {
+        return $null
+    }
+}
+
+function Test-DateFr {
+    param([string]$DateStr)
+    return ($null -ne (Convert-FrToDbDate $DateStr))
+}
+
 function Format-Nom {
     param([string]$Nom)
     $n = Normalize-Whitespace $Nom

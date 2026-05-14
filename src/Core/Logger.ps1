@@ -55,13 +55,8 @@ function Write-Log {
     } catch {}
 }
 
-function Clear-Log {
-    Remove-Item $script:logFile -ErrorAction SilentlyContinue
-    Write-Log "Log effacé" "INFO"
-}
-
 try {
-    Export-ModuleMember -Function Write-Log, Clear-Log
+    Export-ModuleMember -Function Write-Log
 } catch {
     # Logger.ps1 est souvent dot-sourcé (pas importé comme module) : on ignore l'export.
 }
