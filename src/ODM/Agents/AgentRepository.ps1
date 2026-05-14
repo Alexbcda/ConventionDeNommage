@@ -4,31 +4,28 @@
 . "$PSScriptRoot\..\..\Common\Validation.ps1"
 . "$PSScriptRoot\..\..\Core\Logger.ps1"
 
+function Assert-AgentContactFields {
+    param([string]$Nom, [string]$Prenom, [string]$Telephone, [string]$Email)
+    if (-not (Test-StringLength $Nom -Min 2 -Max 50)) { Write-Log "[Agents] Validation failed: nom" "WARN" @{ field = 'nom' }; throw "Nom invalide (2-50 caracteres)" }
+    if (-not (Test-StringLength $Prenom -Min 2 -Max 50)) { Write-Log "[Agents] Validation failed: prenom" "WARN" @{ field = 'prenom' }; throw "Prenom invalide (2-50 caracteres)" }
+    if (-not (Test-TelephoneValide $Telephone)) { Write-Log "[Agents] Validation failed: telephone" "WARN" @{ field = 'telephone' }; throw "Telephone invalide" }
+    if (-not (Test-Email $Email)) { Write-Log "[Agents] Validation failed: email" "WARN" @{ field = 'email' }; throw "Email invalide" }
+    if (-not [string]::IsNullOrWhiteSpace($Email) -and $Email.Trim().Length -gt 120) { throw "Email trop long (max 120)" }
+}
+
 # ============================================================
 # AJOUT AVEC VALIDATION
 # ============================================================
 
 function Add-AgentWithValidation {
     param($Nom, $Prenom, $Telephone, $Email, $DateEntree, $DateSortie, $TypeContrat, $BaseHeuresSemaine = 35, $VehiculeId = $null, $Poste = "Collecteur")
-    
-    Write-Log "[Agents] Add-AgentWithValidation begin" "INFO" @{
-        type_contrat = $TypeContrat; base_heures_semaine = $BaseHeuresSemaine
-        poste = $Poste; vehicule_id = $VehiculeId
-    }
 
-    # Validations
-    if (-not (Test-NomValide $Nom)) { Write-Log "[Agents] Validation failed: nom" "WARN" @{ field = 'nom' }; throw "Nom invalide (min 2 caractères)" }
-    if (-not (Test-PrenomValide $Prenom)) { Write-Log "[Agents] Validation failed: prenom" "WARN" @{ field = 'prenom' }; throw "Prénom invalide (min 2 caractères)" }
-    if (-not (Test-TelephoneValide $Telephone)) { Write-Log "[Agents] Validation failed: telephone" "WARN" @{ field = 'telephone' }; throw "Téléphone invalide" }
-    if (-not (Test-EmailValide $Email)) { Write-Log "[Agents] Validation failed: email" "WARN" @{ field = 'email' }; throw "Email invalide" }
-    
-    # Appel à la base
+    Assert-AgentContactFields -Nom $Nom -Prenom $Prenom -Telephone $Telephone -Email $Email
+
     try {
-        $newId = Add-Agent -Nom $Nom -Prenom $Prenom -Telephone $Telephone -Email $Email -DateEntree $DateEntree -DateSortie $DateSortie -TypeContrat $TypeContrat -BaseHeuresSemaine $BaseHeuresSemaine -VehiculeId $VehiculeId -Poste $Poste
-        Write-Log "[Agents] Add-AgentWithValidation success" "INFO" @{ id = $newId }
-        return $newId
+        return Add-Agent -Nom $Nom -Prenom $Prenom -Telephone $Telephone -Email $Email -DateEntree $DateEntree -DateSortie $DateSortie -TypeContrat $TypeContrat -BaseHeuresSemaine $BaseHeuresSemaine -VehiculeId $VehiculeId -Poste $Poste
     } catch {
-        Write-Log "[Agents] Add-AgentWithValidation failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        Write-Log "[Agents] Add failed" "ERROR" @{ message = $_.Exception.Message }
         throw
     }
 }
@@ -40,20 +37,13 @@ function Add-AgentWithValidation {
 function Update-AgentWithValidation {
     param($Id, $Nom, $Prenom, $Telephone, $Email, $DateEntree, $DateSortie, $TypeContrat, $BaseHeuresSemaine = 35, $VehiculeId = $null, $Poste = "Collecteur")
 
-    if ($null -eq $Id -or "$Id" -notmatch '^\d+$') { throw "Identifiant agent invalide." }
-    Write-Log "[Agents] Update-AgentWithValidation begin" "INFO" @{ id = $Id }
-
-    if (-not (Test-NomValide $Nom)) { throw "Nom invalide (min 2 caractères)" }
-    if (-not (Test-PrenomValide $Prenom)) { throw "Prénom invalide (min 2 caractères)" }
-    if (-not (Test-TelephoneValide $Telephone)) { throw "Téléphone invalide" }
-    if (-not (Test-EmailValide $Email)) { throw "Email invalide" }
+    $Id = Assert-EntityId "agent" $Id
+    Assert-AgentContactFields -Nom $Nom -Prenom $Prenom -Telephone $Telephone -Email $Email
 
     try {
-        $result = Update-Agent -Id $Id -Nom $Nom -Prenom $Prenom -Telephone $Telephone -Email $Email -DateEntree $DateEntree -DateSortie $DateSortie -TypeContrat $TypeContrat -BaseHeuresSemaine $BaseHeuresSemaine -VehiculeId $VehiculeId -Poste $Poste
-        Write-Log "[Agents] Update-AgentWithValidation success" "INFO" @{ id = $Id }
-        return $result
+        return Update-Agent -Id $Id -Nom $Nom -Prenom $Prenom -Telephone $Telephone -Email $Email -DateEntree $DateEntree -DateSortie $DateSortie -TypeContrat $TypeContrat -BaseHeuresSemaine $BaseHeuresSemaine -VehiculeId $VehiculeId -Poste $Poste
     } catch {
-        Write-Log "[Agents] Update-AgentWithValidation failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        Write-Log "[Agents] Update failed" "ERROR" @{ message = $_.Exception.Message; id = $Id }
         throw
     }
 }
@@ -65,15 +55,12 @@ function Update-AgentWithValidation {
 function Remove-AgentWithValidation {
     param($Id)
 
-    if ($null -eq $Id -or "$Id" -notmatch '^\d+$') { throw "Identifiant agent invalide." }
-    Write-Log "[Agents] Remove-AgentWithValidation begin" "INFO" @{ id = $Id }
+    $Id = Assert-EntityId "agent" $Id
 
     try {
-        $result = Remove-Agent -Id $Id
-        Write-Log "[Agents] Remove-AgentWithValidation success" "INFO" @{ id = $Id }
-        return $result
+        return Remove-Agent -Id $Id
     } catch {
-        Write-Log "[Agents] Remove-AgentWithValidation failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        Write-Log "[Agents] Remove failed" "ERROR" @{ message = $_.Exception.Message; id = $Id }
         throw
     }
 }
@@ -85,7 +72,16 @@ function Remove-AgentWithValidation {
 function Get-AgentByIdSafe {
     param($Id)
 
-    if ($null -eq $Id -or "$Id" -notmatch '^\d+$') { throw "Identifiant agent invalide." }
-    return Get-AgentById -Id ([int]$Id)
+    $Id = Assert-EntityId "agent" $Id
+    return Get-AgentById -Id $Id
+}
+
+function Get-AgentRecords {
+    param([switch]$IncludeInactive)
+    if ($IncludeInactive) { return Get-AllAgents } else { return Get-Agents }
+}
+
+function Get-PostesRecords {
+    return Get-PostesListe
 }
 

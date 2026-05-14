@@ -30,12 +30,6 @@ function Format-Telephone {
             $digits.Substring(8,2))
 }
 
-function Test-Telephone {
-    param([string]$Telephone)
-    $formatted = Format-Telephone $Telephone
-    return ($null -ne $formatted -and $formatted -ne "")
-}
-
 function Normalize-Email {
     param([string]$Email)
     if ($null -eq $Email) { return "" }
@@ -111,28 +105,11 @@ function Normalize-Whitespace {
     return $t
 }
 
-function Test-NomValide {
-    param([string]$Nom)
-    if ([string]::IsNullOrWhiteSpace($Nom)) { return $false }
-    return $Nom.Trim().Length -ge 2
-}
-
-function Test-PrenomValide {
-    param([string]$Prenom)
-    if ([string]::IsNullOrWhiteSpace($Prenom)) { return $false }
-    return $Prenom.Trim().Length -ge 2
-}
-
 function Test-TelephoneValide {
     param([string]$Telephone)
     if ([string]::IsNullOrWhiteSpace($Telephone)) { return $true }
     $formatted = Format-Telephone $Telephone
     return ($null -ne $formatted)
-}
-
-function Test-EmailValide {
-    param([string]$Email)
-    return (Test-Email $Email)
 }
 
 <#
@@ -169,6 +146,34 @@ function Format-Nom {
     $n = Normalize-Whitespace $Nom
     if ([string]::IsNullOrWhiteSpace($n)) { return "" }
     return $n.ToUpperInvariant()
+}
+
+function Test-StringLength {
+    param([string]$Value, [int]$Min = 0, [int]$Max = [int]::MaxValue)
+    if ($null -eq $Value) { return ($Min -le 0) }
+    $len = $Value.Trim().Length
+    return ($len -ge $Min -and $len -le $Max)
+}
+
+function Assert-RequiredString {
+    param([string]$FieldName, [string]$Value, [int]$MaxLength = 200)
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        throw "$FieldName est obligatoire."
+    }
+    if ($Value.Trim().Length -gt $MaxLength) {
+        throw "$FieldName depasse la longueur maximale ($MaxLength caracteres)."
+    }
+    if (-not (Test-SecuriteInput $Value)) {
+        throw "$FieldName contient des caracteres interdits."
+    }
+}
+
+function Assert-EntityId {
+    param([string]$EntityName, $Id)
+    if ($null -eq $Id -or "$Id" -notmatch '^\d+$') {
+        throw "Identifiant $EntityName invalide."
+    }
+    return [int]$Id
 }
 
 function Format-Prenom {

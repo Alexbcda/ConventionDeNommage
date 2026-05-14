@@ -126,7 +126,7 @@ function Show-VehiculeForm {
     $txtParc = $script:__vehicule_lastTextBox
     $lblParcError = $script:__vehicule_lastErrorLabel
 
-    Add-Field -LabelText "Immatriculation * :" -InitialValue $(if ($Vehicule) { $Vehicule.immatriculation } else { "" }) -CurrentY ([ref]$yPos)
+    Add-Field -LabelText "Immatriculation * :" -InitialValue $(if ($Vehicule) { $Vehicule.immatriculation } else { "" }) -MaxLength 20 -CurrentY ([ref]$yPos)
     $txtImmat = $script:__vehicule_lastTextBox
     $lblImmatError = $script:__vehicule_lastErrorLabel
 
@@ -134,11 +134,11 @@ function Show-VehiculeForm {
     $txtChassis = $script:__vehicule_lastTextBox
     $lblChassisError = $script:__vehicule_lastErrorLabel
 
-    Add-Field -LabelText "Marque :" -InitialValue $(if ($Vehicule) { $Vehicule.marque } else { "" }) -Optional $true -CurrentY ([ref]$yPos)
+    Add-Field -LabelText "Marque :" -InitialValue $(if ($Vehicule) { $Vehicule.marque } else { "" }) -Optional $true -MaxLength 120 -CurrentY ([ref]$yPos)
     $txtMarque = $script:__vehicule_lastTextBox
     $lblMarqueInfo = $script:__vehicule_lastErrorLabel
 
-    Add-Field -LabelText "Modèle :" -InitialValue $(if ($Vehicule) { $Vehicule.modele } else { "" }) -Optional $true -CurrentY ([ref]$yPos)
+    Add-Field -LabelText "Modèle :" -InitialValue $(if ($Vehicule) { $Vehicule.modele } else { "" }) -Optional $true -MaxLength 120 -CurrentY ([ref]$yPos)
     $txtModele = $script:__vehicule_lastTextBox
     $lblModeleInfo = $script:__vehicule_lastErrorLabel
 

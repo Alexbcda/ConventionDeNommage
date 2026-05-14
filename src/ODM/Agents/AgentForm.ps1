@@ -153,12 +153,14 @@ function Show-AgentForm {
     # NOM
     Add-Label "Nom * :"
     $txtNom = Add-TextBox $(if ($Agent -and $Agent.nom) { $Agent.nom } else { "" })
+    $txtNom.MaxLength = 50
     $lblNomError = Add-ErrorLabel -x ($left + $labelW) -yPos $y
     $y += 40
 
     # PRENOM
     Add-Label "Prénom * :"
     $txtPrenom = Add-TextBox $(if ($Agent -and $Agent.prenom) { $Agent.prenom } else { "" })
+    $txtPrenom.MaxLength = 50
     $lblPrenomError = Add-ErrorLabel -x ($left + $labelW) -yPos $y
     $y += 40
 
@@ -172,6 +174,7 @@ function Show-AgentForm {
     # EMAIL
     Add-Label "Email :"
     $txtEmail = Add-TextBox $(if ($Agent -and $Agent.email) { $Agent.email } else { "" })
+    $txtEmail.MaxLength = 120
     $lblEmailError = Add-ErrorLabel -x ($left + $labelW) -yPos $y
     $y += 40
 
@@ -294,8 +297,6 @@ function Show-AgentForm {
                 return
             }
 
-            Write-Host "[AgentForm] Sécurité input OK"
-
             $telFormatted = Format-Telephone $txtTel.Text
             if ($null -eq $telFormatted) {
                 Set-FieldError -Label $lblTelError -Message "Le numéro doit contenir 10 chiffres"
@@ -306,11 +307,7 @@ function Show-AgentForm {
                 $script:__telAllowFormatted = $true
                 $txtTel.MaxLength = 14
                 $txtTel.Text = $telFormatted
-                Write-Host "[AgentForm] Validation téléphone OK"
                 $script:__telAllowFormatted = $false
-            }
-            if (-not [string]::IsNullOrWhiteSpace($txtEmail.Text)) {
-                Write-Host "[AgentForm] Validation email OK"
             }
 
             $result = [PSCustomObject]@{
@@ -415,11 +412,7 @@ function Show-AgentForm {
     }
     
     if ($form.DialogResult -eq [System.Windows.Forms.DialogResult]::OK) {
-        $out = $form.Tag
-        Write-Log "[AgentForm] Returning result" "INFO" @{ mode = $Mode; ok = $true; isNull = ($null -eq $out) }
-        return $out
+        return $form.Tag
     }
-
-    Write-Log "[AgentForm] Returning null" "INFO" @{ mode = $Mode; ok = $false; dialogResult = $form.DialogResult.ToString() }
     return $null
 }
