@@ -355,12 +355,18 @@ function script:Get-ResolvedPdfToTextPath {
 
     $trace = [System.Collections.Generic.List[string]]::new()
     $debugResolve = ($env:CN_DEBUG_PIPELINE -in @('1', 'true'))
-    $repoRoot = $PSScriptRoot
-    for ($i = 0; $i -lt 4; $i++) {
-        $repoRoot = Split-Path -Parent $repoRoot
+    $installRoot = if (-not [string]::IsNullOrWhiteSpace($global:CN_InstallRoot)) {
+        $global:CN_InstallRoot
+    } else {
+        $r = $PSScriptRoot; for ($i = 0; $i -lt 4; $i++) { $r = Split-Path -Parent $r }; $r
+    }
+    $dataRoot = if (-not [string]::IsNullOrWhiteSpace($global:CN_DataRoot)) {
+        $global:CN_DataRoot
+    } else {
+        $installRoot
     }
 
-    $cfgFile = Join-Path $repoRoot 'config\runtime.json'
+    $cfgFile = Join-Path $dataRoot 'config\runtime.json'
     if (Test-Path -LiteralPath $cfgFile -PathType Leaf) {
         try {
             $cfg = Get-Content -LiteralPath $cfgFile -Raw -ErrorAction Stop | ConvertFrom-Json
@@ -380,13 +386,13 @@ function script:Get-ResolvedPdfToTextPath {
         } catch { [void]$trace.Add("CONFIG read error") }
     }
 
-    $rtCandidate = Join-Path $repoRoot 'runtime\poppler\Library\bin\pdftotext.exe'
+    $rtCandidate = Join-Path $installRoot 'runtime\poppler\Library\bin\pdftotext.exe'
     if (Test-Path -LiteralPath $rtCandidate -PathType Leaf) {
         [void]$trace.Add(("RUNTIME hit: {0}" -f $rtCandidate))
         if ($TraceOut) { $TraceOut.Value = @($trace.ToArray()) }
         return (Resolve-Path -LiteralPath $rtCandidate).Path
     }
-    $rtDirect = Join-Path $repoRoot 'runtime\poppler\bin\pdftotext.exe'
+    $rtDirect = Join-Path $installRoot 'runtime\poppler\bin\pdftotext.exe'
     if (Test-Path -LiteralPath $rtDirect -PathType Leaf) {
         [void]$trace.Add(("RUNTIME hit: {0}" -f $rtDirect))
         if ($TraceOut) { $TraceOut.Value = @($trace.ToArray()) }
@@ -449,9 +455,9 @@ function script:Get-ResolvedPdfToTextPath {
     }
     $candidates = [System.Collections.Generic.List[string]]::new()
     foreach ($p in @(
-            (Join-Path $repoRoot 'tools\Poppler\Library\bin\pdftotext.exe'),
-            (Join-Path $repoRoot 'tools\pdftotext.exe'),
-            (Join-Path $repoRoot 'vendor\poppler\Library\bin\pdftotext.exe'),
+            (Join-Path $installRoot 'tools\Poppler\Library\bin\pdftotext.exe'),
+            (Join-Path $installRoot 'tools\pdftotext.exe'),
+            (Join-Path $installRoot 'vendor\poppler\Library\bin\pdftotext.exe'),
             "${env:LOCALAPPDATA}\Microsoft\WinGet\Links\pdftotext.exe",
             "${env:ProgramFiles}\Xpdf\pdftotext.exe"
         )) {

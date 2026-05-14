@@ -1,6 +1,10 @@
 ﻿# Logger.ps1 - Système de journalisation
 
-$script:logFile = Join-Path $PSScriptRoot "..\Logs\app.log"
+$script:logFile = if (-not [string]::IsNullOrWhiteSpace($global:CN_DataRoot)) {
+    Join-Path $global:CN_DataRoot 'Logs\app.log'
+} else {
+    Join-Path $PSScriptRoot "..\Logs\app.log"
+}
 
 $_deskSec = Join-Path $PSScriptRoot "..\Common\DesktopSecurity.ps1"
 if (Test-Path -LiteralPath $_deskSec) {

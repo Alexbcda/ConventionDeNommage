@@ -11,10 +11,18 @@ function Get-ResolvedGhostscriptPath {
     [CmdletBinding()]
     param()
 
-    $repoRoot = $PSScriptRoot
-    for ($i = 0; $i -lt 2; $i++) { $repoRoot = Split-Path -Parent $repoRoot }
+    $installRoot = if (-not [string]::IsNullOrWhiteSpace($global:CN_InstallRoot)) {
+        $global:CN_InstallRoot
+    } else {
+        $r = $PSScriptRoot; for ($i = 0; $i -lt 2; $i++) { $r = Split-Path -Parent $r }; $r
+    }
+    $dataRoot = if (-not [string]::IsNullOrWhiteSpace($global:CN_DataRoot)) {
+        $global:CN_DataRoot
+    } else {
+        $installRoot
+    }
 
-    $cfgFile = Join-Path $repoRoot 'config\runtime.json'
+    $cfgFile = Join-Path $dataRoot 'config\runtime.json'
     if (Test-Path -LiteralPath $cfgFile -PathType Leaf) {
         try {
             $cfg = Get-Content -LiteralPath $cfgFile -Raw -ErrorAction Stop | ConvertFrom-Json
@@ -29,7 +37,7 @@ function Get-ResolvedGhostscriptPath {
     }
 
     foreach ($exe in @('gswin64c.exe', 'gswin32c.exe')) {
-        $rtCandidate = Join-Path $repoRoot "runtime\ghostscript\bin\$exe"
+        $rtCandidate = Join-Path $installRoot "runtime\ghostscript\bin\$exe"
         if (Test-Path -LiteralPath $rtCandidate -PathType Leaf) {
             return (Resolve-Path -LiteralPath $rtCandidate).Path
         }

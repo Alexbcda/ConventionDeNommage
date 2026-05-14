@@ -4,8 +4,16 @@
 # Identifiants dynamiques (PRAGMA table_info) : validés via Test-SafeSqlIdentifier.
 # ============================================================
 
-$script:DbPath  = Join-Path $PSScriptRoot "..\..\Data\gestion.db"
-$script:DllPath = Join-Path $PSScriptRoot "..\..\lib\System.Data.SQLite.dll"
+$script:DbPath = if (-not [string]::IsNullOrWhiteSpace($global:CN_DataRoot)) {
+    Join-Path $global:CN_DataRoot 'Data\gestion.db'
+} else {
+    Join-Path $PSScriptRoot "..\..\Data\gestion.db"
+}
+$script:DllPath = if (-not [string]::IsNullOrWhiteSpace($global:CN_InstallRoot)) {
+    Join-Path $global:CN_InstallRoot 'lib\System.Data.SQLite.dll'
+} else {
+    Join-Path $PSScriptRoot "..\..\lib\System.Data.SQLite.dll"
+}
 . (Join-Path $PSScriptRoot '..\Common\DesktopSecurity.ps1')
 . (Join-Path $PSScriptRoot "..\Core\Logger.ps1")
 . (Join-Path $PSScriptRoot "..\Common\ScalarGuard.ps1")

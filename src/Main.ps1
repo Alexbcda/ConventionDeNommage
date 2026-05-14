@@ -21,12 +21,17 @@ Initialize-ConventionAppConsoleUtf8
 # ============================================
 # 1. CHARGEMENT DES STYLES ET CONFIGURATION
 # ============================================
+. "$scriptPath\Core\AppPaths.ps1"
+$appPaths = Initialize-AppPaths
 . "$scriptPath\Config.ps1"
-# Styles apres UiText (Convert-ToUiText sur libelles boutons).
 . "$scriptPath\Common\Styles.ps1"
 . "$scriptPath\Core\Logger.ps1"
 . "$scriptPath\Core\DependencyCheck.ps1"
-Write-Log "[MAIN] Application start" "INFO" @{ scriptPath = $scriptPath }
+Write-Log "[MAIN] Application start" "INFO" @{
+    scriptPath  = $scriptPath
+    installRoot = $global:CN_InstallRoot
+    dataRoot    = $global:CN_DataRoot
+}
 
 # ============================================
 # 1b. VALIDATION DEPENDANCES EXTERNES

@@ -13,10 +13,18 @@ function Test-RuntimeDependencies {
     [CmdletBinding()]
     param()
 
-    $repoRoot = $PSScriptRoot
-    for ($i = 0; $i -lt 2; $i++) { $repoRoot = Split-Path -Parent $repoRoot }
+    $installRoot = if (-not [string]::IsNullOrWhiteSpace($global:CN_InstallRoot)) {
+        $global:CN_InstallRoot
+    } else {
+        $r = $PSScriptRoot; for ($i = 0; $i -lt 2; $i++) { $r = Split-Path -Parent $r }; $r
+    }
+    $dataRoot = if (-not [string]::IsNullOrWhiteSpace($global:CN_DataRoot)) {
+        $global:CN_DataRoot
+    } else {
+        $installRoot
+    }
 
-    $cfgPath = Join-Path $repoRoot 'config\runtime.json'
+    $cfgPath = Join-Path $dataRoot 'config\runtime.json'
     $cfg = $null
     if (Test-Path -LiteralPath $cfgPath -PathType Leaf) {
         try { $cfg = Get-Content -LiteralPath $cfgPath -Raw -ErrorAction Stop | ConvertFrom-Json } catch {}
@@ -25,7 +33,7 @@ function Test-RuntimeDependencies {
     $result = @{ ghostscript = $false; poppler = $false; sqlite = $false }
 
     # ── SQLite ──
-    $sqliteDll = Join-Path $repoRoot 'lib\System.Data.SQLite.dll'
+    $sqliteDll = Join-Path $installRoot 'lib\System.Data.SQLite.dll'
     if (Test-Path -LiteralPath $sqliteDll -PathType Leaf) {
         $result.sqlite = $true
     }
@@ -41,7 +49,7 @@ function Test-RuntimeDependencies {
     }
     if ($null -eq $gsPath) {
         foreach ($exe in @('gswin64c.exe', 'gswin32c.exe')) {
-            $rtCandidate = Join-Path $repoRoot "runtime\ghostscript\bin\$exe"
+            $rtCandidate = Join-Path $installRoot "runtime\ghostscript\bin\$exe"
             if (Test-Path -LiteralPath $rtCandidate -PathType Leaf) { $gsPath = $rtCandidate; break }
         }
     }
@@ -68,8 +76,8 @@ function Test-RuntimeDependencies {
     }
     if ($null -eq $popplerPath) {
         $rtCandidates = @(
-            (Join-Path $repoRoot 'runtime\poppler\Library\bin\pdftotext.exe'),
-            (Join-Path $repoRoot 'runtime\poppler\bin\pdftotext.exe')
+            (Join-Path $installRoot 'runtime\poppler\Library\bin\pdftotext.exe'),
+            (Join-Path $installRoot 'runtime\poppler\bin\pdftotext.exe')
         )
         foreach ($rtPath in $rtCandidates) {
             if (Test-Path -LiteralPath $rtPath -PathType Leaf) { $popplerPath = $rtPath; break }
