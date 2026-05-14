@@ -4,6 +4,7 @@
 . "$PSScriptRoot\AgentRepository.ps1"
 . "$PSScriptRoot\AgentForm.ps1"
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
+. "$PSScriptRoot\..\..\Common\WinFormsHelpers.ps1"
 . "$PSScriptRoot\..\..\Core\Logger.ps1"
 
 $script:DebugAgentsUI = $false
@@ -119,69 +120,17 @@ function Show-AgentsPanel {
     $btnAjouter.Cursor = [System.Windows.Forms.Cursors]::Hand
     $mainPanel.Controls.Add($btnAjouter)
 
-    $grid = [System.Windows.Forms.DataGridView]::new()
-    $grid.Name = "AgentsGrid"
-    # [UI] DataGridView fixed to responsive Fill layout
-    $grid.Location = [System.Drawing.Point]::new(20, 110)
-    # Taille de départ raisonnable (ne doit pas dépasser la fenêtre); Anchor gère le responsive ensuite
-    $grid.Size = [System.Drawing.Size]::new(1100, 560)
-    $grid.Anchor = "Top,Bottom,Left,Right"
-    $grid.AllowUserToAddRows = $false
-    $grid.RowHeadersVisible = $false
-    $grid.BackgroundColor = [System.Drawing.Color]::White
-    $grid.SelectionMode = "FullRowSelect"
-    $grid.BorderStyle = "FixedSingle"
-    # Scroll horizontal activé (resize manuel)
-    $grid.ScrollBars = [System.Windows.Forms.ScrollBars]::Both
-    # Mode sans autosize pour permettre le redimensionnement manuel
-    $grid.AutoSizeColumnsMode = "None"
-    $grid.AutoGenerateColumns = $false
-    $grid.AllowUserToResizeColumns = $true
-    Set-GridStyle -Grid $grid
-
-    # Réduire le flickering (propriété non publique)
-    try {
-        $prop = $grid.GetType().GetProperty("DoubleBuffered", [System.Reflection.BindingFlags] "Instance,NonPublic")
-        if ($prop) { $prop.SetValue($grid, $true, $null) }
-    } catch {}
-
-    # Lignes alternées: pair = gris clair, impair = orange très léger (teinte douce existante)
-    $grid.DefaultCellStyle.BackColor = $script:CouleurGrisClair
-    $grid.AlternatingRowsDefaultCellStyle.BackColor = $script:CouleurLigneAlternee
-    $grid.DefaultCellStyle.SelectionBackColor = $script:CouleurSelection
-    $grid.DefaultCellStyle.SelectionForeColor = $script:CouleurBlanc
-    $grid.ColumnHeadersHeightSizeMode = "AutoSize"
-    $grid.ColumnHeadersDefaultCellStyle.WrapMode = [System.Windows.Forms.DataGridViewTriState]::False
-
-    # [UI] Manual column selection enabled for clean AgentPanel view
-    # Colonnes explicitement autorisées (ordre contrôlé)
-    $grid.Columns.Clear()
-    $null = $grid.Columns.Add("Nom", "Nom")
-    $null = $grid.Columns.Add("Prenom", "Prénom")
-    $null = $grid.Columns.Add("Tel", "Téléphone")
-    $null = $grid.Columns.Add("Email", "Email")
-    $null = $grid.Columns.Add("Parc", "N° parc")
-    $null = $grid.Columns.Add("Contrat", "Type de contrat")
-    $null = $grid.Columns.Add("Heures", "Base heures")
-    $null = $grid.Columns.Add("Edit", "Modifier")
-    $null = $grid.Columns.Add("Delete", "Supprimer")
-
-    # Largeurs par défaut (l'utilisateur peut ensuite redimensionner à la souris)
-    $grid.Columns["Nom"].Width = 150
-    $grid.Columns["Prenom"].Width = 120
-    $grid.Columns["Tel"].Width = 110
-    $grid.Columns["Email"].Width = 120
-    $grid.Columns["Parc"].Width = 90
-    $grid.Columns["Contrat"].Width = 130
-    $grid.Columns["Heures"].Width = 100
-    $grid.Columns["Edit"].Width = 90
-    $grid.Columns["Delete"].Width = 90  
-
-    # Actions: centrées et compactes
-    $grid.Columns["Edit"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleCenter
-    $grid.Columns["Delete"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleCenter
-
-    # Email: ne pas wrap, tronquage visuel si trop long
+    $grid = New-CrudDataGrid -Name "AgentsGrid" -ColumnDefs @(
+        @{ Name = "Nom";     Header = "Nom";              Width = 150 },
+        @{ Name = "Prenom";  Header = "Prénom";           Width = 120 },
+        @{ Name = "Tel";     Header = "Téléphone";        Width = 110 },
+        @{ Name = "Email";   Header = "Email";            Width = 120 },
+        @{ Name = "Parc";    Header = "N° parc";          Width = 90  },
+        @{ Name = "Contrat"; Header = "Type de contrat";  Width = 130 },
+        @{ Name = "Heures";  Header = "Base heures";      Width = 100 },
+        @{ Name = "Edit";    Header = "Modifier";         Width = 90  },
+        @{ Name = "Delete";  Header = "Supprimer";        Width = 90  }
+    )
     $grid.Columns["Email"].DefaultCellStyle.WrapMode = [System.Windows.Forms.DataGridViewTriState]::False
     $grid.Columns["Email"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleLeft
 
