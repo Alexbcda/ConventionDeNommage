@@ -92,7 +92,7 @@ function Start-GUI {
     $tabVehicules = [System.Windows.Forms.TabPage]::new()
     $tabVehicules.Text = "Données véhicules"
     $tabVehicules.BackColor = $script:CouleurGrisFond
-    $vehiculesPanel = Show-VehiculesPanel -Vehicules (Get-Vehicules)
+    $vehiculesPanel = Show-VehiculesPanel
     if ($vehiculesPanel) {
         $vehiculesPanel.Dock = "Fill"
         $tabVehicules.Controls.Add($vehiculesPanel)

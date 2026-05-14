@@ -33,3 +33,59 @@ function Add-AgentWithValidation {
     }
 }
 
+# ============================================================
+# MISE À JOUR AVEC VALIDATION
+# ============================================================
+
+function Update-AgentWithValidation {
+    param($Id, $Nom, $Prenom, $Telephone, $Email, $DateEntree, $DateSortie, $TypeContrat, $BaseHeuresSemaine = 35, $VehiculeId = $null, $Poste = "Collecteur")
+
+    if ($null -eq $Id -or "$Id" -notmatch '^\d+$') { throw "Identifiant agent invalide." }
+    Write-Log "[Agents] Update-AgentWithValidation begin" "INFO" @{ id = $Id }
+
+    if (-not (Test-NomValide $Nom)) { throw "Nom invalide (min 2 caractères)" }
+    if (-not (Test-PrenomValide $Prenom)) { throw "Prénom invalide (min 2 caractères)" }
+    if (-not (Test-TelephoneValide $Telephone)) { throw "Téléphone invalide" }
+    if (-not (Test-EmailValide $Email)) { throw "Email invalide" }
+
+    try {
+        $result = Update-Agent -Id $Id -Nom $Nom -Prenom $Prenom -Telephone $Telephone -Email $Email -DateEntree $DateEntree -DateSortie $DateSortie -TypeContrat $TypeContrat -BaseHeuresSemaine $BaseHeuresSemaine -VehiculeId $VehiculeId -Poste $Poste
+        Write-Log "[Agents] Update-AgentWithValidation success" "INFO" @{ id = $Id }
+        return $result
+    } catch {
+        Write-Log "[Agents] Update-AgentWithValidation failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    }
+}
+
+# ============================================================
+# SUPPRESSION AVEC VALIDATION
+# ============================================================
+
+function Remove-AgentWithValidation {
+    param($Id)
+
+    if ($null -eq $Id -or "$Id" -notmatch '^\d+$') { throw "Identifiant agent invalide." }
+    Write-Log "[Agents] Remove-AgentWithValidation begin" "INFO" @{ id = $Id }
+
+    try {
+        $result = Remove-Agent -Id $Id
+        Write-Log "[Agents] Remove-AgentWithValidation success" "INFO" @{ id = $Id }
+        return $result
+    } catch {
+        Write-Log "[Agents] Remove-AgentWithValidation failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    }
+}
+
+# ============================================================
+# LECTURE PAR ID AVEC VALIDATION
+# ============================================================
+
+function Get-AgentByIdSafe {
+    param($Id)
+
+    if ($null -eq $Id -or "$Id" -notmatch '^\d+$') { throw "Identifiant agent invalide." }
+    return Get-AgentById -Id ([int]$Id)
+}
+
