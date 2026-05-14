@@ -6,7 +6,18 @@
 . "$PSScriptRoot\..\..\Common\WinFormsHelpers.ps1"
 . "$PSScriptRoot\..\..\Core\Logger.ps1"
 
-$script:DebugAgentsUI = $false
+function Invoke-EditAgent {
+    param([Parameter(Mandatory=$true)] $Id, [Parameter(Mandatory=$true)] $Grid)
+    $agent = Get-AgentDetails -Id $Id
+    if (-not $agent) { return }
+    $owner = $Grid.FindForm()
+    $modif = Show-AgentForm -Mode "Modifier" -Agent $agent -Owner $owner
+    if ($modif) {
+        Update-AgentEntry -Id $Id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -Poste $modif.poste | Out-Null
+        $chk = $Grid.Parent.Controls["chkHistoriqueAgents"]
+        Refresh-AgentsGrid -Grid $Grid -IncludeHistorique $chk.Checked
+    }
+}
 
 function Refresh-AgentsGrid {
     <#
@@ -98,9 +109,6 @@ function Show-AgentsPanel {
         # $mainPanel peut être $null dans certains contextes d'event; utiliser le bouton comme point d'ancrage.
         try {
             Write-Log "[AgentsUI] Click add agent" "INFO"
-            if ($script:DebugAgentsUI) {
-                [System.Windows.Forms.MessageBox]::Show("Click: ouverture du formulaire Agent", "Debug", "OK", "Information") | Out-Null
-            }
             $owner = $this.FindForm()
             $nouveau = Show-AgentForm -Mode "Ajouter" -Owner $owner
             if (-not $nouveau) {
@@ -108,30 +116,8 @@ function Show-AgentsPanel {
                 return
             }
 
-            if ($script:DebugAgentsUI) {
-                [System.Windows.Forms.MessageBox]::Show(
-                    ("Form OK:`nnom={0}`nprenom={1}`nentree={2:dd/MM/yyyy}`nsortie={3}" -f $nouveau.nom, $nouveau.prenom, $nouveau.date_entree, $nouveau.date_sortie),
-                    "Debug",
-                    "OK",
-                    "Information"
-                ) | Out-Null
-            }
-            Write-Log "[AgentsUI] Form data ready" "INFO" @{ ok = $true }
             $newId = Add-AgentEntry -Nom $nouveau.nom -Prenom $nouveau.prenom -Telephone $nouveau.telephone -Email $nouveau.email -DateEntree $nouveau.date_entree -DateSortie $nouveau.date_sortie -TypeContrat $nouveau.type_contrat -BaseHeuresSemaine $nouveau.base_heures_semaine -Poste $nouveau.poste
-            Write-Log "[AgentsUI] Add-AgentEntry returned" "INFO" @{ id = $newId }
-            try {
-                $created = Get-AgentDetails -Id $newId
-                if ($created) {
-                    Write-Log "[AgentsUI] Created agent loaded from DB" "INFO" @{ id = $created.id; actif = $created.actif }
-                } else {
-                    Write-Log "[AgentsUI] Created agent not found after insert" "WARN" @{ id = $newId }
-                }
-            } catch {
-                Write-Log "[AgentsUI] Post-insert Get-AgentDetails failed" "ERROR" @{ id = $newId; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
-            }
-            if ($script:DebugAgentsUI) {
-                [System.Windows.Forms.MessageBox]::Show(("Ajout OK (id={0})" -f $newId), "Agents", "OK", "Information") | Out-Null
-            }
+            Write-Log "[AgentsUI] Agent added" "INFO" @{ id = $newId }
             $g = $this.Parent.Controls["AgentsGrid"]
             $chk = $this.Parent.Controls["chkHistoriqueAgents"]
             Refresh-AgentsGrid -Grid $g -IncludeHistorique $chk.Checked
@@ -153,14 +139,7 @@ function Show-AgentsPanel {
         $delCol = $sender.Columns["Delete"].Index
 
         if ($e.ColumnIndex -eq $editCol) {
-            $agent = Get-AgentDetails -Id $id
-            $owner = $sender.FindForm()
-            $modif = Show-AgentForm -Mode "Modifier" -Agent $agent -Owner $owner
-            if ($modif) {
-                Update-AgentEntry -Id $id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -Poste $modif.poste | Out-Null
-                $chk = $sender.Parent.Controls["chkHistoriqueAgents"]
-                Refresh-AgentsGrid -Grid $sender -IncludeHistorique $chk.Checked
-            }
+            Invoke-EditAgent -Id $id -Grid $sender
             return
         }
 
@@ -199,16 +178,7 @@ function Show-AgentsPanel {
         Write-Log "[AgentsUI] Double-click edit agent ID = $id" "INFO"
 
         try {
-            $agent = Get-AgentDetails -Id $id
-            if (-not $agent) { return }
-
-            $owner = $sender.FindForm()
-            $modif = Show-AgentForm -Mode "Modifier" -Agent $agent -Owner $owner
-            if ($modif) {
-                Update-AgentEntry -Id $id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -Poste $modif.poste | Out-Null
-                $chk = $sender.Parent.Controls["chkHistoriqueAgents"]
-                Refresh-AgentsGrid -Grid $sender -IncludeHistorique $chk.Checked
-            }
+            Invoke-EditAgent -Id $id -Grid $sender
         } catch {
             Write-Log "[AgentsUI] Double-click edit failed" "ERROR" @{ id = $id; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
             Show-CrudErrorDialog -OperationLabel "la modification de l'agent" -ErrorMessage $_.Exception.Message

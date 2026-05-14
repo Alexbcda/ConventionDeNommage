@@ -1,12 +1,24 @@
 # VehiculeService.ps1 — Service layer for vehicle operations
 # UI (Panels/Forms) should ONLY call functions defined here.
-# Architecture: UI → Service → Repository → Database
+# Architecture: UI → Service (guard) → Repository (validation) → Database
 
 . "$PSScriptRoot\..\ODM\Vehicules\VehiculesRepository.ps1"
 
+function Assert-VehiculeServiceInput {
+    param($NumeroParc, $Immatriculation, $NumeroChassis)
+    Assert-RequiredString "Numero de parc" $NumeroParc -MaxLength 50
+    Assert-RequiredString "Immatriculation" $Immatriculation -MaxLength 20
+    if ([string]::IsNullOrWhiteSpace($NumeroChassis)) {
+        throw "Numero de chassis est obligatoire."
+    }
+    if ($NumeroChassis.Trim().Length -ne 17) {
+        throw "Numero de chassis doit contenir exactement 17 caracteres."
+    }
+}
+
 function Get-VehiculeList {
     param([switch]$IncludeInactive)
-    if ($IncludeInactive) { return Get-AllVehicules } else { return Get-Vehicules }
+    return Get-VehiculeRecords -IncludeInactive:$IncludeInactive
 }
 
 function Get-VehiculeDetails {
@@ -27,6 +39,7 @@ function Add-VehiculeEntry {
         $DateSortie,
         $DateFinControleTechnique
     )
+    Assert-VehiculeServiceInput -NumeroParc $NumeroParc -Immatriculation $Immatriculation -NumeroChassis $NumeroChassis
     return Add-VehiculeWithValidation @PSBoundParameters
 }
 
@@ -44,12 +57,30 @@ function Update-VehiculeEntry {
         $DateSortie,
         $DateFinControleTechnique
     )
+    Assert-VehiculeServiceInput -NumeroParc $NumeroParc -Immatriculation $Immatriculation -NumeroChassis $NumeroChassis
     return Update-Vehicule @PSBoundParameters
 }
 
 function Remove-VehiculeEntry {
     param([Parameter(Mandatory=$true)] $Id)
     return Remove-Vehicule -Id $Id
+}
+
+function ConvertTo-VehiculeFormData {
+    param([Parameter(Mandatory=$true)] $VehiculeRecord)
+    return @{
+        id                       = $VehiculeRecord.id
+        numeroParc               = $VehiculeRecord.numero_parc
+        immatriculation          = $VehiculeRecord.immatriculation
+        numeroChassis            = $VehiculeRecord.numero_chassis
+        marque                   = $VehiculeRecord.marque
+        modele                   = $VehiculeRecord.modele
+        dateMiseCirculation      = $VehiculeRecord.date_mise_circulation
+        dateControle             = $VehiculeRecord.date_controle
+        dateEntree               = $VehiculeRecord.date_entree
+        dateSortie               = $VehiculeRecord.date_sortie
+        dateFinControleTechnique = $VehiculeRecord.date_fin_controle_technique
+    }
 }
 
 function Test-VehiculeDoublonParc {

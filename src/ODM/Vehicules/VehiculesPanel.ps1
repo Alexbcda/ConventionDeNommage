@@ -9,7 +9,31 @@
 . "$PSScriptRoot\..\..\Services\VehiculeService.ps1"
 . "$PSScriptRoot\VehiculesForm.ps1"
 
-$script:DebugVehiculesUI = $false
+function Invoke-EditVehicule {
+    param([Parameter(Mandatory=$true)] $Id, [Parameter(Mandatory=$true)] $Grid)
+    $vehiculeComplet = Get-VehiculeDetails -Id $Id
+    if (-not $vehiculeComplet) { return }
+    $vehiculeData = ConvertTo-VehiculeFormData $vehiculeComplet
+    $owner = $Grid.FindForm()
+    $modifie = Show-VehiculeForm -Mode "Modifier" -Vehicule $vehiculeData -Owner $owner
+    if ($modifie) {
+        Update-VehiculeEntry `
+            -Id $Id `
+            -NumeroParc $modifie.numeroParc `
+            -Immatriculation $modifie.immatriculation `
+            -NumeroChassis $modifie.numeroChassis `
+            -Marque $modifie.marque `
+            -Modele $modifie.modele `
+            -DateMiseCirculation $modifie.dateMiseCirculation `
+            -DateControle $modifie.dateControle `
+            -DateEntree $modifie.dateEntree `
+            -DateSortie $modifie.dateSortie `
+            -DateFinControleTechnique $modifie.dateFinControleTechnique | Out-Null
+        $chk = $Grid.Parent.Controls["chkHistoriqueVehicules"]
+        $empty = $Grid.Parent.Controls["lblVehiculesEmpty"]
+        Refresh-VehiculesGrid -Grid $Grid -IncludeHistorique $chk.Checked -EmptyStateLabel $empty
+    }
+}
 
 function Refresh-VehiculesGrid {
     <#
@@ -132,9 +156,6 @@ function Show-VehiculesPanel {
     $btnAjouter.Add_Click({
         try {
             Write-Log "[VehiculesUI] Click add vehicle" "INFO"
-            if ($script:DebugVehiculesUI) {
-                [System.Windows.Forms.MessageBox]::Show("Click: ouverture du formulaire Véhicule", "Debug", "OK", "Information") | Out-Null
-            }
             $owner = $this.FindForm()
             $nouveau = Show-VehiculeForm -Mode "Ajouter" -Owner $owner
             
@@ -143,8 +164,6 @@ function Show-VehiculesPanel {
                 return
             }
 
-            Write-Log "[VehiculesUI] Form data ready" "INFO" @{ ok = $true }
-            
             $newId = Add-VehiculeEntry `
                 -NumeroParc $nouveau.numeroParc `
                 -Immatriculation $nouveau.immatriculation `
@@ -156,13 +175,7 @@ function Show-VehiculesPanel {
                 -DateEntree $nouveau.dateEntree `
                 -DateSortie $nouveau.dateSortie `
                 -DateFinControleTechnique $nouveau.dateFinControleTechnique
-            
-            Write-Log "[VehiculesUI] Add-VehiculeEntry returned" "INFO" @{ id = $newId }
-            
-            if ($script:DebugVehiculesUI) {
-                [System.Windows.Forms.MessageBox]::Show(("Ajout OK (id={0})" -f $newId), "Véhicules", "OK", "Information") | Out-Null
-            }
-            
+            Write-Log "[VehiculesUI] Vehicle added" "INFO" @{ id = $newId }
             $g = $this.Parent.Controls["VehiculesGrid"]
             $chk = $this.Parent.Controls["chkHistoriqueVehicules"]
             $empty = $this.Parent.Controls["lblVehiculesEmpty"]
@@ -185,43 +198,7 @@ function Show-VehiculesPanel {
         $delCol = $sender.Columns["Delete"].Index
 
         if ($e.ColumnIndex -eq $editCol) {
-            $vehiculeComplet = Get-VehiculeDetails -Id $id
-            if (-not $vehiculeComplet) { return }
-
-            $vehiculeData = @{
-                id = $vehiculeComplet.id
-                numeroParc = $vehiculeComplet.numero_parc
-                immatriculation = $vehiculeComplet.immatriculation
-                numeroChassis = $vehiculeComplet.numero_chassis
-                marque = $vehiculeComplet.marque
-                modele = $vehiculeComplet.modele
-                dateMiseCirculation = $vehiculeComplet.date_mise_circulation
-                dateControle = $vehiculeComplet.date_controle
-                dateEntree = $vehiculeComplet.date_entree
-                dateSortie = $vehiculeComplet.date_sortie
-                dateFinControleTechnique = $vehiculeComplet.date_fin_controle_technique
-            }
-
-            $owner = $sender.FindForm()
-            $modifie = Show-VehiculeForm -Mode "Modifier" -Vehicule $vehiculeData -Owner $owner
-            if ($modifie) {
-                Update-VehiculeEntry `
-                    -Id $id `
-                    -NumeroParc $modifie.numeroParc `
-                    -Immatriculation $modifie.immatriculation `
-                    -NumeroChassis $modifie.numeroChassis `
-                    -Marque $modifie.marque `
-                    -Modele $modifie.modele `
-                    -DateMiseCirculation $modifie.dateMiseCirculation `
-                    -DateControle $modifie.dateControle `
-                    -DateEntree $modifie.dateEntree `
-                    -DateSortie $modifie.dateSortie `
-                    -DateFinControleTechnique $modifie.dateFinControleTechnique | Out-Null
-
-                $chk = $sender.Parent.Controls["chkHistoriqueVehicules"]
-                $empty = $sender.Parent.Controls["lblVehiculesEmpty"]
-                Refresh-VehiculesGrid -Grid $sender -IncludeHistorique $chk.Checked -EmptyStateLabel $empty
-            }
+            Invoke-EditVehicule -Id $id -Grid $sender
             return
         }
 
@@ -259,44 +236,7 @@ function Show-VehiculesPanel {
         Write-Log "[VehiculesUI] Double-click edit vehicle ID = $id" "INFO"
 
         try {
-            $vehiculeComplet = Get-VehiculeDetails -Id $id
-            if (-not $vehiculeComplet) { return }
-
-            $vehiculeData = @{
-                id = $vehiculeComplet.id
-                numeroParc = $vehiculeComplet.numero_parc
-                immatriculation = $vehiculeComplet.immatriculation
-                numeroChassis = $vehiculeComplet.numero_chassis
-                marque = $vehiculeComplet.marque
-                modele = $vehiculeComplet.modele
-                dateMiseCirculation = $vehiculeComplet.date_mise_circulation
-                dateControle = $vehiculeComplet.date_controle
-                dateEntree = $vehiculeComplet.date_entree
-                dateSortie = $vehiculeComplet.date_sortie
-                dateFinControleTechnique = $vehiculeComplet.date_fin_controle_technique
-            }
-
-            $owner = $sender.FindForm()
-            $modifie = Show-VehiculeForm -Mode "Modifier" -Vehicule $vehiculeData -Owner $owner
-            
-            if ($modifie) {
-                Update-VehiculeEntry `
-                    -Id $id `
-                    -NumeroParc $modifie.numeroParc `
-                    -Immatriculation $modifie.immatriculation `
-                    -NumeroChassis $modifie.numeroChassis `
-                    -Marque $modifie.marque `
-                    -Modele $modifie.modele `
-                    -DateMiseCirculation $modifie.dateMiseCirculation `
-                    -DateControle $modifie.dateControle `
-                    -DateEntree $modifie.dateEntree `
-                    -DateSortie $modifie.dateSortie `
-                    -DateFinControleTechnique $modifie.dateFinControleTechnique | Out-Null
-                
-                $chk = $sender.Parent.Controls["chkHistoriqueVehicules"]
-                $empty = $sender.Parent.Controls["lblVehiculesEmpty"]
-                Refresh-VehiculesGrid -Grid $sender -IncludeHistorique $chk.Checked -EmptyStateLabel $empty
-            }
+            Invoke-EditVehicule -Id $id -Grid $sender
         } catch {
             Write-Log "[VehiculesUI] Double-click edit failed" "ERROR" @{ id = $id; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
             Show-CrudErrorDialog -OperationLabel "la modification du véhicule" -ErrorMessage $_.Exception.Message
