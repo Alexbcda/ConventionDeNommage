@@ -342,9 +342,11 @@ function script:Get-PdfPageCountFromRawScan {
 function script:Get-ResolvedPdfToTextPath {
     <#
     Résout pdftotext.exe selon un ordre strict :
-      1) PDFTOTEXT_PATH
-      2) PATH machine (si PDFTOTEXT_ALLOW_PATH actif)
-      3) chemins standards repo / Program Files / WinGet
+      1) config/runtime.json → popplerPath
+      2) runtime/poppler/Library/bin/pdftotext.exe
+      3) PDFTOTEXT_PATH (env var)
+      4) PATH machine (si PDFTOTEXT_ALLOW_PATH actif)
+      5) chemins standards repo / Program Files / WinGet
     #>
     [CmdletBinding()]
     param(
@@ -358,13 +360,47 @@ function script:Get-ResolvedPdfToTextPath {
         $repoRoot = Split-Path -Parent $repoRoot
     }
 
+    $cfgFile = Join-Path $repoRoot 'config\runtime.json'
+    if (Test-Path -LiteralPath $cfgFile -PathType Leaf) {
+        try {
+            $cfg = Get-Content -LiteralPath $cfgFile -Raw -ErrorAction Stop | ConvertFrom-Json
+            $cfgPoppler = [string]$cfg.popplerPath
+            if (-not [string]::IsNullOrWhiteSpace($cfgPoppler)) {
+                $cfgPoppler = $cfgPoppler.Trim().Trim('"')
+                if (Test-Path -LiteralPath $cfgPoppler -PathType Container) {
+                    $cfgPoppler = Join-Path $cfgPoppler 'pdftotext.exe'
+                }
+                if (Test-Path -LiteralPath $cfgPoppler -PathType Leaf) {
+                    [void]$trace.Add(("CONFIG hit: {0}" -f $cfgPoppler))
+                    if ($TraceOut) { $TraceOut.Value = @($trace.ToArray()) }
+                    return (Resolve-Path -LiteralPath $cfgPoppler).Path
+                }
+                [void]$trace.Add(("CONFIG miss: {0}" -f $cfgPoppler))
+            }
+        } catch { [void]$trace.Add("CONFIG read error") }
+    }
+
+    $rtCandidate = Join-Path $repoRoot 'runtime\poppler\Library\bin\pdftotext.exe'
+    if (Test-Path -LiteralPath $rtCandidate -PathType Leaf) {
+        [void]$trace.Add(("RUNTIME hit: {0}" -f $rtCandidate))
+        if ($TraceOut) { $TraceOut.Value = @($trace.ToArray()) }
+        return (Resolve-Path -LiteralPath $rtCandidate).Path
+    }
+    $rtDirect = Join-Path $repoRoot 'runtime\poppler\bin\pdftotext.exe'
+    if (Test-Path -LiteralPath $rtDirect -PathType Leaf) {
+        [void]$trace.Add(("RUNTIME hit: {0}" -f $rtDirect))
+        if ($TraceOut) { $TraceOut.Value = @($trace.ToArray()) }
+        return (Resolve-Path -LiteralPath $rtDirect).Path
+    }
+    [void]$trace.Add(("RUNTIME miss: {0}" -f $rtCandidate))
+
     $allowPathRaw = [string]$env:PDFTOTEXT_ALLOW_PATH
     $allowPath = -not [string]::IsNullOrWhiteSpace($allowPathRaw) -and ($allowPathRaw.Trim().ToLowerInvariant() -in @('1', 'true', 'yes', 'on'))
 
     [void]$trace.Add(("PDFTOTEXT_PATH={0}" -f [string]$env:PDFTOTEXT_PATH))
     [void]$trace.Add(("PDFTOTEXT_ALLOW_PATH={0} (enabled={1})" -f $allowPathRaw, $allowPath))
     if ($debugResolve) {
-        Write-Host "[PDF] Checking Poppler explicit path..." -ForegroundColor Cyan
+        Write-Host "[PDF] Checking Poppler paths..." -ForegroundColor Cyan
     }
 
     $fromEnv = [string]$env:PDFTOTEXT_PATH
@@ -417,7 +453,7 @@ function script:Get-ResolvedPdfToTextPath {
             (Join-Path $repoRoot 'tools\pdftotext.exe'),
             (Join-Path $repoRoot 'vendor\poppler\Library\bin\pdftotext.exe'),
             "${env:LOCALAPPDATA}\Microsoft\WinGet\Links\pdftotext.exe",
-            'C:\Program Files\Xpdf\pdftotext.exe'
+            "${env:ProgramFiles}\Xpdf\pdftotext.exe"
         )) {
         if (-not [string]::IsNullOrWhiteSpace($p)) { [void]$candidates.Add($p) }
     }

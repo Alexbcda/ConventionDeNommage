@@ -5,11 +5,35 @@ function Get-ResolvedGhostscriptPath {
     .SYNOPSIS
         Retourne le chemin complet d'un exécutable Ghostscript CLI, ou $null.
     .NOTES
-        Ordre : GHOSTSCRIPT_EXE, GS_EXE, GS_PROG, PATH (Get-Command), emplacements connus, puis
-        le plus récent détecté sous Program Files\gs\*\bin\.
+        Ordre : config/runtime.json, runtime/ghostscript/, env vars, PATH, emplacements connus,
+        puis le plus récent détecté sous Program Files\gs\*\bin\.
     #>
     [CmdletBinding()]
     param()
+
+    $repoRoot = $PSScriptRoot
+    for ($i = 0; $i -lt 2; $i++) { $repoRoot = Split-Path -Parent $repoRoot }
+
+    $cfgFile = Join-Path $repoRoot 'config\runtime.json'
+    if (Test-Path -LiteralPath $cfgFile -PathType Leaf) {
+        try {
+            $cfg = Get-Content -LiteralPath $cfgFile -Raw -ErrorAction Stop | ConvertFrom-Json
+            $cfgGs = [string]$cfg.ghostscriptPath
+            if (-not [string]::IsNullOrWhiteSpace($cfgGs)) {
+                $cfgGs = $cfgGs.Trim().Trim('"')
+                if (Test-Path -LiteralPath $cfgGs -PathType Leaf) {
+                    return (Resolve-Path -LiteralPath $cfgGs).Path
+                }
+            }
+        } catch { }
+    }
+
+    foreach ($exe in @('gswin64c.exe', 'gswin32c.exe')) {
+        $rtCandidate = Join-Path $repoRoot "runtime\ghostscript\bin\$exe"
+        if (Test-Path -LiteralPath $rtCandidate -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $rtCandidate).Path
+        }
+    }
 
     foreach ($envName in @('GHOSTSCRIPT_EXE', 'GS_EXE', 'GS_PROG')) {
         $raw = [Environment]::GetEnvironmentVariable($envName, 'Process')
@@ -33,10 +57,10 @@ function Get-ResolvedGhostscriptPath {
     $fixed = @(
         "${env:ProgramFiles}\PDF24\gs\bin\gswin64c.exe",
         "${env:ProgramFiles(x86)}\PDF24\gs\bin\gswin64c.exe",
-        "C:\Program Files\gs\gs10.01.1\bin\gswin64c.exe",
-        "C:\Program Files\gs\gs10.00.0\bin\gswin64c.exe",
-        "C:\Program Files\gs\gs9.56.1\bin\gswin64c.exe",
-        "C:\Program Files\gs\gs9.55.0\bin\gswin64c.exe",
+        "${env:ProgramFiles}\gs\gs10.01.1\bin\gswin64c.exe",
+        "${env:ProgramFiles}\gs\gs10.00.0\bin\gswin64c.exe",
+        "${env:ProgramFiles}\gs\gs9.56.1\bin\gswin64c.exe",
+        "${env:ProgramFiles}\gs\gs9.55.0\bin\gswin64c.exe",
         "${env:ProgramFiles}\Ghostscript\bin\gswin64c.exe",
         "${env:ProgramFiles}\Ghostscript\bin\gswin32c.exe"
     )
