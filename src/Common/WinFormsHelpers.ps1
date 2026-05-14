@@ -215,6 +215,8 @@ function Set-CrudGridRowStyle {
     $Grid.Rows[$RowIndex].DefaultCellStyle.Font = $NormalFont
     if (-not $IsActif) {
         $Grid.Rows[$RowIndex].DefaultCellStyle.ForeColor = [System.Drawing.Color]::FromArgb(150, 150, 150)
+    } else {
+        $Grid.Rows[$RowIndex].DefaultCellStyle.ForeColor = $Grid.DefaultCellStyle.ForeColor
     }
 
     try { Apply-AlternateRowColor -Grid $Grid -RowIndex $RowIndex -Row $RowIndex } catch {}
