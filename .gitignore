@@ -27,6 +27,24 @@ lib/*.db
 *.old
 Test-*.ps1
 
+# Exports / dumps texte
+$pdf
+$ps
+Projet_Export.txt
+planning_*.txt
+ordre_de_missions.txt
+
+# Templates morts
+templates/*.odg
+
+# Donnees runtime
+Data/*.jsonl
+Data/*.backup
+
+# Artefacts build .NET
+**/bin/
+**/obj/
+
 # Dossiers systeme
 .DS_Store
 Thumbs.db

@@ -7,7 +7,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# WinForms : bootstrap Application en premier (aucun proxy New-Object — audit statique : Tools\Find-WinFormsLeaks.ps1).
+# WinForms : bootstrap Application en premier.
 . (Join-Path $scriptPath 'Bootstrap.ps1')
 . (Join-Path $scriptPath 'Common\WinFormsGuard.ps1')
 
@@ -18,24 +18,33 @@ if ($env:CN_WINFORMS_TRACE -eq '1' -or $env:CN_WINFORMS_TRACE -eq 'true') {
 . (Join-Path $scriptPath 'Common\UiText.ps1')
 Initialize-ConventionAppConsoleUtf8
 
-# Planning PDF + Excel (PdfPlanningOptimizer) : lecture .xlsx/.xlsm sans Excel installe
-if (-not (Get-Module -Name ImportExcel -ListAvailable -ErrorAction SilentlyContinue)) {
-    Write-Host "[MAIN] Conseil: installez le module ImportExcel pour l'onglet *Edition planning* (fichiers Excel sans Microsoft Excel)." -ForegroundColor Yellow
-    Write-Host "      Install-Module -Name ImportExcel -Scope CurrentUser -Force" -ForegroundColor DarkGray
-}
-
-Write-Host "🚀 DÉMARRAGE DE L'APPLICATION..." -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Cyan
-
 # ============================================
 # 1. CHARGEMENT DES STYLES ET CONFIGURATION
 # ============================================
-Write-Host "[MAIN] Chargement des styles..." -ForegroundColor Gray
 . "$scriptPath\Config.ps1"
 # Styles apres UiText (Convert-ToUiText sur libelles boutons).
 . "$scriptPath\Common\Styles.ps1"
 . "$scriptPath\Core\Logger.ps1"
+. "$scriptPath\Core\DependencyCheck.ps1"
 Write-Log "[MAIN] Application start" "INFO" @{ scriptPath = $scriptPath }
+
+# ============================================
+# 1b. VALIDATION DEPENDANCES EXTERNES
+# ============================================
+$deps = Test-RuntimeDependencies
+if (-not (Get-Module -Name ImportExcel -ListAvailable -ErrorAction SilentlyContinue)) {
+    Write-Log "[MAIN] Module ImportExcel non installe - onglet Edition Planning limite" "WARN"
+}
+if (-not $deps.sqlite) {
+    Write-Log "[MAIN] ARRET : driver SQLite manquant" "ERROR"
+    [System.Windows.Forms.MessageBox]::Show(
+        "Le driver SQLite (lib\System.Data.SQLite.dll) est manquant.`nL'application ne peut pas demarrer.`n`nLancez install\Install.ps1 pour diagnostiquer.",
+        "Erreur de dependance",
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Error
+    )
+    exit 1
+}
 
 # ============================================
 # 2. INITIALISATION DE LA BASE SQLITE
@@ -52,7 +61,6 @@ try {
 # ============================================
 # 3. CHARGEMENT DES MODULES MÉTIER
 # ============================================
-Write-Host "[MAIN] Chargement des modules métier..." -ForegroundColor Gray
 . "$scriptPath\ODM\ConventionNommage\ConventionNommage.ps1"
 . "$scriptPath\ODM\Agents\AgentRepository.ps1"
 . "$scriptPath\ODM\Vehicules\VehiculesRepository.ps1"
@@ -61,14 +69,12 @@ Write-Host "[MAIN] Chargement des modules métier..." -ForegroundColor Gray
 # ============================================
 # 4. CHARGEMENT ET LANCEMENT DE LA GUI
 # ============================================
-Write-Host "[MAIN] Chargement de l'interface..." -ForegroundColor Gray
 . "$scriptPath\GUI.ps1"
 
 # ============================================
 # 5. LANCEMENT
 # ============================================
-Write-Host "[MAIN] Lancement..." -ForegroundColor Green
-Write-Host "========================================" -ForegroundColor Green
+Write-Log "[MAIN] Lancement GUI" "INFO"
 
 try {
     Start-GUI -FichierPDF $args[0]
