@@ -491,33 +491,3 @@ OU procédez manuellement imprimable :
     }
 }
 
-function Get-PDFPageCount {
-    param([string]$FichierPDF)
-    
-    if (-not (Test-Path $FichierPDF)) {
-        return 0
-    }
-    
-    $gsPath = Get-ResolvedGhostscriptPath
-    if ($gsPath) {
-        try {
-            $psPath = $FichierPDF -replace '\\', '/'
-            $output = & $gsPath -dNODISPLAY -q -c "($psPath) (r) file runpdfbegin pdfpagecount = quit" 2>&1
-            $joined = if ($output -is [array]) { $output -join "`n" } else { [string]$output }
-            if ($joined -match '(\d+)') {
-                return [int]$Matches[1]
-            }
-        } catch { }
-    }
-    
-    # Fallback : compter via COM
-    try {
-        $pdfDoc = New-Object -ComObject "AcroExch.PDDoc"
-        $pdfDoc.Open($FichierPDF)
-        $count = $pdfDoc.GetNumPages()
-        $pdfDoc.Close()
-        return $count
-    } catch {
-        return 1
-    }
-}

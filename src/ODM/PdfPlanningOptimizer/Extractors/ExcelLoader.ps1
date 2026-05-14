@@ -292,16 +292,3 @@ function Import-PlanningExcel {
     }
     return (Import-ExcelWorkbookToGrids -Path $ExcelPath)
 }
-
-function Import-PlanningExcelData {
-    <#
-    .SYNOPSIS
-        Alias sémantique (pipelines orchestre / tests) : même contenu qu’Import-PlanningExcel.
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ExcelPath
-    )
-    return (Import-PlanningExcel -ExcelPath $ExcelPath)
-}
