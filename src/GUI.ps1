@@ -40,11 +40,7 @@ function Start-GUI {
     . "$PSScriptRoot\ODM\Agents\AgentRepository.ps1"
     . "$PSScriptRoot\ODM\Vehicules\VehiculesPanel.ps1"
     . "$PSScriptRoot\ODM\Vehicules\VehiculesRepository.ps1"
-    . "$PSScriptRoot\ODM\Affectations\Date.ps1"
-    . "$PSScriptRoot\ODM\Affectations\DatePanel.ps1"
-    . "$PSScriptRoot\ODM\Affectations\AffectationNbTournees.ps1"
-    . "$PSScriptRoot\ODM\Affectations\AffectationNbTourneesPanel.ps1"
-        
+
     $form = [System.Windows.Forms.Form]::new()
     $form.Text = "Convention de nommage"
     $form.Size = [System.Drawing.Size]::new(1400, 800)
@@ -73,27 +69,7 @@ function Start-GUI {
     if ($realPanel) { $realPanel.Name = "ConventionNommageRootPanel" }
     $tabControl.TabPages.Add($tabRename)
 
-    # ONGLET 2 : Affectation
-    $tabAffectation = [System.Windows.Forms.TabPage]::new()
-    $tabAffectation.Text = "Affectation"
-    $tabAffectation.BackColor = $script:CouleurGrisFond
-    $affectationContainer = [System.Windows.Forms.Panel]::new()
-    $affectationContainer.Dock = "Fill"
-    $affectationContainer.Name = "AffectationContainer"
-    $panelDate = Show-DatePanel -NextPanel $null -CurrentPanel $null
-    $panelDate.Dock = "Fill"
-    $panelDate.Name = "DatePanel"
-    $panelTournees = Show-AffectationNbTourneesPanel -NextPanel $null -CurrentPanel $null
-    $panelTournees.Dock = "Fill"
-    $panelTournees.Name = "TourneesPanel"
-    $panelTournees.Visible = $false
-    $affectationContainer.Controls.Add($panelDate)
-    $affectationContainer.Controls.Add($panelTournees)
-    $tabAffectation.Controls.Add($affectationContainer)
-    $tabControl.TabPages.Add($tabAffectation)
-    $form.Tag = $affectationContainer
-
-    # ONGLET 3 : Agents
+    # ONGLET 2 : Agents
     $tabAgents = [System.Windows.Forms.TabPage]::new()
     $tabAgents.Text = "Données agents"
     $tabAgents.BackColor = $script:CouleurGrisFond
@@ -112,7 +88,7 @@ function Start-GUI {
     }
     $tabControl.TabPages.Add($tabAgents)
 
-    # ONGLET 4 : Vehicules
+    # ONGLET 3 : Vehicules
     $tabVehicules = [System.Windows.Forms.TabPage]::new()
     $tabVehicules.Text = "Données véhicules"
     $tabVehicules.BackColor = $script:CouleurGrisFond
@@ -123,7 +99,7 @@ function Start-GUI {
     }
     $tabControl.TabPages.Add($tabVehicules)
 
-    # ONGLET 5 : Edition planning
+    # ONGLET 4 : Edition planning
     $tabPlanning = [System.Windows.Forms.TabPage]::new()
     $tabPlanning.Text = "Edition planning"
     $tabPlanning.BackColor = $script:CouleurGrisFond
