@@ -1,6 +1,6 @@
 ﻿# AgentForm.ps1 - Formulaire agent (envoie DateTime normal)
 
-. "$PSScriptRoot\..\..\Database\Database.ps1"
+. "$PSScriptRoot\..\..\Services\AgentService.ps1"
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
 . "$PSScriptRoot\..\..\Core\Logger.ps1"
 . "$PSScriptRoot\..\..\Common\Validation.ps1"
@@ -210,7 +210,7 @@ function Show-AgentForm {
     $cmbPoste.Location = [System.Drawing.Point]::new(($left + $labelW), $y)
     $cmbPoste.Size = [System.Drawing.Size]::new($fieldW, 25)
     $cmbPoste.DropDownStyle = "DropDownList"
-    $cmbPoste.Items.AddRange(@(Get-PostesListe))
+    $cmbPoste.Items.AddRange(@(Get-PostesList))
     if ($Agent -and $Agent.poste) {
         $cmbPoste.SelectedItem = $Agent.poste
     } else {

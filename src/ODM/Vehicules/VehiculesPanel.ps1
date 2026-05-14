@@ -6,7 +6,7 @@
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
 . "$PSScriptRoot\..\..\Common\WinFormsHelpers.ps1"
 . "$PSScriptRoot\..\..\Core\Logger.ps1"
-. "$PSScriptRoot\VehiculesRepository.ps1"
+. "$PSScriptRoot\..\..\Services\VehiculeService.ps1"
 . "$PSScriptRoot\VehiculesForm.ps1"
 
 $script:DebugVehiculesUI = $false
@@ -38,7 +38,7 @@ function Refresh-VehiculesGrid {
 
         # Une seule lecture DB selon le mode
         $vehicules = @(
-            if ($IncludeHistorique) { Get-AllVehicules } else { Get-Vehicules }
+            if ($IncludeHistorique) { Get-VehiculeList -IncludeInactive } else { Get-VehiculeList }
         )
         Write-Log "[VehiculesUI] RefreshGrid loaded vehicles" "INFO" @{ count = $vehicules.Count }
 
@@ -145,7 +145,7 @@ function Show-VehiculesPanel {
 
             Write-Log "[VehiculesUI] Form data ready" "INFO" @{ ok = $true }
             
-            $newId = Add-VehiculeWithValidation `
+            $newId = Add-VehiculeEntry `
                 -NumeroParc $nouveau.numeroParc `
                 -Immatriculation $nouveau.immatriculation `
                 -NumeroChassis $nouveau.numeroChassis `
@@ -157,7 +157,7 @@ function Show-VehiculesPanel {
                 -DateSortie $nouveau.dateSortie `
                 -DateFinControleTechnique $nouveau.dateFinControleTechnique
             
-            Write-Log "[VehiculesUI] Add-VehiculeWithValidation returned" "INFO" @{ id = $newId }
+            Write-Log "[VehiculesUI] Add-VehiculeEntry returned" "INFO" @{ id = $newId }
             
             if ($script:DebugVehiculesUI) {
                 [System.Windows.Forms.MessageBox]::Show(("Ajout OK (id={0})" -f $newId), "Véhicules", "OK", "Information") | Out-Null
@@ -185,7 +185,7 @@ function Show-VehiculesPanel {
         $delCol = $sender.Columns["Delete"].Index
 
         if ($e.ColumnIndex -eq $editCol) {
-            $vehiculeComplet = Get-VehiculeById -Id $id
+            $vehiculeComplet = Get-VehiculeDetails -Id $id
             if (-not $vehiculeComplet) { return }
 
             $vehiculeData = @{
@@ -205,7 +205,7 @@ function Show-VehiculesPanel {
             $owner = $sender.FindForm()
             $modifie = Show-VehiculeForm -Mode "Modifier" -Vehicule $vehiculeData -Owner $owner
             if ($modifie) {
-                Update-Vehicule `
+                Update-VehiculeEntry `
                     -Id $id `
                     -NumeroParc $modifie.numeroParc `
                     -Immatriculation $modifie.immatriculation `
@@ -228,7 +228,7 @@ function Show-VehiculesPanel {
         if ($e.ColumnIndex -eq $delCol) {
             $confirm = [System.Windows.Forms.MessageBox]::Show("Supprimer ce véhicule ?", "Confirmation", "YesNo")
             if ($confirm -eq "Yes") {
-                Remove-Vehicule -Id $id | Out-Null
+                Remove-VehiculeEntry -Id $id | Out-Null
                 $chk = $sender.Parent.Controls["chkHistoriqueVehicules"]
                 $empty = $sender.Parent.Controls["lblVehiculesEmpty"]
                 Refresh-VehiculesGrid -Grid $sender -IncludeHistorique $chk.Checked -EmptyStateLabel $empty
@@ -259,7 +259,7 @@ function Show-VehiculesPanel {
         Write-Log "[VehiculesUI] Double-click edit vehicle ID = $id" "INFO"
 
         try {
-            $vehiculeComplet = Get-VehiculeById -Id $id
+            $vehiculeComplet = Get-VehiculeDetails -Id $id
             if (-not $vehiculeComplet) { return }
 
             $vehiculeData = @{
@@ -280,7 +280,7 @@ function Show-VehiculesPanel {
             $modifie = Show-VehiculeForm -Mode "Modifier" -Vehicule $vehiculeData -Owner $owner
             
             if ($modifie) {
-                Update-Vehicule `
+                Update-VehiculeEntry `
                     -Id $id `
                     -NumeroParc $modifie.numeroParc `
                     -Immatriculation $modifie.immatriculation `

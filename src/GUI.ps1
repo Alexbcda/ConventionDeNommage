@@ -37,9 +37,7 @@ function Start-GUI {
     . "$scriptDir\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1"
     . "$PSScriptRoot\ODM\ConventionNommage\ConventionNommage.ps1"
     . "$PSScriptRoot\ODM\Agents\AgentPanel.ps1"
-    . "$PSScriptRoot\ODM\Agents\AgentRepository.ps1"
     . "$PSScriptRoot\ODM\Vehicules\VehiculesPanel.ps1"
-    . "$PSScriptRoot\ODM\Vehicules\VehiculesRepository.ps1"
 
     $form = [System.Windows.Forms.Form]::new()
     $form.Text = "Convention de nommage"
