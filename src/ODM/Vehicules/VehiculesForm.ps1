@@ -1,9 +1,8 @@
 ﻿# VehiculesForm.ps1 - Formulaire d'ajout/modification de véhicule
 
-. "$PSScriptRoot\..\..\Database\Database.ps1"
+. "$PSScriptRoot\..\..\Services\VehiculeService.ps1"
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
 . "$PSScriptRoot\..\..\Common\Validation.ps1"
-. "$PSScriptRoot\VehiculesRepository.ps1"
 
 function Show-VehiculeForm {
     param(
@@ -38,21 +37,21 @@ function Show-VehiculeForm {
         param($NumeroParc)
         if ([string]::IsNullOrWhiteSpace($NumeroParc)) { return $false }
         $eid = if ($Mode -eq "Modifier" -and $Vehicule) { [int]$Vehicule.id } else { 0 }
-        return (Test-VehiculeExistsByParc -NumeroParc $NumeroParc -ExcludeId $eid)
+        return (Test-VehiculeDoublonParc -NumeroParc $NumeroParc -ExcludeId $eid)
     }
 
     function Test-DoublonImmat {
         param($Immatriculation)
         if ([string]::IsNullOrWhiteSpace($Immatriculation)) { return $false }
         $eid = if ($Mode -eq "Modifier" -and $Vehicule) { [int]$Vehicule.id } else { 0 }
-        return (Test-VehiculeExistsByImmat -Immatriculation $Immatriculation -ExcludeId $eid)
+        return (Test-VehiculeDoublonImmat -Immatriculation $Immatriculation -ExcludeId $eid)
     }
 
     function Test-DoublonChassis {
         param($NumeroChassis)
         if ([string]::IsNullOrWhiteSpace($NumeroChassis)) { return $false }
         $eid = if ($Mode -eq "Modifier" -and $Vehicule) { [int]$Vehicule.id } else { 0 }
-        return (Test-VehiculeExistsByChassis -NumeroChassis $NumeroChassis -ExcludeId $eid)
+        return (Test-VehiculeDoublonChassis -NumeroChassis $NumeroChassis -ExcludeId $eid)
     }
 
     function Get-ImmatError {
