@@ -1,20 +1,32 @@
-# Logs
+# Logs (runtime, jamais versionnes)
 Logs/
+src/Logs/
 *.log
 
-# Base de données (contenu, pas structure)
+# Base de donnees (contenu, pas structure)
 Data/gestion.db
 Data/odm_config.json
 
-# DLLs
+# DLLs (sauf driver SQLite)
 lib/*.dll
 !lib/System.Data.SQLite.dll
 
-# Fichiers temporaires
+# Binaires / triggers AV
+lib/*.exe
+lib/*.pdb
+lib/*.db
+*.vbs
+*.exe
+
+# PDFs (donnees utilisateur, pas du code)
+*.pdf
+
+# Fichiers temporaires / artefacts dev
 *.tmp
 *.bak
+*.old
 Test-*.ps1
 
-# Dossiers système
+# Dossiers systeme
 .DS_Store
 Thumbs.db

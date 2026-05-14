@@ -367,15 +367,6 @@ function script:Get-ResolvedPdfToTextPath {
         Write-Host "[PDF] Checking Poppler explicit path..." -ForegroundColor Cyan
     }
 
-    $popplerExplicit = 'C:\Users\alexa\Downloads\Release-25.12.0-0\poppler-25.12.0\Library\bin\pdftotext.exe'
-    if (Test-Path -LiteralPath $popplerExplicit -PathType Leaf) {
-        $resolvedExplicit = (Resolve-Path -LiteralPath $popplerExplicit).Path
-        [void]$trace.Add(("EXPLICIT hit: {0}" -f $resolvedExplicit))
-        if ($TraceOut) { $TraceOut.Value = @($trace.ToArray()) }
-        return $resolvedExplicit
-    }
-    [void]$trace.Add(("EXPLICIT miss: {0}" -f $popplerExplicit))
-
     $fromEnv = [string]$env:PDFTOTEXT_PATH
     if (-not [string]::IsNullOrWhiteSpace($fromEnv)) {
         $envPath = $fromEnv.Trim().Trim('"')
