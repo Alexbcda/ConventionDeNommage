@@ -121,14 +121,14 @@ function Show-AgentsPanel {
             $newId = Add-AgentWithValidation -Nom $nouveau.nom -Prenom $nouveau.prenom -Telephone $nouveau.telephone -Email $nouveau.email -DateEntree $nouveau.date_entree -DateSortie $nouveau.date_sortie -TypeContrat $nouveau.type_contrat -BaseHeuresSemaine $nouveau.base_heures_semaine -Poste $nouveau.poste
             Write-Log "[AgentsUI] Add-AgentWithValidation returned" "INFO" @{ id = $newId }
             try {
-                $created = Get-AgentById -Id $newId
+                $created = Get-AgentByIdSafe -Id $newId
                 if ($created) {
                     Write-Log "[AgentsUI] Created agent loaded from DB" "INFO" @{ id = $created.id; actif = $created.actif }
                 } else {
                     Write-Log "[AgentsUI] Created agent not found after insert" "WARN" @{ id = $newId }
                 }
             } catch {
-                Write-Log "[AgentsUI] Post-insert Get-AgentById failed" "ERROR" @{ id = $newId; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+                Write-Log "[AgentsUI] Post-insert Get-AgentByIdSafe failed" "ERROR" @{ id = $newId; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
             }
             if ($script:DebugAgentsUI) {
                 [System.Windows.Forms.MessageBox]::Show(("Ajout OK (id={0})" -f $newId), "Agents", "OK", "Information") | Out-Null
@@ -154,11 +154,11 @@ function Show-AgentsPanel {
         $delCol = $sender.Columns["Delete"].Index
 
         if ($e.ColumnIndex -eq $editCol) {
-            $agent = Get-AgentById -Id $id
+            $agent = Get-AgentByIdSafe -Id $id
             $owner = $sender.FindForm()
             $modif = Show-AgentForm -Mode "Modifier" -Agent $agent -Owner $owner
             if ($modif) {
-                Update-Agent -Id $id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -Poste $modif.poste | Out-Null
+                Update-AgentWithValidation -Id $id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -Poste $modif.poste | Out-Null
                 $chk = $sender.Parent.Controls["chkHistoriqueAgents"]
                 Refresh-AgentsGrid -Grid $sender -IncludeHistorique $chk.Checked
             }
@@ -168,7 +168,7 @@ function Show-AgentsPanel {
         if ($e.ColumnIndex -eq $delCol) {
             $confirm = [System.Windows.Forms.MessageBox]::Show("Supprimer cet agent ?", "Confirmation", "YesNo")
             if ($confirm -eq "Yes") {
-                Remove-Agent -Id $id | Out-Null
+                Remove-AgentWithValidation -Id $id | Out-Null
                 $chk = $sender.Parent.Controls["chkHistoriqueAgents"]
                 Refresh-AgentsGrid -Grid $sender -IncludeHistorique $chk.Checked
             }
@@ -200,13 +200,13 @@ function Show-AgentsPanel {
         Write-Log "[AgentsUI] Double-click edit agent ID = $id" "INFO"
 
         try {
-            $agent = Get-AgentById -Id $id
+            $agent = Get-AgentByIdSafe -Id $id
             if (-not $agent) { return }
 
             $owner = $sender.FindForm()
             $modif = Show-AgentForm -Mode "Modifier" -Agent $agent -Owner $owner
             if ($modif) {
-                Update-Agent -Id $id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -Poste $modif.poste | Out-Null
+                Update-AgentWithValidation -Id $id -Nom $modif.nom -Prenom $modif.prenom -Telephone $modif.telephone -Email $modif.email -DateEntree $modif.date_entree -DateSortie $modif.date_sortie -TypeContrat $modif.type_contrat -BaseHeuresSemaine $modif.base_heures_semaine -Poste $modif.poste | Out-Null
                 $chk = $sender.Parent.Controls["chkHistoriqueAgents"]
                 Refresh-AgentsGrid -Grid $sender -IncludeHistorique $chk.Checked
             }

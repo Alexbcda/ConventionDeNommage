@@ -407,6 +407,30 @@ WHERE numero_parc IS NULL OR TRIM(numero_parc) = ''
         Update-VehiculeActifFromDates -Connection $conn
 
         $null = Initialize-CalendarIndexTable -Connection $conn
+
+        $cmdIdx = $conn.CreateCommand()
+        $cmdIdx.CommandText = "CREATE INDEX IF NOT EXISTS idx_vehicule_chassis ON Vehicule(numero_chassis)"
+        $null = $cmdIdx.ExecuteNonQuery()
+
+        $cmdIdx2 = $conn.CreateCommand()
+        $cmdIdx2.CommandText = "CREATE INDEX IF NOT EXISTS idx_vehicule_immat ON Vehicule(immatriculation)"
+        $null = $cmdIdx2.ExecuteNonQuery()
+
+        $cmdIdx3 = $conn.CreateCommand()
+        $cmdIdx3.CommandText = "CREATE INDEX IF NOT EXISTS idx_vehicule_parc ON Vehicule(numero_parc)"
+        $null = $cmdIdx3.ExecuteNonQuery()
+
+        $cmdIdx4 = $conn.CreateCommand()
+        $cmdIdx4.CommandText = "CREATE INDEX IF NOT EXISTS idx_vehicule_actif ON Vehicule(actif)"
+        $null = $cmdIdx4.ExecuteNonQuery()
+
+        $cmdIdx5 = $conn.CreateCommand()
+        $cmdIdx5.CommandText = "CREATE INDEX IF NOT EXISTS idx_agent_poste ON Agent(poste)"
+        $null = $cmdIdx5.ExecuteNonQuery()
+
+        $cmdIdx6 = $conn.CreateCommand()
+        $cmdIdx6.CommandText = "CREATE INDEX IF NOT EXISTS idx_agent_actif ON Agent(actif)"
+        $null = $cmdIdx6.ExecuteNonQuery()
     } finally {
         Close-Connection $conn
     }
@@ -596,7 +620,12 @@ function Get-AgentById {
 
     try {
         $cmd = $conn.CreateCommand()
-        $cmd.CommandText = "SELECT * FROM Agent WHERE id_agent = @id"
+        $cmd.CommandText = @"
+SELECT id_agent, nom, prenom, telephone, email,
+       date_entree, date_sortie, type_contrat,
+       base_heures_semaine, poste, actif, vehicule_id
+FROM Agent WHERE id_agent = @id
+"@
         $cmd.Parameters.AddWithValue("@id", [int]$Id) | Out-Null
 
         $reader = $cmd.ExecuteReader()
@@ -647,10 +676,15 @@ function Remove-Agent {
 }
 
 function Get-Agents {
+    <#
+    Agents : actifs seuls par défaut, ou tous (historique) avec -IncludeInactive.
+    Inclut le numéro de parc véhicule via LEFT JOIN.
+    #>
+    param([switch]$IncludeInactive)
     $conn = Open-Connection
     try {
         $cmd = $conn.CreateCommand()
-        $cmd.CommandText = @"
+        $baseSql = @"
 SELECT
   a.id_agent, a.nom, a.prenom, a.telephone, a.email,
   a.date_entree, a.date_sortie, a.type_contrat,
@@ -658,9 +692,12 @@ SELECT
   v.numero_parc AS numero_parc
 FROM Agent a
 LEFT JOIN Vehicule v ON v.id_vehicule = a.vehicule_id
-WHERE a.actif = 1
-ORDER BY a.nom, a.prenom
 "@
+        $cmd.CommandText = if ($IncludeInactive) {
+            "$baseSql ORDER BY a.nom, a.prenom"
+        } else {
+            "$baseSql WHERE a.actif = 1 ORDER BY a.nom, a.prenom"
+        }
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
         $reader = $cmd.ExecuteReader()
         $agents = @()
@@ -682,7 +719,8 @@ ORDER BY a.nom, a.prenom
             }
         }
         $sw.Stop()
-        Write-Log "[DB] Get-Agents" "INFO" @{ count = $agents.Count; elapsed_ms = $sw.ElapsedMilliseconds }
+        $label = if ($IncludeInactive) { "Get-Agents(All)" } else { "Get-Agents(Active)" }
+        Write-Log "[DB] $label" "INFO" @{ count = $agents.Count; elapsed_ms = $sw.ElapsedMilliseconds }
         return $agents
     } catch {
         Write-Log "[DB] Get-Agents failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
@@ -691,64 +729,30 @@ ORDER BY a.nom, a.prenom
 }
 
 function Get-AllAgents {
-    $conn = Open-Connection
-    try {
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = @"
-SELECT
-  a.id_agent, a.nom, a.prenom, a.telephone, a.email,
-  a.date_entree, a.date_sortie, a.type_contrat,
-  a.base_heures_semaine, a.poste, a.actif, a.vehicule_id,
-  v.numero_parc AS numero_parc
-FROM Agent a
-LEFT JOIN Vehicule v ON v.id_vehicule = a.vehicule_id
-ORDER BY a.nom, a.prenom
-"@
-        $sw = [System.Diagnostics.Stopwatch]::StartNew()
-        $reader = $cmd.ExecuteReader()
-        $agents = @()
-        while ($reader.Read()) {
-            $agents += [PSCustomObject]@{
-                id = $reader["id_agent"]
-                nom = $reader["nom"]
-                prenom = $reader["prenom"]
-                telephone = $reader["telephone"]
-                email = $reader["email"]
-                date_entree = FromDbDate $reader["date_entree"]
-                date_sortie = FromDbDate $reader["date_sortie"]
-                type_contrat = $reader["type_contrat"]
-                base_heures_semaine = $reader["base_heures_semaine"]
-                poste = $reader["poste"]
-                actif = $reader["actif"]
-                vehicule_id = $reader["vehicule_id"]
-                numero_parc = $reader["numero_parc"]
-            }
-        }
-        $sw.Stop()
-        Write-Log "[DB] Get-AllAgents" "INFO" @{ count = $agents.Count; elapsed_ms = $sw.ElapsedMilliseconds }
-        return $agents
-    } catch {
-        Write-Log "[DB] Get-AllAgents failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
-        throw
-    } finally { Close-Connection $conn }
+    <# Alias de compatibilité : retourne tous les agents (actifs + inactifs). #>
+    return (Get-Agents -IncludeInactive)
 }
 
 function Get-Vehicules {
     <#
-    Véhicules actifs uniquement (actif = 1). Propriétés alignées usage grille / formulaires.
+    Véhicules : actifs seuls par défaut, ou tous (historique) avec -IncludeInactive.
     Typage logique véhicule : id (number), numero_parc, immatriculation, numero_chassis, actif (1|0), etc.
     #>
+    param([switch]$IncludeInactive)
     $conn = Open-Connection
     try {
         $cmd = $conn.CreateCommand()
-        $cmd.CommandText = @"
+        $baseSql = @"
 SELECT id_vehicule, numero_parc, immatriculation, numero_chassis, marque, modele,
        date_mise_circulation, date_controle, date_entree, date_sortie,
        date_fin_controle_technique, capacite, conducteur_id, actif
 FROM Vehicule
-WHERE actif = 1
-ORDER BY numero_parc
 "@
+        $cmd.CommandText = if ($IncludeInactive) {
+            "$baseSql ORDER BY numero_parc"
+        } else {
+            "$baseSql WHERE actif = 1 ORDER BY numero_parc"
+        }
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
         $reader = $cmd.ExecuteReader()
         $vehicules = @()
@@ -760,7 +764,8 @@ ORDER BY numero_parc
             if ($reader) { $reader.Close() }
         }
         $sw.Stop()
-        Write-Log "[DB] Get-Vehicules" "INFO" @{ count = $vehicules.Count; elapsed_ms = $sw.ElapsedMilliseconds }
+        $label = if ($IncludeInactive) { "Get-Vehicules(All)" } else { "Get-Vehicules(Active)" }
+        Write-Log "[DB] $label" "INFO" @{ count = $vehicules.Count; elapsed_ms = $sw.ElapsedMilliseconds }
         return $vehicules
     } catch {
         Write-Log "[DB] Get-Vehicules failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
@@ -769,36 +774,8 @@ ORDER BY numero_parc
 }
 
 function Get-AllVehicules {
-    <#
-    Tous les véhicules (actifs et inactifs / historique), même schéma que Get-Vehicules.
-    #>
-    $conn = Open-Connection
-    try {
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = @"
-SELECT id_vehicule, numero_parc, immatriculation, numero_chassis, marque, modele,
-       date_mise_circulation, date_controle, date_entree, date_sortie,
-       date_fin_controle_technique, capacite, conducteur_id, actif
-FROM Vehicule
-ORDER BY numero_parc
-"@
-        $sw = [System.Diagnostics.Stopwatch]::StartNew()
-        $reader = $cmd.ExecuteReader()
-        $vehicules = @()
-        try {
-            while ($reader.Read()) {
-                $vehicules += (New-VehiculeRowObject -Reader $reader)
-            }
-        } finally {
-            if ($reader) { $reader.Close() }
-        }
-        $sw.Stop()
-        Write-Log "[DB] Get-AllVehicules" "INFO" @{ count = $vehicules.Count; elapsed_ms = $sw.ElapsedMilliseconds }
-        return $vehicules
-    } catch {
-        Write-Log "[DB] Get-AllVehicules failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
-        throw
-    } finally { Close-Connection $conn }
+    <# Alias de compatibilité : retourne tous les véhicules (actifs + inactifs). #>
+    return (Get-Vehicules -IncludeInactive)
 }
 
 # ============================================================

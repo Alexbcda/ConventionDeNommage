@@ -80,9 +80,6 @@ function Refresh-VehiculesGrid {
 }
 
 function Show-VehiculesPanel {
-    param(
-        [array]$Vehicules = $null  # Gardé pour compatibilité, mais on utilise Get-Vehicules/Get-AllVehicules
-    )
 
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
