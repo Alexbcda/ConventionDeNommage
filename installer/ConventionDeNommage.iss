@@ -159,13 +159,20 @@ Filename: "powershell.exe"; \
 ; =============================================================================
 [Registry]
 Root: HKLM; Subkey: "SOFTWARE\{#MyAppId}"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "SOFTWARE\{#MyAppId}"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "SOFTWARE\{#MyAppId}"; ValueType: string; ValueName: "DataDir"; ValueData: "{commonappdata}\ConventionDeNommage"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "SOFTWARE\{#MyAppId}"; ValueType: string; ValueName: "Version"; ValueData: "{#MyAppVersion}"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "SOFTWARE\{#MyAppId}"; ValueType: string; ValueName: "InstallDate"; ValueData: "{code:GetInstallDate}"; Flags: uninsdeletekey
 
 ; =============================================================================
 ; CODE - Validations Pascal Script
 ; =============================================================================
 [Code]
+
+function GetInstallDate(Param: String): String;
+begin
+  Result := GetDateTimeString('yyyy-MM-dd HH:mm:ss', '-', ':');
+end;
 
 function InitializeSetup: Boolean;
 begin
