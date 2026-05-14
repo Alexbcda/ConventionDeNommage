@@ -192,3 +192,18 @@ function Get-VehiculeById {
     $Id = Assert-VehiculeId $Id
     return Get-VehiculeRowById -Id $Id
 }
+
+function Test-VehiculeExistsByParc {
+    param([Parameter(Mandatory=$true)] [string]$NumeroParc, [int]$ExcludeId = 0)
+    return (Test-VehiculeRecordExistsByColumn -ColumnName 'numero_parc' -Value $NumeroParc -ExcludeId $ExcludeId)
+}
+
+function Test-VehiculeExistsByImmat {
+    param([Parameter(Mandatory=$true)] [string]$Immatriculation, [int]$ExcludeId = 0)
+    return (Test-VehiculeRecordExistsByColumn -ColumnName 'immatriculation' -Value $Immatriculation -ExcludeId $ExcludeId)
+}
+
+function Test-VehiculeExistsByChassis {
+    param([Parameter(Mandatory=$true)] [string]$NumeroChassis, [int]$ExcludeId = 0)
+    return (Test-VehiculeRecordExistsByColumn -ColumnName 'numero_chassis' -Value $NumeroChassis -ExcludeId $ExcludeId)
+}
