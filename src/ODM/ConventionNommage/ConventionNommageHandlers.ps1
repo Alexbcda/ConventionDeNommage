@@ -107,10 +107,9 @@ function Test-CNButtonClickHandlerAttached {
     if ($null -eq $Control) { return $false }
     try {
         $tCtl = [System.Windows.Forms.Control]
-        $fi = $tCtl.GetField(
-            'EventClick',
-            [System.Reflection.BindingFlags]::NonPublic -bor [System.Reflection.BindingFlags]::Static
-        )
+        $flags = [System.Reflection.BindingFlags]::NonPublic -bor [System.Reflection.BindingFlags]::Static
+        $fi = $tCtl.GetField('s_clickEvent', $flags)
+        if ($null -eq $fi) { $fi = $tCtl.GetField('EventClick', $flags) }
         if ($null -eq $fi) { return $false }
         $key = $fi.GetValue($null)
         $tComp = [System.ComponentModel.Component]
