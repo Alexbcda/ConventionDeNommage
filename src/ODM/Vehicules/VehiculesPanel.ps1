@@ -42,12 +42,6 @@ function Refresh-VehiculesGrid {
         )
         Write-Log "[VehiculesUI] RefreshGrid loaded vehicles" "INFO" @{ count = $vehicules.Count }
 
-        # Style texte: actifs en police normale, inactifs en gris clair
-        $baseFont = $script:PoliceNormal
-        if (-not $baseFont) { $baseFont = (if ($Grid.DefaultCellStyle.Font) { $Grid.DefaultCellStyle.Font } else { $Grid.Font }) }
-        $normalFont = [System.Drawing.Font]::new($baseFont, ([System.Drawing.FontStyle]::Regular))
-        $inactiveColor = [System.Drawing.Color]::FromArgb(150, 150, 150)
-
         $i = 0
         foreach ($v in $vehicules) {
             $null = $Grid.Rows.Add()
@@ -59,15 +53,7 @@ function Refresh-VehiculesGrid {
             $Grid.Rows[$i].Cells[$Grid.Columns["Delete"].Index].Value = "🗑️"
             $Grid.Rows[$i].Tag = $v.id
 
-            $isActif = ([int]$v.actif -eq 1)
-            $Grid.Rows[$i].DefaultCellStyle.Font = $normalFont
-            if (-not $isActif) {
-                $Grid.Rows[$i].DefaultCellStyle.ForeColor = $inactiveColor
-            } else {
-                $Grid.Rows[$i].DefaultCellStyle.ForeColor = $Grid.DefaultCellStyle.ForeColor
-            }
-
-            try { Apply-AlternateRowColor -Grid $Grid -RowIndex $i -Row $i } catch {}
+            Set-CrudGridRowStyle -Grid $Grid -RowIndex $i -IsActif ([int]$v.actif -eq 1)
             $i++
         }
 
@@ -101,46 +87,10 @@ function Show-VehiculesPanel {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
-    $mainPanel = [System.Windows.Forms.Panel]::new()
-    $mainPanel.Dock = "Fill"
-    $mainPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
-    $mainPanel.Padding = [System.Windows.Forms.Padding]::new(20)
-
-    # ===== TITRE =====
-    $lblTitle = [System.Windows.Forms.Label]::new()
-    $lblTitle.Text = $script:TitrePanelVehicules
-    $lblTitle.Font = $script:PoliceTitreGestionFenetre
-    $lblTitle.ForeColor = $script:CouleurOrange
-    $lblTitle.Location = [System.Drawing.Point]::new(20, 20)
-    $lblTitle.Size = [System.Drawing.Size]::new(400, 50)
-    $mainPanel.Controls.Add($lblTitle)
-
-    # ===== Option historique (actifs + inactifs) — même ordre que AgentPanel =====
-    $lblHistorique = [System.Windows.Forms.Label]::new()
-    $lblHistorique.Text = "Afficher l’historique des véhicules"
-    $lblHistorique.Font = $script:PoliceLabelSecondaireFenetre
-    $lblHistorique.ForeColor = $script:CouleurTexteSecondairePanel
-    $lblHistorique.Location = [System.Drawing.Point]::new(20, 77)
-    $lblHistorique.Size = [System.Drawing.Size]::new(260, 20)
-    $mainPanel.Controls.Add($lblHistorique)
-
-    $chkHistoriqueVehicules = [System.Windows.Forms.CheckBox]::new()
-    $chkHistoriqueVehicules.Name = "chkHistoriqueVehicules"
-    $chkHistoriqueVehicules.Location = [System.Drawing.Point]::new(285, 78)
-    $chkHistoriqueVehicules.Size = [System.Drawing.Size]::new(20, 20)
-    $chkHistoriqueVehicules.Checked = $false
-    $chkHistoriqueVehicules.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $mainPanel.Controls.Add($chkHistoriqueVehicules)
-
-    $btnAjouter = [System.Windows.Forms.Button]::new()
-    $btnAjouter.Text = "Ajouter un véhicule"
-    $btnAjouter.Location = [System.Drawing.Point]::new(900, 20)
-    $btnAjouter.Size = [System.Drawing.Size]::new(200, 45)
-    Set-BtnAjouterStyle -BtnAjouter $btnAjouter
-    $btnAjouter.Text = "Ajouter un véhicule"
-    $btnAjouter.Size = [System.Drawing.Size]::new(220, 45)
-    $btnAjouter.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $mainPanel.Controls.Add($btnAjouter)
+    $header = New-CrudPanelHeader -Title $script:TitrePanelVehicules -HistoriqueLabel "Afficher l'historique des véhicules" -CheckboxName "chkHistoriqueVehicules" -ButtonText "Ajouter un véhicule" -ButtonWidth 220
+    $mainPanel = $header.Panel
+    $chkHistoriqueVehicules = $header.Checkbox
+    $btnAjouter = $header.Button
 
     $grid = New-CrudDataGrid -Name "VehiculesGrid" -ColumnDefs @(
         @{ Name = "NumeroParc";               Header = "N° parc";                          Width = 120 },
@@ -222,12 +172,7 @@ function Show-VehiculesPanel {
             Refresh-VehiculesGrid -Grid $g -IncludeHistorique $chk.Checked -EmptyStateLabel $empty
         } catch {
             Write-Log "[VehiculesUI] Add vehicle failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
-            [System.Windows.Forms.MessageBox]::Show(
-                ("Erreur lors de l'ajout du véhicule:`n`n{0}" -f $_.Exception.Message),
-                "Erreur",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Error
-            ) | Out-Null
+            Show-CrudErrorDialog -OperationLabel "l'ajout du véhicule" -ErrorMessage $_.Exception.Message
         }
     })
 
@@ -235,15 +180,8 @@ function Show-VehiculesPanel {
     $grid.Add_CellClick({
         param($sender, $e)
 
-        if (-not $sender) { return }
-        if (-not $e) { return }
-        if ($e.RowIndex -lt 0) { return }
-        if ($e.ColumnIndex -lt 0) { return }
-        if ($e.RowIndex -ge $sender.Rows.Count) { return }
-
-        $row = $sender.Rows[$e.RowIndex]
+        $row = Test-CellClickGuards -Sender $sender -EventArgs $e
         if (-not $row) { return }
-        if ($null -eq $row.Tag) { return }
 
         $id = $row.Tag
         $editCol = $sender.Columns["Edit"].Index
@@ -306,21 +244,14 @@ function Show-VehiculesPanel {
     $grid.Add_CellDoubleClick({
         param($sender, $e)
 
-        if (-not $sender) { return }
-        if (-not $e) { return }
-        if ($e.RowIndex -lt 0) { return }
-        if ($e.ColumnIndex -lt 0) { return }
-        if ($e.RowIndex -ge $sender.Rows.Count) { return }
+        $row = Test-CellClickGuards -Sender $sender -EventArgs $e
+        if (-not $row) { return }
 
         try {
             $editCol = $sender.Columns["Edit"].Index
             $delCol = $sender.Columns["Delete"].Index
             if ($e.ColumnIndex -in @($editCol, $delCol)) { return }
         } catch {}
-
-        $row = $sender.Rows[$e.RowIndex]
-        if (-not $row) { return }
-        if ($null -eq $row.Tag) { return }
 
         try {
             $sender.ClearSelection()
@@ -371,12 +302,7 @@ function Show-VehiculesPanel {
             }
         } catch {
             Write-Log "[VehiculesUI] Double-click edit failed" "ERROR" @{ id = $id; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
-            [System.Windows.Forms.MessageBox]::Show(
-                ("Erreur lors de la modification du véhicule:`n`n{0}" -f $_.Exception.Message),
-                "Erreur",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Error
-            ) | Out-Null
+            Show-CrudErrorDialog -OperationLabel "la modification du véhicule" -ErrorMessage $_.Exception.Message
         }
     })
 

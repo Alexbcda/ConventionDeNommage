@@ -30,13 +30,6 @@ function Refresh-AgentsGrid {
         $agents = if ($IncludeHistorique) { Get-AllAgents } else { Get-Agents }
         Write-Log "[AgentsUI] RefreshGrid loaded agents" "INFO" @{ count = $agents.Count }
 
-        # [AgentsUI] Active agents set to normal font (no bold)
-        # Style texte: actifs en police normale, inactifs en gris clair (placeholder)
-        $baseFont = $script:PoliceNormal
-        if (-not $baseFont) { $baseFont = (if ($Grid.DefaultCellStyle.Font) { $Grid.DefaultCellStyle.Font } else { $Grid.Font }) }
-        $normalFont = [System.Drawing.Font]::new($baseFont, ([System.Drawing.FontStyle]::Regular))
-        $inactiveColor = [System.Drawing.Color]::FromArgb(150, 150, 150)
-
         $i = 0
         foreach ($a in $agents) {
             $null = $Grid.Rows.Add()
@@ -51,15 +44,7 @@ function Refresh-AgentsGrid {
             $Grid.Rows[$i].Cells[$Grid.Columns["Delete"].Index].Value = "🗑️"
             $Grid.Rows[$i].Tag = $a.id
 
-            # Style visuel: Actifs = normal, Inactifs = gris clair (désactivé)
-            $isActif = ([int]$a.actif -eq 1)
-            $Grid.Rows[$i].DefaultCellStyle.Font = $normalFont
-            if (-not $isActif) {
-                $Grid.Rows[$i].DefaultCellStyle.ForeColor = $inactiveColor
-            }
-
-            # Appliquer couleur alternée via helper existant (si dispo)
-            try { Apply-AlternateRowColor -Grid $Grid -RowIndex $i -Row $i } catch {}
+            Set-CrudGridRowStyle -Grid $Grid -RowIndex $i -IsActif ([int]$a.actif -eq 1)
             $i++
         }
         # Tri visuel (en plus du ORDER BY côté SQL)
@@ -81,44 +66,10 @@ function Show-AgentsPanel {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
-    $mainPanel = [System.Windows.Forms.Panel]::new()
-    $mainPanel.Dock = "Fill"
-    $mainPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
-    $mainPanel.Padding = [System.Windows.Forms.Padding]::new(20)
-
-    $lblTitle = [System.Windows.Forms.Label]::new()
-    $lblTitle.Text = $script:TitrePanelAgents
-    $lblTitle.Font = $script:PoliceTitreGestionFenetre
-    $lblTitle.ForeColor = $script:CouleurOrange
-    $lblTitle.Location = [System.Drawing.Point]::new(20, 20)
-    $lblTitle.Size = [System.Drawing.Size]::new(400, 50)
-    $mainPanel.Controls.Add($lblTitle)
-
-    # ===== Option historique (actifs + inactifs) =====
-    $lblHistorique = [System.Windows.Forms.Label]::new()
-    $lblHistorique.Text = "Afficher l’historique des agents"
-    $lblHistorique.Font = $script:PoliceLabelSecondaireFenetre
-    $lblHistorique.ForeColor = $script:CouleurTexteSecondairePanel
-    # [AgentsUI] UI spacing adjusted +15px for history mode
-    $lblHistorique.Location = [System.Drawing.Point]::new(20, 77)
-    $lblHistorique.Size = [System.Drawing.Size]::new(260, 20)
-    $mainPanel.Controls.Add($lblHistorique)
-
-    $chkHistoriqueAgents = [System.Windows.Forms.CheckBox]::new()
-    $chkHistoriqueAgents.Name = "chkHistoriqueAgents"
-    $chkHistoriqueAgents.Location = [System.Drawing.Point]::new(285, 78)
-    $chkHistoriqueAgents.Size = [System.Drawing.Size]::new(20, 20)
-    $chkHistoriqueAgents.Checked = $false
-    $chkHistoriqueAgents.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $mainPanel.Controls.Add($chkHistoriqueAgents)
-
-    $btnAjouter = [System.Windows.Forms.Button]::new()
-    $btnAjouter.Text = "+ AJOUTER UN AGENT"
-    $btnAjouter.Location = [System.Drawing.Point]::new(900, 20)
-    $btnAjouter.Size = [System.Drawing.Size]::new(200, 45)
-    Set-BtnAjouterStyle -BtnAjouter $btnAjouter
-    $btnAjouter.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $mainPanel.Controls.Add($btnAjouter)
+    $header = New-CrudPanelHeader -Title $script:TitrePanelAgents -HistoriqueLabel "Afficher l'historique des agents" -CheckboxName "chkHistoriqueAgents" -ButtonText "AJOUTER" -ButtonWidth 180
+    $mainPanel = $header.Panel
+    $chkHistoriqueAgents = $header.Checkbox
+    $btnAjouter = $header.Button
 
     $grid = New-CrudDataGrid -Name "AgentsGrid" -ColumnDefs @(
         @{ Name = "Nom";     Header = "Nom";              Width = 150 },
@@ -187,27 +138,15 @@ function Show-AgentsPanel {
             Refresh-AgentsGrid -Grid $g -IncludeHistorique $chk.Checked
         } catch {
             Write-Log "[AgentsUI] Add agent failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
-            [System.Windows.Forms.MessageBox]::Show(
-                ("Erreur lors de l'ajout de l'agent:`n`n{0}" -f $_.Exception.Message),
-                "Erreur",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Error
-            ) | Out-Null
+            Show-CrudErrorDialog -OperationLabel "l'ajout de l'agent" -ErrorMessage $_.Exception.Message
         }
     })
 
     $grid.Add_CellClick({
         param($sender, $e)
 
-        if (-not $sender) { return }
-        if (-not $e) { return }
-        if ($e.RowIndex -lt 0) { return }
-        if ($e.ColumnIndex -lt 0) { return }
-        if ($e.RowIndex -ge $sender.Rows.Count) { return }
-
-        $row = $sender.Rows[$e.RowIndex]
+        $row = Test-CellClickGuards -Sender $sender -EventArgs $e
         if (-not $row) { return }
-        if ($null -eq $row.Tag) { return }
 
         $id = [int]$row.Tag
 
@@ -242,22 +181,14 @@ function Show-AgentsPanel {
     $grid.Add_CellDoubleClick({
         param($sender, $e)
 
-        if (-not $sender) { return }
-        if (-not $e) { return }
-        if ($e.RowIndex -lt 0) { return }
-        if ($e.ColumnIndex -lt 0) { return }
-        if ($e.RowIndex -ge $sender.Rows.Count) { return }
+        $row = Test-CellClickGuards -Sender $sender -EventArgs $e
+        if (-not $row) { return }
 
-        # Colonnes actions: laisser le comportement existant du simple clic
         try {
             $editCol = $sender.Columns["Edit"].Index
             $delCol = $sender.Columns["Delete"].Index
             if ($e.ColumnIndex -in @($editCol, $delCol)) { return }
         } catch {}
-
-        $row = $sender.Rows[$e.RowIndex]
-        if (-not $row) { return }
-        if ($null -eq $row.Tag) { return }
 
         # Bonus: surligner la ligne
         try {
@@ -281,12 +212,7 @@ function Show-AgentsPanel {
             }
         } catch {
             Write-Log "[AgentsUI] Double-click edit failed" "ERROR" @{ id = $id; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
-            [System.Windows.Forms.MessageBox]::Show(
-                ("Erreur lors de la modification de l'agent:`n`n{0}" -f $_.Exception.Message),
-                "Erreur",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Error
-            ) | Out-Null
+            Show-CrudErrorDialog -OperationLabel "la modification de l'agent" -ErrorMessage $_.Exception.Message
         }
     })
 
