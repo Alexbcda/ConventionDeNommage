@@ -4,6 +4,7 @@
 #   id: string|number ; numero_parc ; immatriculation ; numero_chassis ; actif: 0|1 ; …
 
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
+. "$PSScriptRoot\..\..\Common\WinFormsHelpers.ps1"
 . "$PSScriptRoot\..\..\Core\Logger.ps1"
 . "$PSScriptRoot\VehiculesRepository.ps1"
 . "$PSScriptRoot\VehiculesForm.ps1"
@@ -141,55 +142,14 @@ function Show-VehiculesPanel {
     $btnAjouter.Cursor = [System.Windows.Forms.Cursors]::Hand
     $mainPanel.Controls.Add($btnAjouter)
 
-    # ===== DATA GRID =====
-    $grid = [System.Windows.Forms.DataGridView]::new()
-    $grid.Name = "VehiculesGrid"
-    # [UI] DataGridView fixed to responsive Fill layout (charte AgentPanel)
-    $grid.Location = [System.Drawing.Point]::new(20, 110)
-    $grid.Size = [System.Drawing.Size]::new(1100, 560)
-    $grid.Anchor = "Top,Bottom,Left,Right"
-    $grid.AllowUserToAddRows = $false
-    $grid.RowHeadersVisible = $false
-    $grid.BackgroundColor = [System.Drawing.Color]::White
-    $grid.SelectionMode = "FullRowSelect"
-    $grid.BorderStyle = "FixedSingle"
-    $grid.ScrollBars = [System.Windows.Forms.ScrollBars]::Both
-    $grid.AutoSizeColumnsMode = "None"
-    $grid.AutoGenerateColumns = $false
-    $grid.AllowUserToResizeColumns = $true
-    Set-GridStyle -Grid $grid
-
-    # Double buffering pour réduire le flickering
-    try {
-        $prop = $grid.GetType().GetProperty("DoubleBuffered", [System.Reflection.BindingFlags] "Instance,NonPublic")
-        if ($prop) { $prop.SetValue($grid, $true, $null) }
-    } catch {}
-
-    # Lignes alternées
-    $grid.DefaultCellStyle.BackColor = $script:CouleurGrisClair
-    $grid.AlternatingRowsDefaultCellStyle.BackColor = $script:CouleurLigneAlternee
-    $grid.DefaultCellStyle.SelectionBackColor = $script:CouleurSelection
-    $grid.DefaultCellStyle.SelectionForeColor = $script:CouleurBlanc
-    $grid.ColumnHeadersHeightSizeMode = "AutoSize"
-    $grid.ColumnHeadersDefaultCellStyle.WrapMode = [System.Windows.Forms.DataGridViewTriState]::False
-
-    # Colonnes affichées (ordre): N° parc, Immatriculation, Numéro de châssis, Fin CT, Modifier, Supprimer
-    $grid.Columns.Clear()
-    $null = $grid.Columns.Add("NumeroParc", "N° parc")
-    $null = $grid.Columns.Add("Immatriculation", "Immatriculation")
-    $null = $grid.Columns.Add("NumeroChassis", "Numéro de châssis")
-    $null = $grid.Columns.Add("DateFinControleTechnique", "Contrôle technique (date limite)")
-    $null = $grid.Columns.Add("Edit", "Modifier")
-    $null = $grid.Columns.Add("Delete", "Supprimer")
-
-    $grid.Columns["NumeroParc"].Width = 120
-    $grid.Columns["Immatriculation"].Width = 160
-    $grid.Columns["NumeroChassis"].Width = 230
-    $grid.Columns["DateFinControleTechnique"].Width = 160
-    $grid.Columns["Edit"].Width = 90
-    $grid.Columns["Delete"].Width = 90
-    $grid.Columns["Edit"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleCenter
-    $grid.Columns["Delete"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleCenter
+    $grid = New-CrudDataGrid -Name "VehiculesGrid" -ColumnDefs @(
+        @{ Name = "NumeroParc";               Header = "N° parc";                          Width = 120 },
+        @{ Name = "Immatriculation";          Header = "Immatriculation";                  Width = 160 },
+        @{ Name = "NumeroChassis";            Header = "Numéro de châssis";                Width = 230 },
+        @{ Name = "DateFinControleTechnique"; Header = "Contrôle technique (date limite)"; Width = 160 },
+        @{ Name = "Edit";                     Header = "Modifier";                         Width = 90  },
+        @{ Name = "Delete";                   Header = "Supprimer";                        Width = 90  }
+    )
 
     $mainPanel.Controls.Add($grid)
 
