@@ -93,8 +93,6 @@ function Get-CnsGhostscriptPermitFileReadArgs {
     return @($out.ToArray())
 }
 
-. (Join-Path $PSScriptRoot 'DestructionCertificate.ps1')
-
 function Get-CnsCoverPdfwriteQualityArgs {
     return @(
         '-dPDFSETTINGS=/prepress',
@@ -421,97 +419,6 @@ function New-CnsPrefaceSectionCoverPdf {
 ($t2) show
 "@
     Write-CnsPostScriptPdfPage -PsBodySansShowpage $body -OutPdfPath $OutPdfPath
-}
-
-function Get-CnsDestructionPrestationMatchDetail {
-    <#
-    .SYNOPSIS
-        Detail diagnostic sur l'entité WorkOrder : HasMatch si un Services[].Type contient "destruction" ;
-        TypePrestationDetected = premier Type correspondant ; CodePrestation = premier code trouvé dans WO + lignes services.
-    #>
-    param([AllowNull()]$WorkOrderEntity)
-    $empty = [pscustomobject]@{ HasMatch = $false; CodePrestation = ''; TypePrestationDetected = '' }
-    if ($null -eq $WorkOrderEntity) { return $empty }
-
-    [string]$typeHit = ''
-    foreach ($sv in @($WorkOrderEntity.Services)) {
-        if ($null -eq $sv) { continue }
-        [string]$t = ''
-        try { $t = [string]$sv.Type } catch { $t = '' }
-        if ($t -match '(?i)destruction') {
-            $typeHit = $t.Trim()
-            break
-        }
-    }
-    if ([string]::IsNullOrWhiteSpace($typeHit)) { return $empty }
-
-    $lines = [System.Collections.Generic.List[string]]::new()
-    try {
-        $wn = [string]$WorkOrderEntity.WorkOrder
-        if (-not [string]::IsNullOrWhiteSpace($wn)) { [void]$lines.Add($wn.Trim()) }
-    }
-    catch { }
-    foreach ($sv in @($WorkOrderEntity.Services)) {
-        if ($null -eq $sv) { continue }
-        $t = ''; $o = ''
-        try { $t = [string]$sv.Type } catch { }
-        try { $o = [string]$sv.ODM } catch { }
-        $one = ('{0} {1}' -f $t, $o).Trim()
-        if ($one.Length -gt 0) { [void]$lines.Add($one) }
-    }
-    $arr = @($lines.ToArray())
-
-    $rxCode = [regex]::new(
-        '(?<code>workorder-?\d{6,}-\d{6,}|(?<![0-9])\d{6,}\s*-\s*\d{6,}(?![0-9]))',
-        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Compiled
-    )
-    [string]$codeFound = ''
-    foreach ($ln in $arr) {
-        $ms = $rxCode.Matches($ln)
-        if ($ms.Count -lt 1) { continue }
-        foreach ($m in @($ms)) {
-            $code = ''
-            try { $code = [string]$m.Groups['code'].Value } catch { $code = [string]$m.Value }
-            if ([string]::IsNullOrWhiteSpace($code)) { $code = [string]$m.Value }
-            if (-not [string]::IsNullOrWhiteSpace($code)) {
-                $codeFound = $code.Trim()
-                break
-            }
-        }
-        if (-not [string]::IsNullOrWhiteSpace($codeFound)) { break }
-    }
-
-    $disp = $typeHit
-    if ($disp.Length -gt 140) { $disp = $disp.Substring(0, 137) + '...' }
-    return [pscustomobject]@{
-        HasMatch               = $true
-        CodePrestation         = $codeFound
-        TypePrestationDetected = $disp
-    }
-}
-
-function Test-CnsDestructionPrestationFromWorkOrderEntity {
-    param([AllowNull()]$WorkOrderEntity)
-    $d = Get-CnsDestructionPrestationMatchDetail -WorkOrderEntity $WorkOrderEntity
-    return ($null -ne $d -and [bool]$d.HasMatch)
-}
-
-function Test-CnsWorkOrderRequiresDestructionCertificate {
-    <#
-    .SYNOPSIS
-        True si au moins une prestation Services[].Type contient "destruction" (sans casse), indépendamment des pages PDF.
-    #>
-    param([AllowNull()]$WorkOrderEntity)
-    if ($null -eq $WorkOrderEntity) { return $false }
-    foreach ($sv in @($WorkOrderEntity.Services)) {
-        if ($null -eq $sv) { continue }
-        try {
-            [string]$tp = [string]$sv.Type
-            if ($tp -match '(?i)destruction') { return $true }
-        }
-        catch { }
-    }
-    return $false
 }
 
 function Get-CnsWorkOrderEntityForRawPageNum {
@@ -1022,79 +929,6 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     throw ("[TOURNEE] Extraction page principale #{0} echouee." -f $pn)
                 }
                 [void]$frag.Add($slicePath)
-
-                $pairForPage = $null
-                try { $pairForPage = $SortedGsPairs[$pn - 1] } catch { $pairForPage = $null }
-                if ($null -ne $pairForPage) {
-                    [int]$foDbg = 0
-                    try { $foDbg = [int]$pairForPage.FinalOrder } catch { $foDbg = 0 }
-                    [string]$exDbg = ''
-                    $lnCert = $null
-                    if ($foDbg -ne 0) { $lnCert = $foToLine[$foDbg] }
-                    if ($null -ne $lnCert) {
-                        try { $exDbg = [string]$lnCert.ExcelSourceOrder } catch { $exDbg = '' }
-                    }
-                    [string]$woDbg = ''; [string]$svcDbg = ''
-                    $woForSlice = Get-CnsWorkOrderEntityForPlanningGsPair -GsPair $pairForPage -FinalOrderToLine $foToLine `
-                        -OrderIndexToWorkOrderEntity $orderToWorkOrder
-                    if ($null -ne $woForSlice) {
-                        try { $woDbg = [string]$woForSlice.WorkOrder } catch { $woDbg = '' }
-                        try {
-                            $svcDbg = (@($woForSlice.Services) | ForEach-Object {
-                                try { [string]$_.Type } catch { '' }
-                            } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' | '
-                        }
-                        catch { $svcDbg = '' }
-                        if ($svcDbg.Length -gt 200) { $svcDbg = $svcDbg.Substring(0, 197) + '...' }
-                    }
-                    [bool]$detDest = ($null -ne $woForSlice) -and (Test-CnsWorkOrderRequiresDestructionCertificate -WorkOrderEntity $woForSlice)
-                    Write-Host ("[CERTIF] pagePdfReorder={0} FinalOrder={1} ExcelOrder={2} WorkOrderAssocie={3} detectionDestruction={4}" -f $pn, $foDbg, $exDbg, $woDbg, $detDest) -ForegroundColor DarkGray
-                    if ($null -ne $woForSlice -and -not [string]::IsNullOrWhiteSpace($svcDbg)) {
-                        Write-Host ("[CERTIF] Services.Type (extrait): {0}" -f $svcDbg) -ForegroundColor DarkGray
-                    }
-                    if ($null -eq $woForSlice) {
-                        Write-Warning ("[CERTIF] MAPPING_LOSS aucun WorkOrderEntity via planning (pagePdfReorder={0} FinalOrder={1} ExcelOrder={2})" -f $pn, $foDbg, $exDbg)
-                    }
-                    elseif (-not $detDest) {
-                        Write-Host ("[CERTIF] detectionDestruction=FALSE — pas de certificat pour WorkOrder={0}" -f $woDbg) -ForegroundColor DarkGray
-                    }
-
-                    if ($detDest) {
-                        $segMeta = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $pairForPage -FinalOrderToLine $foToLine `
-                            -Segments $segments -ExcelOrderIndexToSegmentIndex $orderToSeg -VisitDate $VisitDate
-                        $street = ''; $pc = ''; $city = ''
-                        if ($null -ne $woForSlice.Address) {
-                            try { $street = [string]$woForSlice.Address['Street'] } catch { }
-                            try { $pc = [string]$woForSlice.Address['PostalCode'] } catch { }
-                            try { $city = [string]$woForSlice.Address['City'] } catch { }
-                        }
-                        $cnom = ''
-                        try { $cnom = [string]$woForSlice.ClientName } catch { }
-                        $clientId = ''
-                        try { $clientId = [string]$woForSlice.ClientId } catch { }
-                        [string]$woNum = ''
-                        try { $woNum = [string]$woForSlice.WorkOrder } catch { }
-                        $tplPrest = Join-Path $tmpDir ('prest_dest_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
-                        [bool]$genOk = New-DestructionCertificate -OutPdfPath $tplPrest `
-                            -WorkOrder $woNum `
-                            -ClientName $cnom `
-                            -ClientId $clientId `
-                            -Street $street -PostalCode $pc -City $city `
-                            -VisitDate $woForSlice.VisitDate `
-                            -VisitDateFallbackDdMmYyyy ([string]$segMeta.DateJJMMAAAA) `
-                            -Vehicle ([string]$segMeta.Vehicule)
-                        Write-Host ("[CERTIF] GENERATED={0} WorkOrder={1}" -f $genOk, $woNum)
-                        if ($genOk) {
-                            Write-Host '[CERTIF] INSERTION INTO FRAG' -ForegroundColor Cyan
-                                Write-Host ("[TOURNEE] Certificat de destruction insere apres la page ODM reorder #{0} (FinalOrder={1})." -f $pn, $foDbg) -ForegroundColor DarkCyan
-                            [void]$frag.Add($tplPrest)
-                        }
-                        else {
-                            Write-Warning ("[CERTIF] INSERTION SKIP — GENERATED=false pour page ODM #{0}; WorkOrder={1}" -f $pn, $woNum)
-                            Write-Warning ("[TOURNEE] Certificat de destruction echoue — page ODM #{0} sans certificat." -f $pn)
-                        }
-                    }
-                }
             }
         }
 
