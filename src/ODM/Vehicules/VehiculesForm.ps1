@@ -3,6 +3,7 @@
 . "$PSScriptRoot\..\..\Database\Database.ps1"
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
 . "$PSScriptRoot\..\..\Common\Validation.ps1"
+. "$PSScriptRoot\VehiculesRepository.ps1"
 
 function Show-VehiculeForm {
     param(
@@ -36,34 +37,22 @@ function Show-VehiculeForm {
     function Test-DoublonParc {
         param($NumeroParc)
         if ([string]::IsNullOrWhiteSpace($NumeroParc)) { return $false }
-        $vehiculesExistants = Get-AllVehicules
-        $doublon = $vehiculesExistants | Where-Object { $_.numero_parc -eq $NumeroParc }
-        if ($Mode -eq "Modifier" -and $Vehicule) {
-            $doublon = $doublon | Where-Object { $_.id -ne $Vehicule.id }
-        }
-        return ($doublon.Count -gt 0)
+        $eid = if ($Mode -eq "Modifier" -and $Vehicule) { [int]$Vehicule.id } else { 0 }
+        return (Test-VehiculeExistsByParc -NumeroParc $NumeroParc -ExcludeId $eid)
     }
 
     function Test-DoublonImmat {
         param($Immatriculation)
         if ([string]::IsNullOrWhiteSpace($Immatriculation)) { return $false }
-        $vehiculesExistants = Get-AllVehicules
-        $doublon = $vehiculesExistants | Where-Object { $_.immatriculation -eq $Immatriculation }
-        if ($Mode -eq "Modifier" -and $Vehicule) {
-            $doublon = $doublon | Where-Object { $_.id -ne $Vehicule.id }
-        }
-        return ($doublon.Count -gt 0)
+        $eid = if ($Mode -eq "Modifier" -and $Vehicule) { [int]$Vehicule.id } else { 0 }
+        return (Test-VehiculeExistsByImmat -Immatriculation $Immatriculation -ExcludeId $eid)
     }
 
     function Test-DoublonChassis {
         param($NumeroChassis)
         if ([string]::IsNullOrWhiteSpace($NumeroChassis)) { return $false }
-        $vehiculesExistants = Get-AllVehicules
-        $doublon = $vehiculesExistants | Where-Object { $_.numero_chassis -eq $NumeroChassis }
-        if ($Mode -eq "Modifier" -and $Vehicule) {
-            $doublon = $doublon | Where-Object { $_.id -ne $Vehicule.id }
-        }
-        return ($doublon.Count -gt 0)
+        $eid = if ($Mode -eq "Modifier" -and $Vehicule) { [int]$Vehicule.id } else { 0 }
+        return (Test-VehiculeExistsByChassis -NumeroChassis $NumeroChassis -ExcludeId $eid)
     }
 
     function Get-ImmatError {
@@ -292,6 +281,13 @@ function Show-VehiculeForm {
 
     $txtParc.Add_Leave({
         $txtParc.Text = Normalize-Whitespace (Sanitize-TextInput $txtParc.Text)
+        if (-not [string]::IsNullOrWhiteSpace($txtParc.Text)) {
+            $err = Get-NumeroParcError $txtParc.Text
+            if (-not $err -and (Test-DoublonParc -NumeroParc $txtParc.Text)) {
+                $err = "Ce numéro de parc existe déjà !"
+            }
+            Set-Error -Label $lblParcError -Message $err
+        }
     })
 
     # Pas de réécriture du Text pendant la saisie : validation seulement (évite curseur / mélange de texte).
@@ -305,10 +301,6 @@ function Show-VehiculeForm {
         $err = Get-NumeroParcError $norm
         if ($err) {
             Set-Error -Label $lblParcError -Message $err
-            return
-        }
-        if (Test-DoublonParc -NumeroParc $norm) {
-            Set-Error -Label $lblParcError -Message "Ce numéro de parc existe déjà !"
             return
         }
         Set-Error -Label $lblParcError -Message ""
@@ -327,11 +319,6 @@ function Show-VehiculeForm {
         if (-not [string]::IsNullOrWhiteSpace($txtImmat.Text)) {
             if ($txtImmat.Text -notmatch '^[A-Za-z0-9\- ]{1,20}$') {
                 $msg = "Format immatriculation invalide"
-            } else {
-                $normalized = (Sanitize-TextInput $txtImmat.Text).Trim().ToUpperInvariant()
-                if (Test-DoublonImmat -Immatriculation $normalized) {
-                    $msg = "Cette immatriculation existe déjà !"
-                }
             }
         }
         Set-Error -Label $lblImmatError -Message $msg
@@ -349,11 +336,6 @@ function Show-VehiculeForm {
         if (-not [string]::IsNullOrWhiteSpace($raw)) {
             if ($raw.Length -gt 17 -or $raw -notmatch '^[A-Za-z0-9]*$') {
                 $msg = "VIN invalide (17 caractères)"
-            } else {
-                $normalized = $raw.Trim().ToUpperInvariant()
-                if ($normalized.Length -eq 17) {
-                    $msg = Get-ChassisError $normalized
-                }
             }
         }
         Set-Error -Label $lblChassisError -Message $msg

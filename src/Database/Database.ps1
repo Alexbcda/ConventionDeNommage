@@ -969,3 +969,32 @@ WHERE id_vehicule = @id
         Close-Connection $conn
     }
 }
+
+function Test-VehiculeRecordExistsByColumn {
+    <#
+    .SYNOPSIS
+        Targeted duplicate check: SELECT 1 WHERE column = @value LIMIT 1.
+        O(1) index lookup instead of full table scan.
+    #>
+    param(
+        [Parameter(Mandatory=$true)] [string]$ColumnName,
+        [Parameter(Mandatory=$true)] [string]$Value,
+        [int]$ExcludeId = 0
+    )
+    $null = Test-SafeSqlIdentifier $ColumnName
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        if ($ExcludeId -gt 0) {
+            $cmd.CommandText = "SELECT 1 FROM Vehicule WHERE $ColumnName = @val AND id_vehicule != @eid LIMIT 1"
+            $cmd.Parameters.AddWithValue("@eid", $ExcludeId) | Out-Null
+        } else {
+            $cmd.CommandText = "SELECT 1 FROM Vehicule WHERE $ColumnName = @val LIMIT 1"
+        }
+        $cmd.Parameters.AddWithValue("@val", $Value) | Out-Null
+        $result = $cmd.ExecuteScalar()
+        return ($null -ne $result -and -not [System.DBNull]::Value.Equals($result))
+    } finally {
+        Close-Connection $conn
+    }
+}
