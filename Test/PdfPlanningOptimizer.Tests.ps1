@@ -835,39 +835,60 @@ Describe 'PdfPlanningOptimizer - tournee cover (prestations speciales ODM)' {
         $scalarPath = Join-Path $PSScriptRoot '..\src\Common\ScalarGuard.ps1' | Resolve-Path
         $sortSafePath = Join-Path $PSScriptRoot '..\src\Common\SortSafe.ps1' | Resolve-Path
         $segPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\PlanningExcelTourneeSegments.ps1' | Resolve-Path
+        $metierPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsPdfMetierPrestation.ps1' | Resolve-Path
         $coverComposerPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\PdfTourneeCoverComposer.ps1' | Resolve-Path
         . ([string]$scalarPath)
         . ([string]$sortSafePath)
         . ([string]$segPath)
+        . ([string]$metierPath)
         . ([string]$coverComposerPath)
     }
 
-    It 'Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder : DEEE via Type' {
+    It 'Get-CnsPdfPageMetierAnalysis : Track dechet DEEE (PDF, tolerant)' {
         $wo = [pscustomobject]@{
-            ClientName = 'ACME'
-            Services   = @(@{ Type = 'Tri DEEE express'; ODM = '123-1' })
+            ClientName = 'HOPITAL CHAMBERY'
+            Services   = @(@{ Type = 'Tri Déee express'; ODM = '1234567-1' })
         }
-        $f = @(Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder -WorkOrderEntity $wo)
-        $f.Count | Should Be 1
-        $f[0].Type | Should Be 'DEEE'
-        $f[0].Client | Should Be 'ACME'
+        $a = Get-CnsPdfPageMetierAnalysis -PageEntity $null -WorkOrderEntity $wo
+        $a.TrackDechetEntries.Count | Should BeGreaterThan 0
+        ($a.TrackDechetEntries[0].Detail) | Should Be 'Collecte DEEE'
     }
 
-    It 'Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder : Destruction confidentielle via bloc Type + WorkOrderId' {
+    It 'Get-CnsPdfPageMetierAnalysis : destruction cert + memo client' {
         $wo = [pscustomobject]@{
+            ClientName = 'EUROFINS LABAZUR'
+            WorkOrder  = '5517128'
+            Services   = @(@{ Type = 'Destruction confidentielle de Papier'; ODM = '5517128-19811636' })
+        }
+        $a = Get-CnsPdfPageMetierAnalysis -PageEntity $null -WorkOrderEntity $wo
+        $a.RequiresDestructionCertificate | Should Be $true
+        $a.DestructionMemoClient | Should Be 'EUROFINS LABAZUR'
+    }
+
+    It 'Get-CnsPdfPageMetierAnalysis : CEA sans mention garde' {
+        $pe = [pscustomobject]@{
             ClientName = 'X'
-            WorkOrder  = '9890123'
-            Services   = @(@{ Type = 'Destruction confidentielle de Papier confidentiel'; ODM = '9890123-19811636' })
+            Services   = @()
+            Lines      = @('CEA - Service Logistique et Environnement (SLE) - N°24531')
         }
-        $f = @(Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder -WorkOrderEntity $wo)
-        @($f | Where-Object { $_.Type -eq 'Destruction confidentielle' }).Count | Should Be 1
+        $a = Get-CnsPdfPageMetierAnalysis -PageEntity $pe -WorkOrderEntity $null
+        $a.RequiresCeaDocument | Should Be $true
+        $a.TrackDechetEntries.Count | Should Be 0
     }
 
-    It 'Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder : Piles + Neon (tube)' {
-        $wo = [pscustomobject]@{ ClientName = ''; Services = @(@{ Type = 'RAMASSAGE PILES'; ODM = '1-2' }, @{ Type = 'tubes fluo'; ODM = '1-3' }) }
-        $f = @(Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder -WorkOrderEntity $wo)
-        ($f | ForEach-Object { $_.Type }) -contains 'Piles' | Should Be $true
-        ($f | ForEach-Object { $_.Type }) -contains 'Néon' | Should Be $true
+    It 'Get-CnsTourneeMetierMemoLinesForBlock : ordre certificat puis track dechet' {
+        $wo = [pscustomobject]@{
+            ClientName = 'MAIRIE GRENOBLE'
+            WorkOrder  = '1111111'
+            Services   = @(@{ Type = 'RAMASSAGE PILES'; ODM = '1111111-2' })
+            Pages      = @(1)
+        }
+        $pairs = @([pscustomobject]@{ FinalOrder = 1; RawPageNum = 1 })
+        $foLine = [pscustomobject]@{ FinalOrder = 1; Source = 'ExcelOrder'; ExcelSourceOrder = 3 }
+        $foToLine = @{ 1 = $foLine }
+        $memos = @(Get-CnsTourneeMetierMemoLinesForBlock -MainFrom1 1 -MainTo1 1 -SortedGsPairs $pairs -FinalOrderToLine $foToLine -WorkOrders @($wo) -PdfEntities @())
+        ($memos -join '|') | Should Match 'Track dechet'
+        ($memos -join '|') | Should Match 'MAIRIE GRENOBLE'
     }
 
     It 'Get-CnsPlanningWorkOrderKeyFromMatchWorkOrderField : entite vs chaine' {
@@ -896,7 +917,7 @@ Describe 'PdfPlanningOptimizer - tournee cover (prestations speciales ODM)' {
         (Test-CnsWorkOrderRequiresDestructionCertificate -WorkOrderEntity $wo) | Should Be $false
     }
 
-    It 'Resolve-CnsWorkOrderEntityForStep5 : fallback WorkOrders par page physique (PdfFallback)' {
+    It 'Resolve-CnsWorkOrderEntityForStep5 : PDF WorkOrders par page physique (PdfFallback)' {
         $wo = [pscustomobject]@{
             WorkOrder  = '5517128'
             ClientName = 'Site Non Match'
@@ -910,20 +931,7 @@ Describe 'PdfPlanningOptimizer - tournee cover (prestations speciales ODM)' {
         $foToLine = @{ 1 = $foLine }
         $resolved = Resolve-CnsWorkOrderEntityForStep5 -GsPair $gsPair -FinalOrderToLine $foToLine -OrderToWorkOrder @{} -WorkOrders @($wo) -PdfEntities @()
         $null -ne $resolved | Should Be $true
-        (Test-CnsWorkOrderRequiresDestructionCertificate -WorkOrderEntity $resolved) | Should Be $true
-    }
-
-    It 'Get-CnsDestructionCoverLinesForSegment : lignes prestation + point de collecte' {
-        $wo = [pscustomobject]@{
-            ClientName = 'Site Alpha'
-            WorkOrder  = '5517128'
-            Services   = @(@{ Type = 'Destruction de archives'; ODM = '5517128-19811636' })
-        }
-        $map = @{ 3 = $wo }
-        $lines = @(Get-CnsDestructionCoverLinesForSegment -OrderIndices @(3) -OrderToWorkOrder $map)
-        $lines.Count | Should Be 2
-        $lines[0] | Should Be 'Prestation : Destruction'
-        $lines[1] | Should Be 'Point de collecte : Site Alpha'
+        (Test-CnsPdfPageRequiresDestructionCertificate -PageEntity $null -WorkOrderEntity $resolved) | Should Be $true
     }
 }
 
