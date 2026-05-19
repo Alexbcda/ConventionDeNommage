@@ -3,6 +3,10 @@
 
 . (Join-Path $PSScriptRoot '..\..\..\Core\GhostscriptResolve.ps1')
 . (Join-Path $PSScriptRoot 'PlanningExcelTourneeSegments.ps1')
+$_cnsDestructionWord = Join-Path $PSScriptRoot 'CnsDestructionCertificateWord.ps1'
+if (Test-Path -LiteralPath $_cnsDestructionWord) {
+    . $_cnsDestructionWord
+}
 
 function Sanitize-CnsCoverTextForGhostscript {
     <#
@@ -282,6 +286,310 @@ function Get-CnsTourneeSpecialFlagDisplayLine {
     }
 }
 
+function Build-CnsCoverTextLinesPostScriptAppend {
+    param(
+        [AllowNull()]
+        [AllowEmptyCollection()]
+        [string[]]$Lines,
+        [Parameter(Mandatory = $true)]
+        [int]$StartY,
+        [Parameter(Mandatory = $true)]
+        [int]$LineStep,
+        [Parameter(Mandatory = $true)]
+        [int]$MinY
+    )
+    $parts = New-Object System.Collections.Generic.List[string]
+    [int]$y = $StartY
+    foreach ($line in @($Lines)) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $lit = ConvertTo-CnsPsHelveticaParenBody -Text $line
+        [void]$parts.Add("/Helvetica findfont 11 scalefont setfont`n50 $y moveto`n($lit) show")
+        $y -= $LineStep
+        if ($y -lt $MinY) { break }
+    }
+    if ($parts.Count -lt 1) { return '' }
+    return (($parts.ToArray()) -join "`n")
+}
+
+function Get-CnsPlanningWorkOrderCacheKey {
+    param([AllowNull()] $WorkOrderEntity)
+    if ($null -eq $WorkOrderEntity) { return $null }
+    try {
+        $wk = [string]$WorkOrderEntity.WorkOrder
+        if (-not [string]::IsNullOrWhiteSpace($wk)) { return $wk.Trim() }
+    }
+    catch { }
+    try {
+        $pages = @($WorkOrderEntity.Pages | ForEach-Object { [string]$_ }) -join ','
+        if ($pages.Length -gt 0) { return ('PAGES:' + $pages) }
+    }
+    catch { }
+    return $null
+}
+
+function Get-CnsDestructionCoverLinesForSegment {
+    param(
+        [AllowEmptyCollection()]
+        [object[]]$OrderIndices,
+        [hashtable]$OrderToWorkOrder
+    )
+    if ($null -eq $OrderToWorkOrder -or $OrderToWorkOrder.Count -lt 1) { return @() }
+    $lines = New-Object System.Collections.Generic.List[string]
+    $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($oi in @($OrderIndices)) {
+        try { [int]$oiK = [int]$oi } catch { continue }
+        $wo = $OrderToWorkOrder[$oiK]
+        if ($null -eq $wo) { continue }
+        if (-not (Test-CnsWorkOrderRequiresDestructionCertificate -WorkOrderEntity $wo)) { continue }
+        [string]$point = ''
+        try { $point = [string]$wo.ClientName } catch { $point = '' }
+        $point = (Sanitize-CnsCoverTextForGhostscript -Text $point)
+        if ([string]::IsNullOrWhiteSpace($point)) { $point = 'Non specifie' }
+        if (-not $seen.Add($point)) { continue }
+        [void]$lines.Add('Prestation : Destruction')
+        [void]$lines.Add(('Point de collecte : {0}' -f $point))
+    }
+    return @($lines.ToArray())
+}
+
+function Get-CnsDestructionCertificateWorkOrderKey {
+    param([AllowNull()] $WorkOrderEntity)
+    [string]$base = Get-CnsWorkOrderBaseIdFromEntity -WorkOrderEntity $WorkOrderEntity
+    if (-not [string]::IsNullOrWhiteSpace($base)) { return ('WO:{0}' -f $base) }
+    return (Get-CnsPlanningWorkOrderCacheKey -WorkOrderEntity $WorkOrderEntity)
+}
+
+function Get-CnsWorkOrderEntityForPlanningGsPair {
+    <#
+    .SYNOPSIS
+        WorkOrder pour une page du PDF reorder : FinalOrder -> ligne Reordered -> ExcelOrder -> MatchResult (orderToWorkOrder).
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$GsPair,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$FinalOrderToLine,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$OrderToWorkOrder
+    )
+    if ($null -eq $OrderToWorkOrder -or $OrderToWorkOrder.Count -lt 1) { return $null }
+    try { $fo = [int]$GsPair.FinalOrder } catch { return $null }
+    if ($fo -lt 0) { return $null }
+    $ln = $FinalOrderToLine[$fo]
+    if ($null -eq $ln) { return $null }
+    $ex = $ln.ExcelSourceOrder
+    if ($null -eq $ex) { return $null }
+    try {
+        return $OrderToWorkOrder[[int]$ex]
+    }
+    catch { return $null }
+}
+
+function Get-CnsPageEntityByPhysicalPage {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$PageNumberOneBased,
+        [AllowEmptyCollection()]
+        [object[]]$PdfEntities = @()
+    )
+    foreach ($pe in @($PdfEntities)) {
+        if ($null -eq $pe) { continue }
+        try {
+            if ([int]$pe.PageNumber -eq $PageNumberOneBased) { return $pe }
+        }
+        catch { }
+    }
+    return $null
+}
+
+function New-CnsWorkOrderEntityFromPageEntityForCert {
+    param([AllowNull()] $PageEntity)
+    if ($null -eq $PageEntity) { return $null }
+    $addr = @{ Street = $null; PostalCode = $null; City = $null }
+    if ($null -ne $PageEntity.Address) {
+        try { $addr.Street = $PageEntity.Address.Street } catch { }
+        try { $addr.PostalCode = $PageEntity.Address.PostalCode } catch { }
+        try { $addr.City = $PageEntity.Address.City } catch { }
+    }
+    $wo = [pscustomobject]@{
+        WorkOrder  = $PageEntity.WorkOrder
+        ClientID   = $PageEntity.ClientID
+        ClientName = $PageEntity.ClientName
+        Address    = $addr
+        VisitDate  = $PageEntity.VisitDate
+        Contact    = $PageEntity.Contact
+        Services   = @($PageEntity.Services)
+        Pages      = @([int]$PageEntity.PageNumber)
+    }
+    if (Test-CnsWorkOrderRequiresDestructionCertificate -WorkOrderEntity $wo) {
+        return $wo
+    }
+    return $null
+}
+
+function New-CnsWorkOrderEntityFromPageTextFallback {
+    <#
+    .SYNOPSIS
+        Dernier recours : ODM 7 chiffres + mention Destruction dans le texte page (PdfEntities.Lines).
+    #>
+    param([AllowNull()] $PageEntity)
+    if ($null -eq $PageEntity) { return $null }
+
+    $lines = @()
+    try {
+        if ($null -ne $PageEntity.PSObject.Properties['Lines']) {
+            $lines = @($PageEntity.Lines)
+        }
+    }
+    catch { $lines = @() }
+    if ($lines.Count -lt 1) {
+        foreach ($svc in @($PageEntity.Services)) {
+            if ($null -eq $svc) { continue }
+            try {
+                $t = [string]$svc.Type
+                if (-not [string]::IsNullOrWhiteSpace($t)) { [void]$lines.Add($t) }
+            }
+            catch { }
+            try {
+                $o = [string]$svc.ODM
+                if (-not [string]::IsNullOrWhiteSpace($o)) { [void]$lines.Add($o) }
+            }
+            catch { }
+        }
+    }
+
+    $text = (($lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "`n")
+    if ([string]::IsNullOrWhiteSpace($text)) { return $null }
+
+    $hasDest = $false
+    foreach ($svc in @($PageEntity.Services)) {
+        if ($null -eq $svc) { continue }
+        try {
+            if (Test-CnsServiceTypeIsDestructionPrestationLine -Type ([string]$svc.Type)) {
+                $hasDest = $true
+                break
+            }
+        }
+        catch { }
+    }
+    if (-not $hasDest) {
+        if ($text -notmatch '(?i)Destruction(\s+confidentielle)?\s+de\b' -and
+            $text -notmatch '(?i)Destruction\s+confidentielle') {
+            return $null
+        }
+        $hasDest = $true
+    }
+
+    $rxOdm = [regex]'(?i)(?<![0-9])(\d{7}\s*\p{Pd}\s*\d+)\b'
+    $odmNorm = $null
+    $m = $rxOdm.Match($text)
+    if ($m.Success) {
+        $collapsed = [regex]::Replace([string]$m.Groups[1].Value, '\s+', '')
+        $oneDash = [regex]::Replace($collapsed, '\p{Pd}+', '-')
+        if ($oneDash -match '^(\d{7})-(\d+)$') {
+            $odmNorm = ('{0}-{1}' -f $Matches[1], $Matches[2])
+        }
+        else {
+            $odmNorm = $oneDash
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($odmNorm)) { return $null }
+
+    [string]$baseId = Get-CnsWorkOrderBaseIdFromToken -Token $odmNorm
+    if ([string]::IsNullOrWhiteSpace($baseId)) { return $null }
+
+    [string]$typeUse = 'Destruction'
+    foreach ($line in @($lines)) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        if (Test-CnsServiceTypeIsDestructionPrestationLine -Type $line) {
+            $typeUse = $line.Trim()
+            break
+        }
+    }
+
+    $svcArr = @($PageEntity.Services)
+    if ($svcArr.Count -lt 1) {
+        $svcArr = @([pscustomobject]@{ Type = $typeUse; ODM = $odmNorm })
+    }
+
+    $addrFb = @{ Street = $null; PostalCode = $null; City = $null }
+    if ($null -ne $PageEntity.Address) {
+        try { $addrFb.Street = $PageEntity.Address.Street } catch { }
+        try { $addrFb.PostalCode = $PageEntity.Address.PostalCode } catch { }
+        try { $addrFb.City = $PageEntity.Address.City } catch { }
+    }
+
+    $wo = [pscustomobject]@{
+        WorkOrder  = if ([string]::IsNullOrWhiteSpace([string]$PageEntity.WorkOrder)) { $baseId } else { [string]$PageEntity.WorkOrder }
+        ClientID   = $PageEntity.ClientID
+        ClientName = $PageEntity.ClientName
+        Address    = $addrFb
+        VisitDate  = $PageEntity.VisitDate
+        Contact    = $PageEntity.Contact
+        Services   = $svcArr
+        Pages      = @([int]$PageEntity.PageNumber)
+    }
+    if (-not (Test-CnsWorkOrderRequiresDestructionCertificate -WorkOrderEntity $wo)) { return $null }
+    return $wo
+}
+
+function Resolve-CnsWorkOrderEntityForStep5 {
+    <#
+    .SYNOPSIS
+        Resolution WorkOrder pour certificat STEP 5 : MatchResult (priorite 1), puis PDF WorkOrders / PdfEntities / texte page.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$GsPair,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$FinalOrderToLine,
+        [hashtable]$OrderToWorkOrder,
+        [AllowEmptyCollection()]
+        [object[]]$WorkOrders = @(),
+        [AllowEmptyCollection()]
+        [object[]]$PdfEntities = @()
+    )
+    [int]$fo = -1
+    [int]$rawPn = 0
+    try { $fo = [int]$GsPair.FinalOrder } catch { $fo = -1 }
+    try { $rawPn = [int]$GsPair.RawPageNum } catch { $rawPn = 0 }
+
+    if ($null -ne $OrderToWorkOrder -and $OrderToWorkOrder.Count -gt 0) {
+        $woMatch = Get-CnsWorkOrderEntityForPlanningGsPair -GsPair $GsPair -FinalOrderToLine $FinalOrderToLine -OrderToWorkOrder $OrderToWorkOrder
+        if ($null -ne $woMatch) {
+            Write-Host ("[STEP5-MATCH] WorkOrder resolved from MatchResult (FinalOrder={0}, RawPage={1})." -f $fo, $rawPn) -ForegroundColor DarkCyan
+            return $woMatch
+        }
+    }
+
+    if ($rawPn -gt 0 -and @($WorkOrders).Count -gt 0) {
+        $woPdf = Get-CnsWorkOrderEntityForRawPageNum -RawPageNumOneBased $rawPn -WorkOrders $WorkOrders
+        if ($null -ne $woPdf) {
+            Write-Host ("[STEP5-FALLBACK] WorkOrder resolved from PDF WorkOrders grouping for physical page {0}." -f $rawPn) -ForegroundColor Cyan
+            return $woPdf
+        }
+    }
+
+    if ($rawPn -gt 0 -and @($PdfEntities).Count -gt 0) {
+        $pe = Get-CnsPageEntityByPhysicalPage -PageNumberOneBased $rawPn -PdfEntities $PdfEntities
+        if ($null -ne $pe) {
+            $woPe = New-CnsWorkOrderEntityFromPageEntityForCert -PageEntity $pe
+            if ($null -ne $woPe) {
+                Write-Host ("[STEP5-FALLBACK] WorkOrder resolved from PdfEntities for physical page {0}." -f $rawPn) -ForegroundColor Cyan
+                return $woPe
+            }
+            $woRx = New-CnsWorkOrderEntityFromPageTextFallback -PageEntity $pe
+            if ($null -ne $woRx) {
+                Write-Host ("[STEP5-FALLBACK] WorkOrder resolved from PDF text for physical page {0}." -f $rawPn) -ForegroundColor Cyan
+                return $woRx
+            }
+        }
+    }
+
+    Write-Host ("[STEP5-FAILED] No WorkOrder found (FinalOrder={0}, RawPage={1})." -f $fo, $rawPn) -ForegroundColor Yellow
+    return $null
+}
+
 function Build-CnsTourneeSpecialFlagsPostScriptAppend {
     param(
         [AllowNull()]
@@ -323,7 +631,10 @@ function New-CnsTourneeHeaderCoverPdf {
         [bool]$TourneeIncomplete = $false,
         [Parameter()]
         [AllowEmptyCollection()]
-        [object[]]$SpecialFlags = @()
+        [object[]]$SpecialFlags = @(),
+        [Parameter()]
+        [AllowEmptyCollection()]
+        [string[]]$DestructionCoverLines = @()
     )
     if ($TourneeIncomplete) {
         $litBanner = ConvertTo-CnsPsHelveticaParenBody -Text 'TOURNEE NON MATCHEE'
@@ -331,7 +642,14 @@ function New-CnsTourneeHeaderCoverPdf {
         $litL1 = ConvertTo-CnsPsHelveticaParenBody -Text ("Date : {0}" -f $dateShown)
         $litL2 = ConvertTo-CnsPsHelveticaParenBody -Text ("Collecteur : {0}" -f $Collecteur)
         $litL3 = ConvertTo-CnsPsHelveticaParenBody -Text ("Vehicule   : {0}" -f $Vehicule)
-        $flagsPs = (Build-CnsTourneeSpecialFlagsPostScriptAppend -SpecialFlags $SpecialFlags -StartY 640 -LineStep 15 -MinY 72)
+        [int]$destCountInc = @($DestructionCoverLines).Count
+        [int]$flagStartInc = 640
+        if ($destCountInc -gt 0) {
+            $flagStartInc = 655 - (15 * $destCountInc)
+            if ($flagStartInc -lt 120) { $flagStartInc = 120 }
+        }
+        $destPsInc = (Build-CnsCoverTextLinesPostScriptAppend -Lines @($DestructionCoverLines) -StartY 655 -LineStep 15 -MinY 72)
+        $flagsPs = (Build-CnsTourneeSpecialFlagsPostScriptAppend -SpecialFlags $SpecialFlags -StartY $flagStartInc -LineStep 15 -MinY 72)
         $body = @"
 /Helvetica-Bold findfont 14 scalefont setfont
 50 800 moveto
@@ -343,6 +661,7 @@ function New-CnsTourneeHeaderCoverPdf {
 ($litL2) show
 50 690 moveto
 ($litL3) show
+$destPsInc
 $flagsPs
 "@
         return (Write-CnsPostScriptPdfPage -PsBodySansShowpage $body -OutPdfPath $OutPdfPath)
@@ -381,7 +700,14 @@ $flagsPs
     $litL1 = ConvertTo-CnsPsHelveticaParenBody -Text ("Date : {0}" -f $dateFormatted)
     $litL2 = ConvertTo-CnsPsHelveticaParenBody -Text ("Collecteur : {0}" -f $Collecteur)
     $litL3 = ConvertTo-CnsPsHelveticaParenBody -Text ("Vehicule   : {0}" -f $Vehicule)
-    $flagsPs = (Build-CnsTourneeSpecialFlagsPostScriptAppend -SpecialFlags $SpecialFlags -StartY 640 -LineStep 15 -MinY 72)
+    [int]$destCount = @($DestructionCoverLines).Count
+    [int]$flagStartY = 640
+    if ($destCount -gt 0) {
+        $flagStartY = 675 - (15 * $destCount) - 5
+        if ($flagStartY -lt 120) { $flagStartY = 120 }
+    }
+    $destPs = (Build-CnsCoverTextLinesPostScriptAppend -Lines @($DestructionCoverLines) -StartY 675 -LineStep 15 -MinY 72)
+    $flagsPs = (Build-CnsTourneeSpecialFlagsPostScriptAppend -SpecialFlags $SpecialFlags -StartY $flagStartY -LineStep 15 -MinY 72)
 
     $body = @"
 /Helvetica findfont 12 scalefont setfont
@@ -391,6 +717,7 @@ $flagsPs
 ($litL2) show
 50 710 moveto
 ($litL3) show
+$destPs
 $flagsPs
 "@
     return (Write-CnsPostScriptPdfPage -PsBodySansShowpage $body -OutPdfPath $OutPdfPath)
@@ -679,6 +1006,9 @@ function Invoke-PlanningTourneePdfCoverComposition {
         [Parameter(Mandatory = $false)]
         [AllowEmptyCollection()]
         [object[]]$WorkOrders = @(),
+        [Parameter(Mandatory = $false)]
+        [AllowEmptyCollection()]
+        [object[]]$PdfEntities = @(),
         $MatchResult = $null
     )
 
@@ -825,6 +1155,8 @@ function Invoke-PlanningTourneePdfCoverComposition {
 
         $seenSegments = @{}
         $prefaceAlreadyAdded = $false
+        $certInjectedForWo = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+        $sortedPairsArr = @($SortedGsPairs)
         $fi = 0
         foreach ($blk in @($blocks)) {
             $fi++
@@ -846,7 +1178,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                             $minimal = Join-Path $tmpDir ('cover_blk_min_{0}.pdf' -f $fi)
                             $fdMin = $VisitDate.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
                             Write-Host ("[TOURNEE-COVER] Segment={0} Incomplete=True (metadata absente) Date={1}" -f $n, $fdMin) -ForegroundColor Cyan
-                            if (New-CnsTourneeHeaderCoverPdf -OutPdfPath $minimal -DateJJMMAAAA $fdMin -Collecteur 'INCONNU' -Vehicule 'NON SPECIFIE' -TourneeIncomplete:$true -SpecialFlags @()) {
+                            if (New-CnsTourneeHeaderCoverPdf -OutPdfPath $minimal -DateJJMMAAAA $fdMin -Collecteur 'INCONNU' -Vehicule 'NON SPECIFIE' -TourneeIncomplete:$true -SpecialFlags @() -DestructionCoverLines @()) {
                                 [void]$frag.Add($minimal)
                             }
                             else {
@@ -864,7 +1196,11 @@ function Invoke-PlanningTourneePdfCoverComposition {
                             Write-Host ("[TOURNEE-COVER] Segment={0} Incomplete={1} Date={2} Collecteur={3} Vehicule={4} PagesBloc={5}" -f $n, $inc, $jj, ([string]$seg.Collecteur), ([string]$seg.Vehicule), (1 + $blk.MainTo1 - $blk.MainFrom1)) -ForegroundColor Cyan
                             $segFlags = @()
                             if ($null -ne $seg.PSObject.Properties['SpecialFlags']) { $segFlags = @($seg.SpecialFlags) }
-                            if (New-CnsTourneeHeaderCoverPdf -OutPdfPath $coverPath -DateJJMMAAAA $jj -Collecteur ([string]$seg.Collecteur) -Vehicule ([string]$seg.Vehicule) -TourneeIncomplete:$inc -SpecialFlags $segFlags) {
+                            $segDestLines = @()
+                            if ($null -ne $seg.PSObject.Properties['OrderIndices']) {
+                                $segDestLines = @(Get-CnsDestructionCoverLinesForSegment -OrderIndices @($seg.OrderIndices) -OrderToWorkOrder $orderToWorkOrder)
+                            }
+                            if (New-CnsTourneeHeaderCoverPdf -OutPdfPath $coverPath -DateJJMMAAAA $jj -Collecteur ([string]$seg.Collecteur) -Vehicule ([string]$seg.Vehicule) -TourneeIncomplete:$inc -SpecialFlags $segFlags -DestructionCoverLines $segDestLines) {
                                 [void]$frag.Add($coverPath)
                             }
                             else {
@@ -897,6 +1233,38 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     throw ("[TOURNEE] Extraction page principale #{0} echouee." -f $pn)
                 }
                 [void]$frag.Add($slicePath)
+
+                $pairIdx = $pn - 1
+                if ($pairIdx -ge 0 -and $pairIdx -lt $sortedPairsArr.Count) {
+                    $gsPair = $sortedPairsArr[$pairIdx]
+                    $woPage = Resolve-CnsWorkOrderEntityForStep5 -GsPair $gsPair -FinalOrderToLine $foToLine -OrderToWorkOrder $orderToWorkOrder -WorkOrders $WorkOrders -PdfEntities @($PdfEntities)
+                    if ($null -ne $woPage -and (Test-CnsWorkOrderRequiresDestructionCertificate -WorkOrderEntity $woPage)) {
+                        $woCacheKey = Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage
+                        if (-not [string]::IsNullOrWhiteSpace($woCacheKey) -and $certInjectedForWo.Add($woCacheKey)) {
+                            if (Get-Command New-CnsDestructionCertificatePdfFromWordTemplate -ErrorAction SilentlyContinue) {
+                                $segMeta = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $gsPair -FinalOrderToLine $foToLine -Segments $segments -ExcelOrderIndexToSegmentIndex $orderToSeg -VisitDate $VisitDate
+                                $phTable = @{}
+                                foreach ($entry in (Get-CnsDestructionCertificatePlaceholders -WorkOrderEntity $woPage -SegmentMeta $segMeta -VisitDate $VisitDate).GetEnumerator()) {
+                                    $phTable[[string]$entry.Key] = [string]$entry.Value
+                                }
+                                $certOut = Join-Path $tmpDir ('cert_dest_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
+                                $certPdf = New-CnsDestructionCertificatePdfFromWordTemplate -OutPdfPath $certOut -Placeholders $phTable
+                                if (-not [string]::IsNullOrWhiteSpace($certPdf) -and (Test-Path -LiteralPath $certPdf)) {
+                                    [void]$frag.Add($certPdf)
+                                    Write-Host ("[DESTRUCTION-CERT] Certificat injecte apres page reorder #{0} (WO={1}, MatchResult, fichier={2})." -f $pn, $woCacheKey, (Split-Path -Leaf $certPdf)) -ForegroundColor Green
+                                }
+                                else {
+                                    [void]$certInjectedForWo.Remove($woCacheKey)
+                                    Write-Warning ("[DESTRUCTION-CERT] Generation certificat echouee pour WO={0} — page ODM conservee." -f $woCacheKey)
+                                }
+                            }
+                            else {
+                                [void]$certInjectedForWo.Remove($woCacheKey)
+                                Write-Warning '[DESTRUCTION-CERT] Module Word certificat non charge — injection ignoree.'
+                            }
+                        }
+                    }
+                }
             }
         }
 

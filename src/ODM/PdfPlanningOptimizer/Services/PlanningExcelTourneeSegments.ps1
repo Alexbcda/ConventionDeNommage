@@ -194,39 +194,90 @@ function Get-CnsPlanningWorkOrderKeyFromMatchWorkOrderField {
     catch { return $null }
 }
 
+function Get-CnsWorkOrderBaseIdFromToken {
+    <#
+    .SYNOPSIS
+        Identifiant WorkOrder (partie avant le tiret ODM) : 7 chiffres, ex. 5517128 depuis 5517128-19811636.
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Token)
+    if ([string]::IsNullOrWhiteSpace($Token)) { return $null }
+    $t = ([string]$Token).Trim()
+    if ($t -match '(?i)^(\d{7})') { return $Matches[1] }
+    if ($t -match '(?i)(\d{7})') { return $Matches[1] }
+    return $null
+}
+
+function Get-CnsWorkOrderBaseIdFromEntity {
+    param([AllowNull()] $WorkOrderEntity)
+    if ($null -eq $WorkOrderEntity) { return $null }
+    try {
+        $b = Get-CnsWorkOrderBaseIdFromToken -Token ([string]$WorkOrderEntity.WorkOrder)
+        if (-not [string]::IsNullOrWhiteSpace($b)) { return $b }
+    }
+    catch { }
+    foreach ($service in @($WorkOrderEntity.Services)) {
+        if ($null -eq $service) { continue }
+        try {
+            $b2 = Get-CnsWorkOrderBaseIdFromToken -Token ([string]$service.ODM)
+            if (-not [string]::IsNullOrWhiteSpace($b2)) { return $b2 }
+        }
+        catch { }
+    }
+    return $null
+}
+
+function Test-CnsServiceTypeIsDestructionPrestationLine {
+    <#
+    .SYNOPSIS
+        Bloc prestation DESTRUCTION PDF : "Destruction de ..." ou "Destruction confidentielle de ..." (pas le seul mot destruction).
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Type)
+    if ([string]::IsNullOrWhiteSpace($Type)) { return $false }
+    $t = ([string]$Type).Trim()
+    if ($t -match '(?i)^Destruction(\s+confidentielle)?\s+de\b') { return $true }
+    if ($t -match '(?i)^Destruction\s+confidentielle\b') { return $true }
+    return $false
+}
+
+function Test-CnsWorkOrderRequiresDestructionCertificate {
+    <#
+    .SYNOPSIS
+        Certificat : ligne prestation Destruction + ODM partageant le meme WorkOrderId (7 chiffres avant tiret).
+    #>
+    param([AllowNull()] $WorkOrderEntity)
+    if ($null -eq $WorkOrderEntity) { return $false }
+    [string]$baseId = Get-CnsWorkOrderBaseIdFromEntity -WorkOrderEntity $WorkOrderEntity
+    if ([string]::IsNullOrWhiteSpace($baseId)) { return $false }
+    foreach ($service in @($WorkOrderEntity.Services)) {
+        if ($null -eq $service) { continue }
+        [string]$type = ''
+        [string]$odm = ''
+        try { $type = [string]$service.Type } catch { }
+        try { $odm = [string]$service.ODM } catch { }
+        if (-not (Test-CnsServiceTypeIsDestructionPrestationLine -Type $type)) { continue }
+        [string]$odmBase = Get-CnsWorkOrderBaseIdFromToken -Token $odm
+        if ($odmBase -eq $baseId) { return $true }
+    }
+    return $false
+}
+
 function Test-CnsServiceTextIndicatesDestruction {
     <#
     .SYNOPSIS
-        Detection partagée certificat / garde tournée : libellé contient "destruction" (sans casse).
+        Alias historique : regle stricte certificat (bloc Destruction + WorkOrderId).
     #>
     param([AllowNull()][AllowEmptyString()][string]$Text)
     if ($null -eq $Text -or [string]::IsNullOrWhiteSpace($Text)) { return $false }
-    return ([string]$Text -match '(?i)destruction')
+    return (Test-CnsServiceTypeIsDestructionPrestationLine -Type $Text)
 }
 
 function Test-CnsWorkOrderIndicatesDestructionPrestation {
     <#
     .SYNOPSIS
-        True si le WO ou un service Type/ODM contient "destruction" (meme regle que certificat / garde).
+        True si le WO a une prestation Destruction liee par WorkOrderId (regle certificat STEP 5).
     #>
     param([AllowNull()] $WorkOrderEntity)
-    if ($null -eq $WorkOrderEntity) { return $false }
-    try {
-        [string]$wMain = ''
-        try { $wMain = [string]$WorkOrderEntity.WorkOrder } catch { $wMain = '' }
-        if (Test-CnsServiceTextIndicatesDestruction -Text $wMain) { return $true }
-    }
-    catch { }
-    foreach ($service in @($WorkOrderEntity.Services)) {
-        if ($null -eq $service) { continue }
-        [string]$type = ''; [string]$odm = ''
-        try { $type = [string]$service.Type } catch { }
-        try { $odm = [string]$service.ODM } catch { }
-        if ((Test-CnsServiceTextIndicatesDestruction -Text $type) -or (Test-CnsServiceTextIndicatesDestruction -Text $odm)) {
-            return $true
-        }
-    }
-    return $false
+    return (Test-CnsWorkOrderRequiresDestructionCertificate -WorkOrderEntity $WorkOrderEntity)
 }
 
 function Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder {
@@ -242,6 +293,7 @@ function Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder {
         if ($null -ne $cn) { $client = [string]$cn }
     }
     catch { }
+    [string]$baseId = Get-CnsWorkOrderBaseIdFromEntity -WorkOrderEntity $WorkOrderEntity
     $buf = [System.Collections.Generic.List[hashtable]]::new()
     foreach ($service in @($WorkOrderEntity.Services)) {
         if ($null -eq $service) { continue }
@@ -249,7 +301,9 @@ function Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder {
         [string]$odm = ''
         try { $type = [string]$service.Type } catch { }
         try { $odm = [string]$service.ODM } catch { }
-        if ((Test-CnsServiceTextIndicatesDestruction -Text $type) -or (Test-CnsServiceTextIndicatesDestruction -Text $odm)) {
+        if ((Test-CnsServiceTypeIsDestructionPrestationLine -Type $type) -and
+            (-not [string]::IsNullOrWhiteSpace($baseId)) -and
+            ((Get-CnsWorkOrderBaseIdFromToken -Token $odm) -eq $baseId)) {
             [void]$buf.Add(@{ Type = 'Destruction confidentielle'; Client = $client })
         }
         if ($type -like '*pile*') {
