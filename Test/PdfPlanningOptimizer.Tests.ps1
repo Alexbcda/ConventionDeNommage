@@ -835,35 +835,105 @@ Describe 'PdfPlanningOptimizer - tournee cover (prestations speciales ODM)' {
         $scalarPath = Join-Path $PSScriptRoot '..\src\Common\ScalarGuard.ps1' | Resolve-Path
         $sortSafePath = Join-Path $PSScriptRoot '..\src\Common\SortSafe.ps1' | Resolve-Path
         $segPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\PlanningExcelTourneeSegments.ps1' | Resolve-Path
+        $metierPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsPdfMetierPrestation.ps1' | Resolve-Path
         $coverComposerPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\PdfTourneeCoverComposer.ps1' | Resolve-Path
         . ([string]$scalarPath)
         . ([string]$sortSafePath)
         . ([string]$segPath)
+        . ([string]$metierPath)
         . ([string]$coverComposerPath)
     }
 
-    It 'Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder : DEEE via Type' {
+    It 'Get-CnsPdfPageMetierAnalysis : Track dechet DEEE (PDF, tolerant)' {
         $wo = [pscustomobject]@{
-            ClientName = 'ACME'
-            Services   = @(@{ Type = 'Tri DEEE express'; ODM = '123-1' })
+            ClientName = 'HOPITAL CHAMBERY'
+            Services   = @(@{ Type = 'Tri Déee express'; ODM = '1234567-1' })
         }
-        $f = @(Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder -WorkOrderEntity $wo)
-        $f.Count | Should Be 1
-        $f[0].Type | Should Be 'DEEE'
-        $f[0].Client | Should Be 'ACME'
+        $a = Get-CnsPdfPageMetierAnalysis -PageEntity $null -WorkOrderEntity $wo
+        $a.TrackDechetEntries.Count | Should BeGreaterThan 0
+        ($a.TrackDechetEntries[0].Detail) | Should Be 'Collecte DEEE'
     }
 
-    It 'Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder : Destruction confidentielle via libelle Type (mot destruction)' {
-        $wo = [pscustomobject]@{ ClientName = 'X'; Services = @(@{ Type = 'Destruction confidentielle de Papier confidentiel'; ODM = '9890123-19811636' }) }
-        $f = @(Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder -WorkOrderEntity $wo)
-        @($f | Where-Object { $_.Type -eq 'Destruction confidentielle' }).Count | Should Be 1
+    It 'Get-CnsPdfPageMetierAnalysis : destruction cert + memo client' {
+        $wo = [pscustomobject]@{
+            ClientName = 'EUROFINS LABAZUR'
+            WorkOrder  = '5517128'
+            Services   = @(@{ Type = 'Destruction confidentielle de Papier'; ODM = '5517128-19811636' })
+        }
+        $a = Get-CnsPdfPageMetierAnalysis -PageEntity $null -WorkOrderEntity $wo
+        $a.RequiresDestructionCertificate | Should Be $true
+        $a.DestructionMemoClient | Should Be 'EUROFINS LABAZUR'
     }
 
-    It 'Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder : Piles + Neon (tube)' {
-        $wo = [pscustomobject]@{ ClientName = ''; Services = @(@{ Type = 'RAMASSAGE PILES'; ODM = '1-2' }, @{ Type = 'tubes fluo'; ODM = '1-3' }) }
-        $f = @(Get-CnsPlanningTourneeSpecialFlagsFromWorkOrder -WorkOrderEntity $wo)
-        ($f | ForEach-Object { $_.Type }) -contains 'Piles' | Should Be $true
-        ($f | ForEach-Object { $_.Type }) -contains 'Néon' | Should Be $true
+    It 'Test-CnsPdfFragPageRequiresCeaDocument : CEA ligne complete avec tirets' {
+        $lines = @('CEA - Service Logistique et Environnement (SLE) - N°24531')
+        (Test-CnsPdfFragPageRequiresCeaDocument -RawLines $lines) | Should Be $true
+    }
+
+    It 'Test-CnsPdfFragPageRequiresCeaDocument : variante compacte SERVICE LOGISTIQUE SLE' {
+        $lines = @('CEA SERVICE LOGISTIQUE ENVIRONNEMENT SLE 24531')
+        (Test-CnsPdfFragPageRequiresCeaDocument -RawLines $lines) | Should Be $true
+    }
+
+    It 'Test-CnsPdfFragPageRequiresCeaDocument : numero 24 531 espace' {
+        $lines = @('CEA - SLE - N° 24 531')
+        (Test-CnsPdfFragPageRequiresCeaDocument -RawLines $lines) | Should Be $true
+    }
+
+    It 'Test-CnsPdfFragPageRequiresCeaDocument : non-CEA si 24531 seul sans cea' {
+        $lines = @('MAIRIE GRENOBLE 24531')
+        (Test-CnsPdfFragPageRequiresCeaDocument -RawLines $lines) | Should Be $false
+    }
+
+    It 'Test-CnsCeaNormalizedTextIsCeaPoint : refuse cea+24531 sans sle ni service logistique' {
+        (Test-CnsCeaNormalizedTextIsCeaPoint -NormalizedText 'cea collecte 24531') | Should Be $false
+    }
+
+    It 'Test-CnsPdfFragPageRequiresCeaDocument : lignes PDF fragmentees (frag slice)' {
+        $lines = @(
+            'CEA - Service Logistique et'
+            'Environnement (SLE) - N°24531'
+        )
+        (Test-CnsPdfFragPageRequiresCeaDocument -RawLines $lines) | Should Be $true
+    }
+
+    It 'Get-CnsCeaPageSignalsFromNormalizedText : ordre inverse des signaux sur la page' {
+        $norm = ConvertTo-CnsCeaDetectionNormalizedText -Text @(
+            'Environnement (SLE) - N° 24 531',
+            'CEA - Service Logistique et'
+        ) -join ' '
+        $sig = Get-CnsCeaPageSignalsFromNormalizedText -NormalizedText $norm
+        $sig.HasCEA | Should Be $true
+        $sig.HasID | Should Be $true
+        $sig.HasSLE | Should Be $true
+        $sig.IsCea | Should Be $true
+    }
+
+    It 'Get-CnsCeaPageSignalsFromNormalizedText : service logistique et environnement sans mot sle' {
+        $norm = ConvertTo-CnsCeaDetectionNormalizedText -Text 'CEA service logistique et environnement 24531'
+        $sig = Get-CnsCeaPageSignalsFromNormalizedText -NormalizedText $norm
+        $sig.HasSLE | Should Be $true
+        $sig.IsCea | Should Be $true
+    }
+
+    It 'Test-CnsPdfFragPageRequiresCeaDocument : variante No et espaces' {
+        $lines = @('CEA - Service Logistique et Environnement (SLE) - No 24531')
+        (Test-CnsPdfFragPageRequiresCeaDocument -RawLines $lines) | Should Be $true
+    }
+
+    It 'Get-CnsTourneeMetierMemoLinesForBlock : ordre certificat puis track dechet' {
+        $wo = [pscustomobject]@{
+            ClientName = 'MAIRIE GRENOBLE'
+            WorkOrder  = '1111111'
+            Services   = @(@{ Type = 'RAMASSAGE PILES'; ODM = '1111111-2' })
+            Pages      = @(1)
+        }
+        $pairs = @([pscustomobject]@{ FinalOrder = 1; RawPageNum = 1 })
+        $foLine = [pscustomobject]@{ FinalOrder = 1; Source = 'ExcelOrder'; ExcelSourceOrder = 3 }
+        $foToLine = @{ 1 = $foLine }
+        $memos = @(Get-CnsTourneeMetierMemoLinesForBlock -MainFrom1 1 -MainTo1 1 -SortedGsPairs $pairs -FinalOrderToLine $foToLine -WorkOrders @($wo) -PdfEntities @())
+        ($memos -join '|') | Should Match 'Track dechet'
+        ($memos -join '|') | Should Match 'MAIRIE GRENOBLE'
     }
 
     It 'Get-CnsPlanningWorkOrderKeyFromMatchWorkOrderField : entite vs chaine' {
@@ -872,4 +942,117 @@ Describe 'PdfPlanningOptimizer - tournee cover (prestations speciales ODM)' {
         Get-CnsPlanningWorkOrderKeyFromMatchWorkOrderField -WorkOrderField '  AB  ' | Should Be 'AB'
     }
 
+    It 'Test-CnsWorkOrderRequiresDestructionCertificate : bloc Destruction + meme WorkOrderId' {
+        $wo = [pscustomobject]@{
+            WorkOrder = '5517128'
+            Services  = @(
+                @{ Type = 'Collecte de papier'; ODM = '5517128-19811616' },
+                @{ Type = 'Destruction confidentielle de Papier'; ODM = '5517128-19811636' }
+            )
+        }
+        (Test-CnsWorkOrderRequiresDestructionCertificate -WorkOrderEntity $wo) | Should Be $true
+        (Get-CnsWorkOrderBaseIdFromEntity -WorkOrderEntity $wo) | Should Be '5517128'
+    }
+
+    It 'Test-CnsWorkOrderRequiresDestructionCertificate : refuse mot destruction seul dans ODM' {
+        $wo = [pscustomobject]@{
+            WorkOrder = '5517128'
+            Services  = @(@{ Type = 'Collecte de papier'; ODM = '5517128-19811636 destruction' })
+        }
+        (Test-CnsWorkOrderRequiresDestructionCertificate -WorkOrderEntity $wo) | Should Be $false
+    }
+
+    It 'Resolve-CnsWorkOrderEntityForStep5 : PDF WorkOrders par page physique (PdfFallback)' {
+        $wo = [pscustomobject]@{
+            WorkOrder  = '5517128'
+            ClientName = 'Site Non Match'
+            ClientID   = '99'
+            Services   = @(@{ Type = 'Destruction confidentielle de Papier'; ODM = '5517128-19811636' })
+            Pages      = @(3)
+            Address    = @{ Street = ''; PostalCode = ''; City = '' }
+        }
+        $gsPair = [pscustomobject]@{ FinalOrder = 1; RawPageNum = 3; Ordinal = 1 }
+        $foLine = [pscustomobject]@{ FinalOrder = 1; Source = 'PdfFallback'; ExcelSourceOrder = $null }
+        $foToLine = @{ 1 = $foLine }
+        $resolved = Resolve-CnsWorkOrderEntityForStep5 -GsPair $gsPair -FinalOrderToLine $foToLine -OrderToWorkOrder @{} -WorkOrders @($wo) -PdfEntities @()
+        $null -ne $resolved | Should Be $true
+        (Test-CnsPdfPageRequiresDestructionCertificate -PageEntity $null -WorkOrderEntity $resolved) | Should Be $true
+    }
+}
+
+Describe 'PdfPlanningOptimizer - certificat destruction Word' {
+
+    BeforeAll {
+        $wordCertPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsDestructionCertificateWord.ps1' | Resolve-Path
+        . ([string]$wordCertPath)
+    }
+
+    It 'Get-CnsDestructionCertificateTemplatePath : fichier repo templates' {
+        $p = Get-CnsDestructionCertificateTemplatePath
+        if ($null -eq $p) {
+            Set-ItResult -Inconclusive -Because 'Template CertificatDeDestruction.docx absent du depot'
+        }
+        else {
+            (Test-Path -LiteralPath $p) | Should Be $true
+        }
+    }
+
+    It 'ConvertTo-CnsDestructionCertificatePlaceholderValue : sentinelles -> vide' {
+        (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value 'INCONNU') | Should Be ''
+        (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value 'NON SPECIFIE') | Should Be ''
+        (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value 'À compléter') | Should Be ''
+        (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value '-') | Should Be ''
+        (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value 'Jean Martin') | Should Be 'Jean Martin'
+    }
+
+    It 'Get-CnsDestructionCertificatePlaceholders : champs client et collecteur' {
+        $wo = [pscustomobject]@{
+            ClientID   = '12345'
+            ClientName = 'Client Test'
+            WorkOrder  = 'WO-777'
+            VisitDate  = [datetime]'2026-04-17'
+            Address    = @{ Street = '1 rue A'; PostalCode = '75001'; City = 'Paris' }
+            Services   = @()
+        }
+        $seg = [pscustomobject]@{ DateJJMMAAAA = '18/04/2026'; Collecteur = 'Jean Martin'; Vehicule = 'AB-123-CD' }
+        $ph = Get-CnsDestructionCertificatePlaceholders -WorkOrderEntity $wo -SegmentMeta $seg -VisitDate ([datetime]'2026-01-01')
+        $ph.Client_ID | Should Be '12345'
+        $ph.Client_Nom | Should Be 'Client Test'
+        $ph.Collecteur_Prenom | Should Be 'Jean'
+        $ph.Collecteur_Nom | Should Be 'Martin'
+        $ph.Vehicule_Immat | Should Be 'AB-123-CD'
+        $ph.ODM_Numero | Should Be 'WO-777'
+        $ph.Date_Collecte | Should Be '01/01/2026'
+    }
+
+    It 'Get-CnsDestructionCertificatePlaceholders : collecteur/vehicule sentinelles Excel -> vide' {
+        $wo = [pscustomobject]@{
+            ClientID   = '1'
+            ClientName = 'Client'
+            WorkOrder  = 'WO-1'
+            Services   = @()
+            Address    = @{ Street = ''; PostalCode = ''; City = '' }
+        }
+        $seg = [pscustomobject]@{ DateJJMMAAAA = '01/01/2026'; Collecteur = 'INCONNU'; Vehicule = 'NON SPECIFIE' }
+        $ph = Get-CnsDestructionCertificatePlaceholders -WorkOrderEntity $wo -SegmentMeta $seg -VisitDate ([datetime]'2026-01-01')
+        $ph.Collecteur_Nom | Should Be ''
+        $ph.Collecteur_Prenom | Should Be ''
+        $ph.Vehicule_Immat | Should Be ''
+    }
+
+    It 'Split-CnsCollecteurNomPrenom : un seul mot' {
+        $r = Split-CnsCollecteurNomPrenom -CollecteurText 'Dupont'
+        $r.Nom | Should Be 'Dupont'
+        $r.Prenom | Should Be ''
+    }
+
+    It 'Get-CnsLibreOfficeSofficePath : soffice.exe present ou inconclusive' {
+        $p = Get-CnsLibreOfficeSofficePath
+        if ($null -eq $p) {
+            Set-ItResult -Inconclusive -Because 'LibreOffice non installe sur cette machine'
+        }
+        else {
+            (Test-Path -LiteralPath $p) | Should Be $true
+        }
+    }
 }
