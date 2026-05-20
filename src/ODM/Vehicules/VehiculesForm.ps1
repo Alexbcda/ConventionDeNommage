@@ -1,6 +1,6 @@
 ﻿# VehiculesForm.ps1 - Formulaire d'ajout/modification de véhicule
 
-. "$PSScriptRoot\..\..\Database\Database.ps1"
+. "$PSScriptRoot\..\..\Services\VehiculeService.ps1"
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
 . "$PSScriptRoot\..\..\Common\Validation.ps1"
 
@@ -13,32 +13,6 @@ function Show-VehiculeForm {
 
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
-
-    function Convert-DbToFrDate {
-        param([string]$DateUs)
-        if ([string]::IsNullOrWhiteSpace($DateUs)) { return "" }
-        try {
-            return ([datetime]::ParseExact($DateUs, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture)).ToString("dd/MM/yyyy")
-        } catch {
-            return $DateUs
-        }
-    }
-
-    function Convert-FrToDbDate {
-        param([string]$DateFr)
-        if ([string]::IsNullOrWhiteSpace($DateFr)) { return $null }
-        try {
-            $dt = [datetime]::ParseExact($DateFr, "dd/MM/yyyy", [System.Globalization.CultureInfo]::InvariantCulture)
-            return $dt.ToString("yyyy-MM-dd")
-        } catch {
-            return $null
-        }
-    }
-
-    function Test-DateFr {
-        param([string]$DateStr)
-        return ($null -ne (Convert-FrToDbDate $DateStr))
-    }
 
     function Set-Error {
         param($Label, [string]$Message)
@@ -62,34 +36,22 @@ function Show-VehiculeForm {
     function Test-DoublonParc {
         param($NumeroParc)
         if ([string]::IsNullOrWhiteSpace($NumeroParc)) { return $false }
-        $vehiculesExistants = Get-AllVehicules
-        $doublon = $vehiculesExistants | Where-Object { $_.numero_parc -eq $NumeroParc }
-        if ($Mode -eq "Modifier" -and $Vehicule) {
-            $doublon = $doublon | Where-Object { $_.id -ne $Vehicule.id }
-        }
-        return ($doublon.Count -gt 0)
+        $eid = if ($Mode -eq "Modifier" -and $Vehicule) { [int]$Vehicule.id } else { 0 }
+        return (Test-VehiculeDoublonParc -NumeroParc $NumeroParc -ExcludeId $eid)
     }
 
     function Test-DoublonImmat {
         param($Immatriculation)
         if ([string]::IsNullOrWhiteSpace($Immatriculation)) { return $false }
-        $vehiculesExistants = Get-AllVehicules
-        $doublon = $vehiculesExistants | Where-Object { $_.immatriculation -eq $Immatriculation }
-        if ($Mode -eq "Modifier" -and $Vehicule) {
-            $doublon = $doublon | Where-Object { $_.id -ne $Vehicule.id }
-        }
-        return ($doublon.Count -gt 0)
+        $eid = if ($Mode -eq "Modifier" -and $Vehicule) { [int]$Vehicule.id } else { 0 }
+        return (Test-VehiculeDoublonImmat -Immatriculation $Immatriculation -ExcludeId $eid)
     }
 
     function Test-DoublonChassis {
         param($NumeroChassis)
         if ([string]::IsNullOrWhiteSpace($NumeroChassis)) { return $false }
-        $vehiculesExistants = Get-AllVehicules
-        $doublon = $vehiculesExistants | Where-Object { $_.numero_chassis -eq $NumeroChassis }
-        if ($Mode -eq "Modifier" -and $Vehicule) {
-            $doublon = $doublon | Where-Object { $_.id -ne $Vehicule.id }
-        }
-        return ($doublon.Count -gt 0)
+        $eid = if ($Mode -eq "Modifier" -and $Vehicule) { [int]$Vehicule.id } else { 0 }
+        return (Test-VehiculeDoublonChassis -NumeroChassis $NumeroChassis -ExcludeId $eid)
     }
 
     function Get-ImmatError {
@@ -164,7 +126,7 @@ function Show-VehiculeForm {
     $txtParc = $script:__vehicule_lastTextBox
     $lblParcError = $script:__vehicule_lastErrorLabel
 
-    Add-Field -LabelText "Immatriculation * :" -InitialValue $(if ($Vehicule) { $Vehicule.immatriculation } else { "" }) -CurrentY ([ref]$yPos)
+    Add-Field -LabelText "Immatriculation * :" -InitialValue $(if ($Vehicule) { $Vehicule.immatriculation } else { "" }) -MaxLength 20 -CurrentY ([ref]$yPos)
     $txtImmat = $script:__vehicule_lastTextBox
     $lblImmatError = $script:__vehicule_lastErrorLabel
 
@@ -172,11 +134,11 @@ function Show-VehiculeForm {
     $txtChassis = $script:__vehicule_lastTextBox
     $lblChassisError = $script:__vehicule_lastErrorLabel
 
-    Add-Field -LabelText "Marque :" -InitialValue $(if ($Vehicule) { $Vehicule.marque } else { "" }) -Optional $true -CurrentY ([ref]$yPos)
+    Add-Field -LabelText "Marque :" -InitialValue $(if ($Vehicule) { $Vehicule.marque } else { "" }) -Optional $true -MaxLength 120 -CurrentY ([ref]$yPos)
     $txtMarque = $script:__vehicule_lastTextBox
     $lblMarqueInfo = $script:__vehicule_lastErrorLabel
 
-    Add-Field -LabelText "Modèle :" -InitialValue $(if ($Vehicule) { $Vehicule.modele } else { "" }) -Optional $true -CurrentY ([ref]$yPos)
+    Add-Field -LabelText "Modèle :" -InitialValue $(if ($Vehicule) { $Vehicule.modele } else { "" }) -Optional $true -MaxLength 120 -CurrentY ([ref]$yPos)
     $txtModele = $script:__vehicule_lastTextBox
     $lblModeleInfo = $script:__vehicule_lastErrorLabel
 
@@ -318,6 +280,13 @@ function Show-VehiculeForm {
 
     $txtParc.Add_Leave({
         $txtParc.Text = Normalize-Whitespace (Sanitize-TextInput $txtParc.Text)
+        if (-not [string]::IsNullOrWhiteSpace($txtParc.Text)) {
+            $err = Get-NumeroParcError $txtParc.Text
+            if (-not $err -and (Test-DoublonParc -NumeroParc $txtParc.Text)) {
+                $err = "Ce numéro de parc existe déjà !"
+            }
+            Set-Error -Label $lblParcError -Message $err
+        }
     })
 
     # Pas de réécriture du Text pendant la saisie : validation seulement (évite curseur / mélange de texte).
@@ -331,10 +300,6 @@ function Show-VehiculeForm {
         $err = Get-NumeroParcError $norm
         if ($err) {
             Set-Error -Label $lblParcError -Message $err
-            return
-        }
-        if (Test-DoublonParc -NumeroParc $norm) {
-            Set-Error -Label $lblParcError -Message "Ce numéro de parc existe déjà !"
             return
         }
         Set-Error -Label $lblParcError -Message ""
@@ -353,11 +318,6 @@ function Show-VehiculeForm {
         if (-not [string]::IsNullOrWhiteSpace($txtImmat.Text)) {
             if ($txtImmat.Text -notmatch '^[A-Za-z0-9\- ]{1,20}$') {
                 $msg = "Format immatriculation invalide"
-            } else {
-                $normalized = (Sanitize-TextInput $txtImmat.Text).Trim().ToUpperInvariant()
-                if (Test-DoublonImmat -Immatriculation $normalized) {
-                    $msg = "Cette immatriculation existe déjà !"
-                }
             }
         }
         Set-Error -Label $lblImmatError -Message $msg
@@ -375,11 +335,6 @@ function Show-VehiculeForm {
         if (-not [string]::IsNullOrWhiteSpace($raw)) {
             if ($raw.Length -gt 17 -or $raw -notmatch '^[A-Za-z0-9]*$') {
                 $msg = "VIN invalide (17 caractères)"
-            } else {
-                $normalized = $raw.Trim().ToUpperInvariant()
-                if ($normalized.Length -eq 17) {
-                    $msg = Get-ChassisError $normalized
-                }
             }
         }
         Set-Error -Label $lblChassisError -Message $msg

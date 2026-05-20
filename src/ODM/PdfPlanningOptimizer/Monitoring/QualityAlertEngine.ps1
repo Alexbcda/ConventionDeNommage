@@ -45,9 +45,21 @@ function script:Invoke-QualityAlertEngine {
         }
     }
 
-    if (($missingCidPct -gt 20.0) -or ([int]$Metrics.ExcelClientsWithoutId -gt 0)) {
-        Write-Host "[EXCEL-CORRUPTION-SUSPECTED]"
+    # --- Excel : corruption structurelle vs qualite donnees ---
+    $excelNoIdCount = [int]$Metrics.ExcelClientsWithoutId
+    $totalExcelClients = [int]$Metrics.ExcelClientCount
+    Write-Host ("[EXCEL-DIAG] MissingClientIdPct={0:N2}% ExcelClientsWithoutId={1} TotalExcelClients={2}" -f $missingCidPct, $excelNoIdCount, $totalExcelClients)
+
+    $hasExcelStructureError = ($null -ne $Metrics.PSObject.Properties['ExcelStructureError']) -and
+                              (-not [string]::IsNullOrWhiteSpace([string]$Metrics.ExcelStructureError))
+    if ($hasExcelStructureError) {
+        Write-Host ("[EXCEL-CORRUPTION-REAL] {0}" -f [string]$Metrics.ExcelStructureError)
     }
+    elseif ($missingCidPct -gt 20.0) {
+        Write-Host ("[EXCEL-DATA-QUALITY-WARN] MissingClientIdPct={0:N2}% (seuil=20%) ExcelClientsWithoutId={1} TotalExcelClients={2}" -f $missingCidPct, $excelNoIdCount, $totalExcelClients)
+    }
+
+    # --- PDF : groupes invalides / taux erreur ---
     if (([int]$Metrics.InvalidWorkOrderGroups -gt 0) -or (([double]$Metrics.ErrorRatioPercent) -gt 30.0)) {
         Write-Host "[PDF-CORRUPTION-SUSPECTED]"
     }
