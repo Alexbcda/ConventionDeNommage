@@ -248,45 +248,6 @@ function Format-CnsFrenchLongDateForCoverLabels {
     return $s
 }
 
-function Get-CnsTourneeSpecialFlagDisplayLine {
-    <#
-    .SYNOPSIS
-        Libelle ASCII pour page de garde Helvetica (pas d'accents ; Type interne peut rester Unicode).
-    #>
-    param($Flag)
-    if ($null -eq $Flag) { return '' }
-    [string]$t = ''
-    [string]$c = ''
-    try { $t = [string]$Flag.Type } catch { }
-    try {
-        if ($null -ne $Flag.Client) { $c = [string]$Flag.Client }
-    }
-    catch { }
-    $c = (Sanitize-CnsCoverTextForGhostscript -Text $c)
-    switch -Regex ($t) {
-        '^DEEE$' {
-            if ([string]::IsNullOrWhiteSpace($c)) { return 'Collecte DEEE' }
-            return ("Collecte DEEE - Client: {0}" -f $c)
-        }
-        '^Piles$' {
-            if ([string]::IsNullOrWhiteSpace($c)) { return 'Collecte de piles' }
-            return ("Collecte de piles - Client: {0}" -f $c)
-        }
-        '^Néon$|^Neon$' {
-            if ([string]::IsNullOrWhiteSpace($c)) { return 'Collecte tubes neon' }
-            return ("Collecte tubes neon - Client: {0}" -f $c)
-        }
-        '^Destruction confidentielle$' {
-            if ([string]::IsNullOrWhiteSpace($c)) { return 'Destruction confidentielle' }
-            return ("Destruction confidentielle - Client: {0}" -f $c)
-        }
-        default {
-            if ([string]::IsNullOrWhiteSpace($c)) { return $t }
-            return ("{0} - Client: {1}" -f $t, $c)
-        }
-    }
-}
-
 function Build-CnsCoverTextLinesPostScriptAppend {
     param(
         [AllowNull()]
@@ -553,33 +514,6 @@ function Resolve-CnsWorkOrderEntityForStep5 {
 
     Write-Host ("[STEP5-FAILED] No WorkOrder found (FinalOrder={0}, RawPage={1})." -f $fo, $rawPn) -ForegroundColor Yellow
     return $null
-}
-
-function Build-CnsTourneeSpecialFlagsPostScriptAppend {
-    param(
-        [AllowNull()]
-        [AllowEmptyCollection()]
-        [object[]]$SpecialFlags,
-        [Parameter(Mandatory = $true)]
-        [int]$StartY,
-        [Parameter(Mandatory = $true)]
-        [int]$LineStep,
-        [Parameter(Mandatory = $true)]
-        [int]$MinY
-    )
-    $parts = New-Object System.Collections.Generic.List[string]
-    [int]$y = $StartY
-    foreach ($sf in @($SpecialFlags)) {
-        if ($null -eq $sf) { continue }
-        $line = Get-CnsTourneeSpecialFlagDisplayLine -Flag $sf
-        if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        $lit = ConvertTo-CnsPsHelveticaParenBody -Text $line
-        [void]$parts.Add("/Helvetica findfont 10 scalefont setfont`n50 $y moveto`n($lit) show")
-        $y -= $LineStep
-        if ($y -lt $MinY) { break }
-    }
-    if ($parts.Count -lt 1) { return '' }
-    return (($parts.ToArray()) -join "`n")
 }
 
 function New-CnsTourneeHeaderCoverPdf {
@@ -1070,12 +1004,6 @@ function Invoke-PlanningTourneePdfCoverComposition {
             $foToLine[[int]$ln.FinalOrder] = $ln
         }
         catch { }
-    }
-
-    $unmatchedLines = @($Reordered | Where-Object { $_ -ne $null -and $_.Source -eq 'PdfFallback' })
-    $uniqUnmPag = New-Object System.Collections.Generic.HashSet[int]
-    foreach ($u in @($unmatchedLines)) {
-        try { [void]$uniqUnmPag.Add([int]$u.PageNumber) } catch { }
     }
 
     $blocks = @(Build-PlanningTourneeCoverBlocks -SortedGsPairs $SortedGsPairs -FinalOrderToLine $foToLine -ExcelOrderIndexToSegmentIndex $orderToSeg)
