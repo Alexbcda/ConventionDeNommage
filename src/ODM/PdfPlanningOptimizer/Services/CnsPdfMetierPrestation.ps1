@@ -62,6 +62,11 @@ function Get-CnsPdfOdmPageTextContent {
         }
         catch { }
         try {
+            $cid = [string]$src.ClientID
+            if (-not [string]::IsNullOrWhiteSpace($cid)) { [void]$parts.Add($cid) }
+        }
+        catch { }
+        try {
             $wk = [string]$src.WorkOrder
             if (-not [string]::IsNullOrWhiteSpace($wk)) { [void]$parts.Add($wk) }
         }
@@ -85,7 +90,166 @@ function Get-CnsPdfOdmPageTextContent {
             }
         }
     }
-    return (($parts.ToArray()) -join "`n")
+    return (($parts.ToArray()) -join ' ')
+}
+
+function ConvertTo-CnsCeaDetectionNormalizedText {
+    <#
+    .SYNOPSIS
+        Normalisation CEA (STEP 5 / frag) : lowercase, accents, N°/No/#, ponctuation, espaces.
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Text)
+    if ($null -eq $Text) { return '' }
+    $t = ([string]$Text).Trim()
+    if ($t.Length -lt 1) { return '' }
+    $t = ($t -replace '[\r\n]+', ' ')
+    $t = ConvertTo-CnsMetierMatchNormalizedText -Text $t
+    $t = [regex]::Replace($t, '(?i)\b(n°|no|#)\b', ' n ')
+    $t = [regex]::Replace($t, 'n\s*[°º#o]\s*', 'n ')
+    $t = [regex]::Replace($t, '[^a-z0-9\s]', ' ')
+    $t = [regex]::Replace($t, '\s+', ' ')
+    return $t.Trim()
+}
+
+function Get-CnsCeaPageSignalsFromNormalizedText {
+    <#
+    .SYNOPSIS
+        Signaux CEA independants sur texte page normalise (STEP 5 frag) — pas de phrase complete requise.
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$NormalizedText)
+    if ([string]::IsNullOrWhiteSpace($NormalizedText)) {
+        return [pscustomobject]@{
+            HasCEA  = $false
+            HasID   = $false
+            HasSLE  = $false
+            IsCea   = $false
+        }
+    }
+
+    $norm = [string]$NormalizedText
+    $digitsOnly = [regex]::Replace($norm, '[^0-9]', '')
+
+    $hasCEA = ($norm -match 'cea')
+    $hasID = ($norm -match '24531') -or ($norm -match '24 531') -or ($digitsOnly -match '24531')
+    $hasSLE = ($norm -match 'sle') -or
+        ($norm -match 'service logistique et environnement') -or
+        ($norm -match 'service logistique')
+
+    return [pscustomobject]@{
+        HasCEA = [bool]$hasCEA
+        HasID  = [bool]$hasID
+        HasSLE = [bool]$hasSLE
+        IsCea  = ([bool]$hasCEA -and [bool]$hasID -and [bool]$hasSLE)
+    }
+}
+
+function Test-CnsCeaNormalizedTextIsCeaPoint {
+    <#
+    .SYNOPSIS
+        Point CEA : signal1 (cea) ET signal2 (24531) ET signal3 (sle / service logistique / service logistique et environnement).
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$NormalizedText)
+    $sig = Get-CnsCeaPageSignalsFromNormalizedText -NormalizedText $NormalizedText
+    return [bool]$sig.IsCea
+}
+
+function Get-CnsStep5PdftotextExecutable {
+    <#
+    .SYNOPSIS
+        Délègue à Get-ResolvedPdfToTextPath (PdfExtractor) — même binaire que STEP 1–4.
+    #>
+    if (-not (Get-Command Get-ResolvedPdfToTextPath -ErrorAction SilentlyContinue)) {
+        $_cnsPdfExtractor = Join-Path $PSScriptRoot '..\Extractors\PdfExtractor.ps1'
+        if (Test-Path -LiteralPath $_cnsPdfExtractor) {
+            . $_cnsPdfExtractor
+        }
+    }
+    try {
+        $p = Get-ResolvedPdfToTextPath
+        if (-not [string]::IsNullOrWhiteSpace($p) -and (Test-Path -LiteralPath $p -PathType Leaf)) {
+            return ([System.IO.Path]::GetFullPath($p))
+        }
+    }
+    catch { }
+    return $null
+}
+
+function Get-CnsStep5PdftotextLinesFromSinglePagePdf {
+    <#
+    .SYNOPSIS
+        STEP 5 uniquement : texte brut d'une page ODM (slice PDF mono-page du frag).
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SinglePagePdfPath
+    )
+    if ([string]::IsNullOrWhiteSpace($SinglePagePdfPath)) { return @() }
+    if (-not (Test-Path -LiteralPath $SinglePagePdfPath -PathType Leaf)) { return @() }
+
+    $exe = Get-CnsStep5PdftotextExecutable
+    if ([string]::IsNullOrWhiteSpace($exe)) {
+        Write-Warning '[STEP5-CEA] pdftotext introuvable — detection CEA frag impossible.'
+        return @()
+    }
+
+    $pdfAbs = [System.IO.Path]::GetFullPath($SinglePagePdfPath)
+    foreach ($extra in @(@('-layout'), @())) {
+        $tempOut = [System.IO.Path]::GetTempFileName()
+        try {
+            $args = @('-f', '1', '-l', '1', '-enc', 'UTF-8', '-q') + $extra + @($pdfAbs, $tempOut)
+            $null = & $exe @args 2>$null
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $tempOut)) { continue }
+            $lines = @(Get-Content -LiteralPath $tempOut -Encoding UTF8 -ErrorAction SilentlyContinue)
+            $out = @($lines | ForEach-Object { if ($null -eq $_) { '' } else { [string]$_ } })
+            if ($out.Count -gt 0) { return $out }
+        }
+        catch { }
+        finally {
+            Remove-Item -LiteralPath $tempOut -Force -ErrorAction SilentlyContinue
+        }
+    }
+    return @()
+}
+
+function Test-CnsPdfFragPageRequiresCeaDocument {
+    <#
+    .SYNOPSIS
+        Detection CEA par signaux sur texte page concatene (lignes pdftotext du slice frag STEP 5).
+    #>
+    param(
+        [AllowEmptyCollection()]
+        [string[]]$RawLines
+    )
+    if ($null -eq $RawLines -or $RawLines.Count -lt 1) { return $false }
+    $continuous = (($RawLines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' ')
+    if ([string]::IsNullOrWhiteSpace($continuous)) { return $false }
+    $norm = ConvertTo-CnsCeaDetectionNormalizedText -Text $continuous
+    return (Test-CnsCeaNormalizedTextIsCeaPoint -NormalizedText $norm)
+}
+
+function Test-CnsStep5FragSliceRequiresCeaDocument {
+    <#
+    .SYNOPSIS
+        Detection CEA STEP 5 par signaux : pdftotext du slice ODM dans frag (seule source autorisee).
+    #>
+    param(
+        [AllowNull()][AllowEmptyString()][string]$FragSlicePdfPath
+    )
+    if ([string]::IsNullOrWhiteSpace($FragSlicePdfPath)) { return $false }
+    if (-not (Test-Path -LiteralPath $FragSlicePdfPath -PathType Leaf)) { return $false }
+    $rawLines = @(Get-CnsStep5PdftotextLinesFromSinglePagePdf -SinglePagePdfPath $FragSlicePdfPath)
+    $isCea = (Test-CnsPdfFragPageRequiresCeaDocument -RawLines $rawLines)
+    if ($isCea) {
+        Write-Host ("[STEP5-CEA] Signaux CEA valides sur slice frag : {0}" -f (Split-Path -Leaf $FragSlicePdfPath)) -ForegroundColor DarkCyan
+    }
+    return $isCea
+}
+
+function Test-CnsStep5PageRequiresCeaDocument {
+    param(
+        [AllowNull()][AllowEmptyString()][string]$FragSlicePdfPath
+    )
+    return (Test-CnsStep5FragSliceRequiresCeaDocument -FragSlicePdfPath $FragSlicePdfPath)
 }
 
 function Get-CnsPdfPageClientDisplayName {
@@ -169,17 +333,6 @@ function Test-CnsPdfPageRequiresDestructionCertificate {
         if ($odmBase2 -eq $baseId) { return $true }
     }
     return $false
-}
-
-function Test-CnsPdfPageRequiresCeaDocument {
-    param(
-        [AllowNull()] $PageEntity,
-        [AllowNull()] $WorkOrderEntity
-    )
-    $text = Get-CnsPdfOdmPageTextContent -PageEntity $PageEntity -WorkOrderEntity $WorkOrderEntity
-    $norm = ConvertTo-CnsMetierMatchNormalizedText -Text $text
-    if ([string]::IsNullOrWhiteSpace($norm)) { return $false }
-    return ($norm -match 'cea\s*-\s*service\s+logistique\s+et\s+environnement\s*\(\s*sle\s*\)\s*-\s*n[°o]?\s*24531')
 }
 
 function Get-CnsPdfPageTrackDechetEntries {
@@ -276,7 +429,7 @@ function Get-CnsPdfPageMetierAnalysis {
     $needsCert = Test-CnsPdfPageRequiresDestructionCertificate -PageEntity $PageEntity -WorkOrderEntity $WorkOrderEntity
     return [pscustomobject]@{
         RequiresDestructionCertificate = $needsCert
-        RequiresCeaDocument            = (Test-CnsPdfPageRequiresCeaDocument -PageEntity $PageEntity -WorkOrderEntity $WorkOrderEntity)
+        RequiresCeaDocument            = $false
         TrackDechetEntries             = @(Get-CnsPdfPageTrackDechetEntries -PageEntity $PageEntity -WorkOrderEntity $WorkOrderEntity)
         DestructionMemoClient          = if ($needsCert) { $client } else { $null }
     }
