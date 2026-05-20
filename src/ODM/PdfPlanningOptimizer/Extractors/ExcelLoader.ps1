@@ -42,6 +42,72 @@ function script:Get-CellDisplayText {
     return ''
 }
 
+function Test-ExcelFileIntegrity {
+    <#
+    .SYNOPSIS
+        Validation binaire d'un fichier .xlsx/.xlsm : magic bytes (PK/ZIP), structure ZIP lisible,
+        presence d'au moins un worksheet dans xl/worksheets/. Ne charge pas EPPlus/ImportExcel.
+    .OUTPUTS
+        PSCustomObject avec MagicBytesOk, ZipStructureOk, HasWorksheets, IsValid, Error.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+    $result = [pscustomobject]@{
+        Path           = $Path
+        MagicBytesOk   = $false
+        ZipStructureOk = $false
+        HasWorksheets  = $false
+        IsValid        = $false
+        FileSizeBytes  = 0
+        Error          = $null
+    }
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        $result.Error = "Fichier introuvable: $Path"
+        return $result
+    }
+    try {
+        $fi = Get-Item -LiteralPath $Path
+        $result.FileSizeBytes = $fi.Length
+        if ($fi.Length -lt 22) {
+            $result.Error = "Fichier trop petit pour un ZIP valide ($($fi.Length) octets)"
+            return $result
+        }
+
+        $fs = [System.IO.File]::OpenRead($fi.FullName)
+        try {
+            $header = [byte[]]::new(4)
+            [void]$fs.Read($header, 0, 4)
+        }
+        finally { $fs.Dispose() }
+
+        $result.MagicBytesOk = ($header[0] -eq 0x50 -and $header[1] -eq 0x4B -and $header[2] -eq 0x03 -and $header[3] -eq 0x04)
+        if (-not $result.MagicBytesOk) {
+            $result.Error = ("Signature invalide: {0} (attendu: 50-4B-03-04 / PK)" -f [BitConverter]::ToString($header))
+            return $result
+        }
+
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($fi.FullName)
+        try {
+            $result.ZipStructureOk = $true
+            $wsEntries = @($zip.Entries | Where-Object { $_.FullName -like 'xl/worksheets/*' -and $_.FullName -notlike '*/' })
+            $result.HasWorksheets = ($wsEntries.Count -gt 0)
+        }
+        finally { $zip.Dispose() }
+
+        $result.IsValid = $result.MagicBytesOk -and $result.ZipStructureOk -and $result.HasWorksheets
+        if (-not $result.HasWorksheets) {
+            $result.Error = "Archive ZIP valide mais aucun worksheet dans xl/worksheets/"
+        }
+    }
+    catch {
+        $result.Error = $_.Exception.Message
+    }
+    return $result
+}
+
 function script:Import-ExcelWorkbookToGrids {
     <#
     .SYNOPSIS
@@ -212,22 +278,17 @@ function Import-PlanningExcel {
         return (Import-PlanningFromCsv -Path $ExcelPath)
     }
 
+    $integrity = Test-ExcelFileIntegrity -Path $ExcelPath
+    if (-not $integrity.IsValid) {
+        $detail = if ($null -ne $integrity.Error) { $integrity.Error } else { 'verification echouee' }
+        Write-Host ("[EXCEL-INTEGRITY-CHECK] FAIL — {0} (Size={1})" -f $detail, $integrity.FileSizeBytes) -ForegroundColor Red
+        throw "[ExcelLoader] Fichier structurellement invalide (pas un classeur OOXML valide): $detail"
+    }
+    Write-Host ("[EXCEL-INTEGRITY-CHECK] OK — MagicBytes=PK ZIP=OK Worksheets=OK Size={0}" -f $integrity.FileSizeBytes) -ForegroundColor DarkGray
+
     Ensure-ImportExcelModule
     if ($PSBoundParameters.ContainsKey('Password') -and -not [string]::IsNullOrEmpty($Password)) {
         return (Import-ExcelWorkbookToGrids -Path $ExcelPath -Password $Password)
     }
     return (Import-ExcelWorkbookToGrids -Path $ExcelPath)
-}
-
-function Import-PlanningExcelData {
-    <#
-    .SYNOPSIS
-        Alias sémantique (pipelines orchestre / tests) : même contenu qu’Import-PlanningExcel.
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ExcelPath
-    )
-    return (Import-PlanningExcel -ExcelPath $ExcelPath)
 }

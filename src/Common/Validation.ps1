@@ -30,12 +30,6 @@ function Format-Telephone {
             $digits.Substring(8,2))
 }
 
-function Test-Telephone {
-    param([string]$Telephone)
-    $formatted = Format-Telephone $Telephone
-    return ($null -ne $formatted -and $formatted -ne "")
-}
-
 function Normalize-Email {
     param([string]$Email)
     if ($null -eq $Email) { return "" }
@@ -111,11 +105,75 @@ function Normalize-Whitespace {
     return $t
 }
 
+function Test-TelephoneValide {
+    param([string]$Telephone)
+    if ([string]::IsNullOrWhiteSpace($Telephone)) { return $true }
+    $formatted = Format-Telephone $Telephone
+    return ($null -ne $formatted)
+}
+
+<#
+Conversion date YYYY-MM-DD (BDD) <-> dd/MM/yyyy (affichage FR).
+#>
+function Convert-DbToFrDate {
+    param([string]$DateUs)
+    if ([string]::IsNullOrWhiteSpace($DateUs)) { return "" }
+    try {
+        return ([datetime]::ParseExact($DateUs, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture)).ToString("dd/MM/yyyy")
+    } catch {
+        return $DateUs
+    }
+}
+
+function Convert-FrToDbDate {
+    param([string]$DateFr)
+    if ([string]::IsNullOrWhiteSpace($DateFr)) { return $null }
+    try {
+        $dt = [datetime]::ParseExact($DateFr, "dd/MM/yyyy", [System.Globalization.CultureInfo]::InvariantCulture)
+        return $dt.ToString("yyyy-MM-dd")
+    } catch {
+        return $null
+    }
+}
+
+function Test-DateFr {
+    param([string]$DateStr)
+    return ($null -ne (Convert-FrToDbDate $DateStr))
+}
+
 function Format-Nom {
     param([string]$Nom)
     $n = Normalize-Whitespace $Nom
     if ([string]::IsNullOrWhiteSpace($n)) { return "" }
     return $n.ToUpperInvariant()
+}
+
+function Test-StringLength {
+    param([string]$Value, [int]$Min = 0, [int]$Max = [int]::MaxValue)
+    if ($null -eq $Value) { return ($Min -le 0) }
+    $len = $Value.Trim().Length
+    return ($len -ge $Min -and $len -le $Max)
+}
+
+function Assert-RequiredString {
+    param([string]$FieldName, [string]$Value, [int]$MaxLength = 200)
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        throw "$FieldName est obligatoire."
+    }
+    if ($Value.Trim().Length -gt $MaxLength) {
+        throw "$FieldName depasse la longueur maximale ($MaxLength caracteres)."
+    }
+    if (-not (Test-SecuriteInput $Value)) {
+        throw "$FieldName contient des caracteres interdits."
+    }
+}
+
+function Assert-EntityId {
+    param([string]$EntityName, $Id)
+    if ($null -eq $Id -or "$Id" -notmatch '^\d+$') {
+        throw "Identifiant $EntityName invalide."
+    }
+    return [int]$Id
 }
 
 function Format-Prenom {

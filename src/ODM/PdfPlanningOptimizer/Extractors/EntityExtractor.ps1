@@ -585,41 +585,6 @@ function Reset-PdfExtractionScoringSession {
     }
 }
 
-function Write-PdfExtractionScoringSessionGlobalReport {
-    <#
-    Affiche le score moyen sur toutes les pages comptabilisées depuis le dernier Reset. Sans effet si PDF_SCORING≠1.
-    #>
-    if ($env:PDF_SCORING -ne '1') { return }
-    $s = $script:PdfExtractionScoringState
-    if ($null -eq $s -or $s.NbPages -eq 0) {
-        Write-Host ''
-        Write-Host "=============================="
-        Write-Host "PDF EXTRACTION SCORE GLOBAL"
-        Write-Host "=============================="
-        Write-Host "TotalScore  : 0 / 0"
-        Write-Host "Pages       : 0"
-        Write-Host "Moyenne     : n/a  (appeler ConvertTo-PageEntity avec pages ou reinitialiser la session)"
-        Write-Host "Pages faibles (<70) : aucune"
-        Write-Host "=============================="
-        Write-Host ''
-        return
-    }
-    $avg = [Math]::Round($s.TotalScore / $s.NbPages, 1)
-    $weak = @($s.WeakPageNumbers) -join ', '
-    if ([string]::IsNullOrWhiteSpace($weak)) { $weak = 'aucune' }
-    $maxTotal = 100 * $s.NbPages
-    Write-Host ''
-    Write-Host "=============================="
-    Write-Host "PDF EXTRACTION SCORE GLOBAL"
-    Write-Host "=============================="
-    Write-Host ("TotalScore  : {0} / {1}" -f $s.TotalScore, $maxTotal)
-    Write-Host ("Pages       : {0}" -f $s.NbPages)
-    Write-Host ("Moyenne     : {0} / 100" -f $avg)
-    Write-Host "Pages faibles (<70) : $weak"
-    Write-Host "=============================="
-    Write-Host ''
-}
-
 function script:Test-IsPlanningScheduleLine {
     param([string]$Line)
     if ([string]::IsNullOrWhiteSpace($Line)) { return $false }

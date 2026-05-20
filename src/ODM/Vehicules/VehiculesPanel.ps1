@@ -4,11 +4,36 @@
 #   id: string|number ; numero_parc ; immatriculation ; numero_chassis ; actif: 0|1 ; …
 
 . "$PSScriptRoot\..\..\Common\Styles.ps1"
+. "$PSScriptRoot\..\..\Common\WinFormsHelpers.ps1"
 . "$PSScriptRoot\..\..\Core\Logger.ps1"
-. "$PSScriptRoot\VehiculesRepository.ps1"
+. "$PSScriptRoot\..\..\Services\VehiculeService.ps1"
 . "$PSScriptRoot\VehiculesForm.ps1"
 
-$script:DebugVehiculesUI = $false
+function Invoke-EditVehicule {
+    param([Parameter(Mandatory=$true)] $Id, [Parameter(Mandatory=$true)] $Grid)
+    $vehiculeComplet = Get-VehiculeDetails -Id $Id
+    if (-not $vehiculeComplet) { return }
+    $vehiculeData = ConvertTo-VehiculeFormData $vehiculeComplet
+    $owner = $Grid.FindForm()
+    $modifie = Show-VehiculeForm -Mode "Modifier" -Vehicule $vehiculeData -Owner $owner
+    if ($modifie) {
+        Update-VehiculeEntry `
+            -Id $Id `
+            -NumeroParc $modifie.numeroParc `
+            -Immatriculation $modifie.immatriculation `
+            -NumeroChassis $modifie.numeroChassis `
+            -Marque $modifie.marque `
+            -Modele $modifie.modele `
+            -DateMiseCirculation $modifie.dateMiseCirculation `
+            -DateControle $modifie.dateControle `
+            -DateEntree $modifie.dateEntree `
+            -DateSortie $modifie.dateSortie `
+            -DateFinControleTechnique $modifie.dateFinControleTechnique | Out-Null
+        $chk = $Grid.Parent.Controls["chkHistoriqueVehicules"]
+        $empty = $Grid.Parent.Controls["lblVehiculesEmpty"]
+        Refresh-VehiculesGrid -Grid $Grid -IncludeHistorique $chk.Checked -EmptyStateLabel $empty
+    }
+}
 
 function Refresh-VehiculesGrid {
     <#
@@ -37,15 +62,9 @@ function Refresh-VehiculesGrid {
 
         # Une seule lecture DB selon le mode
         $vehicules = @(
-            if ($IncludeHistorique) { Get-AllVehicules } else { Get-Vehicules }
+            if ($IncludeHistorique) { Get-VehiculeList -IncludeInactive } else { Get-VehiculeList }
         )
         Write-Log "[VehiculesUI] RefreshGrid loaded vehicles" "INFO" @{ count = $vehicules.Count }
-
-        # Style texte: actifs en police normale, inactifs en gris clair
-        $baseFont = $script:PoliceNormal
-        if (-not $baseFont) { $baseFont = (if ($Grid.DefaultCellStyle.Font) { $Grid.DefaultCellStyle.Font } else { $Grid.Font }) }
-        $normalFont = [System.Drawing.Font]::new($baseFont, ([System.Drawing.FontStyle]::Regular))
-        $inactiveColor = [System.Drawing.Color]::FromArgb(150, 150, 150)
 
         $i = 0
         foreach ($v in $vehicules) {
@@ -58,15 +77,7 @@ function Refresh-VehiculesGrid {
             $Grid.Rows[$i].Cells[$Grid.Columns["Delete"].Index].Value = "🗑️"
             $Grid.Rows[$i].Tag = $v.id
 
-            $isActif = ([int]$v.actif -eq 1)
-            $Grid.Rows[$i].DefaultCellStyle.Font = $normalFont
-            if (-not $isActif) {
-                $Grid.Rows[$i].DefaultCellStyle.ForeColor = $inactiveColor
-            } else {
-                $Grid.Rows[$i].DefaultCellStyle.ForeColor = $Grid.DefaultCellStyle.ForeColor
-            }
-
-            try { Apply-AlternateRowColor -Grid $Grid -RowIndex $i -Row $i } catch {}
+            Set-CrudGridRowStyle -Grid $Grid -RowIndex $i -IsActif ([int]$v.actif -eq 1)
             $i++
         }
 
@@ -93,103 +104,23 @@ function Refresh-VehiculesGrid {
 }
 
 function Show-VehiculesPanel {
-    param(
-        [array]$Vehicules = $null  # Gardé pour compatibilité, mais on utilise Get-Vehicules/Get-AllVehicules
-    )
 
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
-    $mainPanel = [System.Windows.Forms.Panel]::new()
-    $mainPanel.Dock = "Fill"
-    $mainPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
-    $mainPanel.Padding = [System.Windows.Forms.Padding]::new(20)
+    $header = New-CrudPanelHeader -Title $script:TitrePanelVehicules -HistoriqueLabel "Afficher l'historique des véhicules" -CheckboxName "chkHistoriqueVehicules" -ButtonText "Ajouter un véhicule" -ButtonWidth 220
+    $mainPanel = $header.Panel
+    $chkHistoriqueVehicules = $header.Checkbox
+    $btnAjouter = $header.Button
 
-    # ===== TITRE =====
-    $lblTitle = [System.Windows.Forms.Label]::new()
-    $lblTitle.Text = $script:TitrePanelVehicules
-    $lblTitle.Font = $script:PoliceTitreGestionFenetre
-    $lblTitle.ForeColor = $script:CouleurOrange
-    $lblTitle.Location = [System.Drawing.Point]::new(20, 20)
-    $lblTitle.Size = [System.Drawing.Size]::new(400, 50)
-    $mainPanel.Controls.Add($lblTitle)
-
-    # ===== Option historique (actifs + inactifs) — même ordre que AgentPanel =====
-    $lblHistorique = [System.Windows.Forms.Label]::new()
-    $lblHistorique.Text = "Afficher l’historique des véhicules"
-    $lblHistorique.Font = $script:PoliceLabelSecondaireFenetre
-    $lblHistorique.ForeColor = $script:CouleurTexteSecondairePanel
-    $lblHistorique.Location = [System.Drawing.Point]::new(20, 77)
-    $lblHistorique.Size = [System.Drawing.Size]::new(260, 20)
-    $mainPanel.Controls.Add($lblHistorique)
-
-    $chkHistoriqueVehicules = [System.Windows.Forms.CheckBox]::new()
-    $chkHistoriqueVehicules.Name = "chkHistoriqueVehicules"
-    $chkHistoriqueVehicules.Location = [System.Drawing.Point]::new(285, 78)
-    $chkHistoriqueVehicules.Size = [System.Drawing.Size]::new(20, 20)
-    $chkHistoriqueVehicules.Checked = $false
-    $chkHistoriqueVehicules.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $mainPanel.Controls.Add($chkHistoriqueVehicules)
-
-    $btnAjouter = [System.Windows.Forms.Button]::new()
-    $btnAjouter.Text = "Ajouter un véhicule"
-    $btnAjouter.Location = [System.Drawing.Point]::new(900, 20)
-    $btnAjouter.Size = [System.Drawing.Size]::new(200, 45)
-    Set-BtnAjouterStyle -BtnAjouter $btnAjouter
-    $btnAjouter.Text = "Ajouter un véhicule"
-    $btnAjouter.Size = [System.Drawing.Size]::new(220, 45)
-    $btnAjouter.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $mainPanel.Controls.Add($btnAjouter)
-
-    # ===== DATA GRID =====
-    $grid = [System.Windows.Forms.DataGridView]::new()
-    $grid.Name = "VehiculesGrid"
-    # [UI] DataGridView fixed to responsive Fill layout (charte AgentPanel)
-    $grid.Location = [System.Drawing.Point]::new(20, 110)
-    $grid.Size = [System.Drawing.Size]::new(1100, 560)
-    $grid.Anchor = "Top,Bottom,Left,Right"
-    $grid.AllowUserToAddRows = $false
-    $grid.RowHeadersVisible = $false
-    $grid.BackgroundColor = [System.Drawing.Color]::White
-    $grid.SelectionMode = "FullRowSelect"
-    $grid.BorderStyle = "FixedSingle"
-    $grid.ScrollBars = [System.Windows.Forms.ScrollBars]::Both
-    $grid.AutoSizeColumnsMode = "None"
-    $grid.AutoGenerateColumns = $false
-    $grid.AllowUserToResizeColumns = $true
-    Set-GridStyle -Grid $grid
-
-    # Double buffering pour réduire le flickering
-    try {
-        $prop = $grid.GetType().GetProperty("DoubleBuffered", [System.Reflection.BindingFlags] "Instance,NonPublic")
-        if ($prop) { $prop.SetValue($grid, $true, $null) }
-    } catch {}
-
-    # Lignes alternées
-    $grid.DefaultCellStyle.BackColor = $script:CouleurGrisClair
-    $grid.AlternatingRowsDefaultCellStyle.BackColor = $script:CouleurLigneAlternee
-    $grid.DefaultCellStyle.SelectionBackColor = $script:CouleurSelection
-    $grid.DefaultCellStyle.SelectionForeColor = $script:CouleurBlanc
-    $grid.ColumnHeadersHeightSizeMode = "AutoSize"
-    $grid.ColumnHeadersDefaultCellStyle.WrapMode = [System.Windows.Forms.DataGridViewTriState]::False
-
-    # Colonnes affichées (ordre): N° parc, Immatriculation, Numéro de châssis, Fin CT, Modifier, Supprimer
-    $grid.Columns.Clear()
-    $null = $grid.Columns.Add("NumeroParc", "N° parc")
-    $null = $grid.Columns.Add("Immatriculation", "Immatriculation")
-    $null = $grid.Columns.Add("NumeroChassis", "Numéro de châssis")
-    $null = $grid.Columns.Add("DateFinControleTechnique", "Contrôle technique (date limite)")
-    $null = $grid.Columns.Add("Edit", "Modifier")
-    $null = $grid.Columns.Add("Delete", "Supprimer")
-
-    $grid.Columns["NumeroParc"].Width = 120
-    $grid.Columns["Immatriculation"].Width = 160
-    $grid.Columns["NumeroChassis"].Width = 230
-    $grid.Columns["DateFinControleTechnique"].Width = 160
-    $grid.Columns["Edit"].Width = 90
-    $grid.Columns["Delete"].Width = 90
-    $grid.Columns["Edit"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleCenter
-    $grid.Columns["Delete"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleCenter
+    $grid = New-CrudDataGrid -Name "VehiculesGrid" -ColumnDefs @(
+        @{ Name = "NumeroParc";               Header = "N° parc";                          Width = 120 },
+        @{ Name = "Immatriculation";          Header = "Immatriculation";                  Width = 160 },
+        @{ Name = "NumeroChassis";            Header = "Numéro de châssis";                Width = 230 },
+        @{ Name = "DateFinControleTechnique"; Header = "Contrôle technique (date limite)"; Width = 160 },
+        @{ Name = "Edit";                     Header = "Modifier";                         Width = 90  },
+        @{ Name = "Delete";                   Header = "Supprimer";                        Width = 90  }
+    )
 
     $mainPanel.Controls.Add($grid)
 
@@ -225,9 +156,6 @@ function Show-VehiculesPanel {
     $btnAjouter.Add_Click({
         try {
             Write-Log "[VehiculesUI] Click add vehicle" "INFO"
-            if ($script:DebugVehiculesUI) {
-                [System.Windows.Forms.MessageBox]::Show("Click: ouverture du formulaire Véhicule", "Debug", "OK", "Information") | Out-Null
-            }
             $owner = $this.FindForm()
             $nouveau = Show-VehiculeForm -Mode "Ajouter" -Owner $owner
             
@@ -236,9 +164,7 @@ function Show-VehiculesPanel {
                 return
             }
 
-            Write-Log "[VehiculesUI] Form data ready" "INFO" @{ ok = $true }
-            
-            $newId = Add-VehiculeWithValidation `
+            $newId = Add-VehiculeEntry `
                 -NumeroParc $nouveau.numeroParc `
                 -Immatriculation $nouveau.immatriculation `
                 -NumeroChassis $nouveau.numeroChassis `
@@ -249,25 +175,14 @@ function Show-VehiculesPanel {
                 -DateEntree $nouveau.dateEntree `
                 -DateSortie $nouveau.dateSortie `
                 -DateFinControleTechnique $nouveau.dateFinControleTechnique
-            
-            Write-Log "[VehiculesUI] Add-VehiculeWithValidation returned" "INFO" @{ id = $newId }
-            
-            if ($script:DebugVehiculesUI) {
-                [System.Windows.Forms.MessageBox]::Show(("Ajout OK (id={0})" -f $newId), "Véhicules", "OK", "Information") | Out-Null
-            }
-            
+            Write-Log "[VehiculesUI] Vehicle added" "INFO" @{ id = $newId }
             $g = $this.Parent.Controls["VehiculesGrid"]
             $chk = $this.Parent.Controls["chkHistoriqueVehicules"]
             $empty = $this.Parent.Controls["lblVehiculesEmpty"]
             Refresh-VehiculesGrid -Grid $g -IncludeHistorique $chk.Checked -EmptyStateLabel $empty
         } catch {
             Write-Log "[VehiculesUI] Add vehicle failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
-            [System.Windows.Forms.MessageBox]::Show(
-                ("Erreur lors de l'ajout du véhicule:`n`n{0}" -f $_.Exception.Message),
-                "Erreur",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Error
-            ) | Out-Null
+            Show-CrudErrorDialog -OperationLabel "l'ajout du véhicule" -ErrorMessage $_.Exception.Message
         }
     })
 
@@ -275,65 +190,22 @@ function Show-VehiculesPanel {
     $grid.Add_CellClick({
         param($sender, $e)
 
-        if (-not $sender) { return }
-        if (-not $e) { return }
-        if ($e.RowIndex -lt 0) { return }
-        if ($e.ColumnIndex -lt 0) { return }
-        if ($e.RowIndex -ge $sender.Rows.Count) { return }
-
-        $row = $sender.Rows[$e.RowIndex]
+        $row = Test-CellClickGuards -Sender $sender -EventArgs $e
         if (-not $row) { return }
-        if ($null -eq $row.Tag) { return }
 
         $id = $row.Tag
         $editCol = $sender.Columns["Edit"].Index
         $delCol = $sender.Columns["Delete"].Index
 
         if ($e.ColumnIndex -eq $editCol) {
-            $vehiculeComplet = Get-VehiculeById -Id $id
-            if (-not $vehiculeComplet) { return }
-
-            $vehiculeData = @{
-                id = $vehiculeComplet.id
-                numeroParc = $vehiculeComplet.numero_parc
-                immatriculation = $vehiculeComplet.immatriculation
-                numeroChassis = $vehiculeComplet.numero_chassis
-                marque = $vehiculeComplet.marque
-                modele = $vehiculeComplet.modele
-                dateMiseCirculation = $vehiculeComplet.date_mise_circulation
-                dateControle = $vehiculeComplet.date_controle
-                dateEntree = $vehiculeComplet.date_entree
-                dateSortie = $vehiculeComplet.date_sortie
-                dateFinControleTechnique = $vehiculeComplet.date_fin_controle_technique
-            }
-
-            $owner = $sender.FindForm()
-            $modifie = Show-VehiculeForm -Mode "Modifier" -Vehicule $vehiculeData -Owner $owner
-            if ($modifie) {
-                Update-Vehicule `
-                    -Id $id `
-                    -NumeroParc $modifie.numeroParc `
-                    -Immatriculation $modifie.immatriculation `
-                    -NumeroChassis $modifie.numeroChassis `
-                    -Marque $modifie.marque `
-                    -Modele $modifie.modele `
-                    -DateMiseCirculation $modifie.dateMiseCirculation `
-                    -DateControle $modifie.dateControle `
-                    -DateEntree $modifie.dateEntree `
-                    -DateSortie $modifie.dateSortie `
-                    -DateFinControleTechnique $modifie.dateFinControleTechnique | Out-Null
-
-                $chk = $sender.Parent.Controls["chkHistoriqueVehicules"]
-                $empty = $sender.Parent.Controls["lblVehiculesEmpty"]
-                Refresh-VehiculesGrid -Grid $sender -IncludeHistorique $chk.Checked -EmptyStateLabel $empty
-            }
+            Invoke-EditVehicule -Id $id -Grid $sender
             return
         }
 
         if ($e.ColumnIndex -eq $delCol) {
             $confirm = [System.Windows.Forms.MessageBox]::Show("Supprimer ce véhicule ?", "Confirmation", "YesNo")
             if ($confirm -eq "Yes") {
-                Remove-Vehicule -Id $id | Out-Null
+                Remove-VehiculeEntry -Id $id | Out-Null
                 $chk = $sender.Parent.Controls["chkHistoriqueVehicules"]
                 $empty = $sender.Parent.Controls["lblVehiculesEmpty"]
                 Refresh-VehiculesGrid -Grid $sender -IncludeHistorique $chk.Checked -EmptyStateLabel $empty
@@ -346,21 +218,14 @@ function Show-VehiculesPanel {
     $grid.Add_CellDoubleClick({
         param($sender, $e)
 
-        if (-not $sender) { return }
-        if (-not $e) { return }
-        if ($e.RowIndex -lt 0) { return }
-        if ($e.ColumnIndex -lt 0) { return }
-        if ($e.RowIndex -ge $sender.Rows.Count) { return }
+        $row = Test-CellClickGuards -Sender $sender -EventArgs $e
+        if (-not $row) { return }
 
         try {
             $editCol = $sender.Columns["Edit"].Index
             $delCol = $sender.Columns["Delete"].Index
             if ($e.ColumnIndex -in @($editCol, $delCol)) { return }
         } catch {}
-
-        $row = $sender.Rows[$e.RowIndex]
-        if (-not $row) { return }
-        if ($null -eq $row.Tag) { return }
 
         try {
             $sender.ClearSelection()
@@ -371,52 +236,10 @@ function Show-VehiculesPanel {
         Write-Log "[VehiculesUI] Double-click edit vehicle ID = $id" "INFO"
 
         try {
-            $vehiculeComplet = Get-VehiculeById -Id $id
-            if (-not $vehiculeComplet) { return }
-
-            $vehiculeData = @{
-                id = $vehiculeComplet.id
-                numeroParc = $vehiculeComplet.numero_parc
-                immatriculation = $vehiculeComplet.immatriculation
-                numeroChassis = $vehiculeComplet.numero_chassis
-                marque = $vehiculeComplet.marque
-                modele = $vehiculeComplet.modele
-                dateMiseCirculation = $vehiculeComplet.date_mise_circulation
-                dateControle = $vehiculeComplet.date_controle
-                dateEntree = $vehiculeComplet.date_entree
-                dateSortie = $vehiculeComplet.date_sortie
-                dateFinControleTechnique = $vehiculeComplet.date_fin_controle_technique
-            }
-
-            $owner = $sender.FindForm()
-            $modifie = Show-VehiculeForm -Mode "Modifier" -Vehicule $vehiculeData -Owner $owner
-            
-            if ($modifie) {
-                Update-Vehicule `
-                    -Id $id `
-                    -NumeroParc $modifie.numeroParc `
-                    -Immatriculation $modifie.immatriculation `
-                    -NumeroChassis $modifie.numeroChassis `
-                    -Marque $modifie.marque `
-                    -Modele $modifie.modele `
-                    -DateMiseCirculation $modifie.dateMiseCirculation `
-                    -DateControle $modifie.dateControle `
-                    -DateEntree $modifie.dateEntree `
-                    -DateSortie $modifie.dateSortie `
-                    -DateFinControleTechnique $modifie.dateFinControleTechnique | Out-Null
-                
-                $chk = $sender.Parent.Controls["chkHistoriqueVehicules"]
-                $empty = $sender.Parent.Controls["lblVehiculesEmpty"]
-                Refresh-VehiculesGrid -Grid $sender -IncludeHistorique $chk.Checked -EmptyStateLabel $empty
-            }
+            Invoke-EditVehicule -Id $id -Grid $sender
         } catch {
             Write-Log "[VehiculesUI] Double-click edit failed" "ERROR" @{ id = $id; message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
-            [System.Windows.Forms.MessageBox]::Show(
-                ("Erreur lors de la modification du véhicule:`n`n{0}" -f $_.Exception.Message),
-                "Erreur",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Error
-            ) | Out-Null
+            Show-CrudErrorDialog -OperationLabel "la modification du véhicule" -ErrorMessage $_.Exception.Message
         }
     })
 
