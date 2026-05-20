@@ -865,15 +865,60 @@ Describe 'PdfPlanningOptimizer - tournee cover (prestations speciales ODM)' {
         $a.DestructionMemoClient | Should Be 'EUROFINS LABAZUR'
     }
 
-    It 'Get-CnsPdfPageMetierAnalysis : CEA sans mention garde' {
-        $pe = [pscustomobject]@{
-            ClientName = 'X'
-            Services   = @()
-            Lines      = @('CEA - Service Logistique et Environnement (SLE) - N°24531')
-        }
-        $a = Get-CnsPdfPageMetierAnalysis -PageEntity $pe -WorkOrderEntity $null
-        $a.RequiresCeaDocument | Should Be $true
-        $a.TrackDechetEntries.Count | Should Be 0
+    It 'Test-CnsPdfFragPageRequiresCeaDocument : CEA ligne complete avec tirets' {
+        $lines = @('CEA - Service Logistique et Environnement (SLE) - N°24531')
+        (Test-CnsPdfFragPageRequiresCeaDocument -RawLines $lines) | Should Be $true
+    }
+
+    It 'Test-CnsPdfFragPageRequiresCeaDocument : variante compacte SERVICE LOGISTIQUE SLE' {
+        $lines = @('CEA SERVICE LOGISTIQUE ENVIRONNEMENT SLE 24531')
+        (Test-CnsPdfFragPageRequiresCeaDocument -RawLines $lines) | Should Be $true
+    }
+
+    It 'Test-CnsPdfFragPageRequiresCeaDocument : numero 24 531 espace' {
+        $lines = @('CEA - SLE - N° 24 531')
+        (Test-CnsPdfFragPageRequiresCeaDocument -RawLines $lines) | Should Be $true
+    }
+
+    It 'Test-CnsPdfFragPageRequiresCeaDocument : non-CEA si 24531 seul sans cea' {
+        $lines = @('MAIRIE GRENOBLE 24531')
+        (Test-CnsPdfFragPageRequiresCeaDocument -RawLines $lines) | Should Be $false
+    }
+
+    It 'Test-CnsCeaNormalizedTextIsCeaPoint : refuse cea+24531 sans sle ni service logistique' {
+        (Test-CnsCeaNormalizedTextIsCeaPoint -NormalizedText 'cea collecte 24531') | Should Be $false
+    }
+
+    It 'Test-CnsPdfFragPageRequiresCeaDocument : lignes PDF fragmentees (frag slice)' {
+        $lines = @(
+            'CEA - Service Logistique et'
+            'Environnement (SLE) - N°24531'
+        )
+        (Test-CnsPdfFragPageRequiresCeaDocument -RawLines $lines) | Should Be $true
+    }
+
+    It 'Get-CnsCeaPageSignalsFromNormalizedText : ordre inverse des signaux sur la page' {
+        $norm = ConvertTo-CnsCeaDetectionNormalizedText -Text @(
+            'Environnement (SLE) - N° 24 531',
+            'CEA - Service Logistique et'
+        ) -join ' '
+        $sig = Get-CnsCeaPageSignalsFromNormalizedText -NormalizedText $norm
+        $sig.HasCEA | Should Be $true
+        $sig.HasID | Should Be $true
+        $sig.HasSLE | Should Be $true
+        $sig.IsCea | Should Be $true
+    }
+
+    It 'Get-CnsCeaPageSignalsFromNormalizedText : service logistique et environnement sans mot sle' {
+        $norm = ConvertTo-CnsCeaDetectionNormalizedText -Text 'CEA service logistique et environnement 24531'
+        $sig = Get-CnsCeaPageSignalsFromNormalizedText -NormalizedText $norm
+        $sig.HasSLE | Should Be $true
+        $sig.IsCea | Should Be $true
+    }
+
+    It 'Test-CnsPdfFragPageRequiresCeaDocument : variante No et espaces' {
+        $lines = @('CEA - Service Logistique et Environnement (SLE) - No 24531')
+        (Test-CnsPdfFragPageRequiresCeaDocument -RawLines $lines) | Should Be $true
     }
 
     It 'Get-CnsTourneeMetierMemoLinesForBlock : ordre certificat puis track dechet' {

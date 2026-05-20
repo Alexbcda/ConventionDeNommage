@@ -1191,6 +1191,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                         $pePage = Get-CnsPageEntityByPhysicalPage -PageNumberOneBased $rawPnPage -PdfEntities @($PdfEntities)
                     }
                     $metierPage = Get-CnsPdfPageMetierAnalysis -PageEntity $pePage -WorkOrderEntity $woPage
+                    $requiresCeaPage = Test-CnsStep5FragSliceRequiresCeaDocument -FragSlicePdfPath $slicePath
 
                     if ($metierPage.RequiresDestructionCertificate -and $null -ne $woPage) {
                         $woCacheKey = Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage
@@ -1219,7 +1220,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                         }
                     }
 
-                    if ($metierPage.RequiresCeaDocument -and $rawPnPage -gt 0 -and $ceaInjectedForPage.Add($rawPnPage)) {
+                    if ($requiresCeaPage -and $rawPnPage -gt 0 -and $ceaInjectedForPage.Add($rawPnPage)) {
                         $ceaPdf = Copy-CnsMetierTemplatePdfToWorkDir -TemplateFileName 'CeaPointsDeCollectes.pdf' -WorkDir $tmpDir -DestLeafName ('cea_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
                         if (-not [string]::IsNullOrWhiteSpace($ceaPdf)) {
                             [void]$frag.Add($ceaPdf)
