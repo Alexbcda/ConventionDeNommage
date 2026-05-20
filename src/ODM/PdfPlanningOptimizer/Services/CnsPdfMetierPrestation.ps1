@@ -245,13 +245,6 @@ function Test-CnsStep5FragSliceRequiresCeaDocument {
     return $isCea
 }
 
-function Test-CnsStep5PageRequiresCeaDocument {
-    param(
-        [AllowNull()][AllowEmptyString()][string]$FragSlicePdfPath
-    )
-    return (Test-CnsStep5FragSliceRequiresCeaDocument -FragSlicePdfPath $FragSlicePdfPath)
-}
-
 function Get-CnsPdfPageClientDisplayName {
     param(
         [AllowNull()] $PageEntity,
