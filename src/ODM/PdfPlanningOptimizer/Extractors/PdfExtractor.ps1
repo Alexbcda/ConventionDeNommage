@@ -13,6 +13,10 @@ if (Test-Path -LiteralPath $script:_cnGhostResolve) { . $script:_cnGhostResolve 
 # Observabilité (diagnostic) : $env:PDF_SCORING = "1" sur EntityExtractor\ConvertTo-PageEntity
 # (score par page vs RawLines) + cumul. Avant de parcourir un PDF : Reset-PdfExtractionScoringSession ;
 # après toutes les pages : Write-PdfExtractionScoringSessionGlobalReport (fichier EntityExtractor.ps1).
+#
+# Performance : cache mémoire par session Invoke-PdfExtraction uniquement ($script:PdftotextIntraRunLineCache ;
+# clé = chemin résolu + n° page + args pdftotext). Évite notamment la 7ᵉ invocation pdftotext page 1
+# (après Select-Best sur les mêmes arguments). Réinitialisation en entrée/sortie d'Invoke-PdfExtraction.
 # ============================================================
 
 # pdftotext : -enc UTF-8 ; lecture + reparation CP1252 ci-dessous. Normalisation UI (Convert-ToUiText) en sortie.
@@ -559,6 +563,36 @@ function script:Measure-PdfLinesExtractionScore {
     return [int]([Math]::Min(50000, $join.Length) + 2 * $letterDigit + 15 * $substantial)
 }
 
+function script:Get-PdftotextIntraRunCacheKey {
+    param(
+        [string]$PdfPath,
+        [int]$PageNumber,
+        [AllowEmptyCollection()]
+        [string[]]$ExtraArgs
+    )
+    $normPath = ''
+    try {
+        $normPath = [System.IO.Path]::GetFullPath($PdfPath)
+    }
+    catch {
+        $normPath = [string]$PdfPath
+    }
+    $keyExtraSep = "`u{001E}"
+    $frag = [System.Collections.Generic.List[string]]::new()
+    if ($ExtraArgs) {
+        foreach ($a in $ExtraArgs) {
+            if (-not [string]::IsNullOrWhiteSpace($a)) {
+                [void]$frag.Add(($a.Trim()))
+            }
+        }
+    }
+    $argsKey = ''
+    if ($frag.Count -gt 0) {
+        $argsKey = [string]::Join($keyExtraSep, $frag.ToArray())
+    }
+    return ($normPath + "`t" + "$PageNumber" + "`t" + $argsKey)
+}
+
 function script:Get-PdfPageLinesWithPdftotextArgs {
     param(
         [string]$PdfPath,
@@ -569,9 +603,20 @@ function script:Get-PdfPageLinesWithPdftotextArgs {
         [string]$LogContext = ''
     )
 
+    $ctx = if ([string]::IsNullOrWhiteSpace($LogContext)) { 'pdftotext' } else { $LogContext }
+
+    $lineCache = $script:PdftotextIntraRunLineCache
+    $cacheKey = $null
+    if ($null -ne $lineCache -and ($lineCache -is [hashtable])) {
+        $cacheKey = (Get-PdftotextIntraRunCacheKey -PdfPath $PdfPath -PageNumber $PageNumber -ExtraArgs $ExtraArgs)
+        $cachedHit = $lineCache[$cacheKey]
+        if ($null -ne $cachedHit -and ($cachedHit -is [System.Array])) {
+            return [string[]]@($cachedHit)
+        }
+    }
+
     $tempOut = [System.IO.Path]::GetTempFileName()
     $stderrPath = "$tempOut.stderr.txt"
-    $ctx = if ([string]::IsNullOrWhiteSpace($LogContext)) { 'pdftotext' } else { $LogContext }
 
     try {
         if ([string]::IsNullOrWhiteSpace($PdftotextExe)) {
@@ -659,6 +704,15 @@ function script:Get-PdfPageLinesWithPdftotextArgs {
                 $preview += ('L{0}: {1}' -f ($pi + 1), $one)
             }
             Add-PdfExtractionDiagLine -Message ("[{0}] apercu_lignes: {1}" -f $ctx, ($preview -join ' || ')) -DebugOnly
+        }
+
+        if ($null -ne $lineCache -and ($lineCache -is [hashtable]) -and ($null -ne $cacheKey) -and $exitCode -eq 0) {
+            [string[]]$toStore = @(
+                foreach ($lnItem in @($lines)) {
+                    if ($null -eq $lnItem) { '' } else { [string]$lnItem }
+                }
+            )
+            $lineCache[$cacheKey] = $toStore
         }
 
         return $lines
@@ -941,6 +995,7 @@ Debug :
             }
         }
         else {
+            $script:PdftotextIntraRunLineCache = @{}
             $pick = Select-BestPdftotextModeForPdf -PdfPath $resolved -PdftotextExe $pdftotext
             $winningMode = [string]$pick.Mode
             $extraArgs = Get-PdftotextArgsFromModeLabel -Label $winningMode
@@ -1034,6 +1089,7 @@ Debug :
         }
     }
     finally {
+        $script:PdftotextIntraRunLineCache = $null
         $script:PdfExtractionDiagList = $prevDiagList
         $script:PdfExtractDebugSession = $prevDebugSession
     }

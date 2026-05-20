@@ -37,8 +37,10 @@ function Start-GUI {
     . "$scriptDir\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1"
     . "$PSScriptRoot\ODM\ConventionNommage\ConventionNommage.ps1"
     . "$PSScriptRoot\ODM\Agents\AgentPanel.ps1"
+    . "$PSScriptRoot\ODM\Agents\AgentRepository.ps1"
     . "$PSScriptRoot\ODM\Vehicules\VehiculesPanel.ps1"
-
+    . "$PSScriptRoot\ODM\Vehicules\VehiculesRepository.ps1"
+        
     $form = [System.Windows.Forms.Form]::new()
     $form.Text = "Convention de nommage"
     $form.Size = [System.Drawing.Size]::new(1400, 800)
@@ -90,7 +92,7 @@ function Start-GUI {
     $tabVehicules = [System.Windows.Forms.TabPage]::new()
     $tabVehicules.Text = "Données véhicules"
     $tabVehicules.BackColor = $script:CouleurGrisFond
-    $vehiculesPanel = Show-VehiculesPanel
+    $vehiculesPanel = Show-VehiculesPanel -Vehicules (Get-Vehicules)
     if ($vehiculesPanel) {
         $vehiculesPanel.Dock = "Fill"
         $tabVehicules.Controls.Add($vehiculesPanel)
@@ -130,5 +132,45 @@ function Start-GUI {
     [System.Windows.Forms.Application]::Run($form)
 }
 
-
+function Show-PDFViewer {
+    param([string]$FilePath, [string]$Title = "Visionneuse PDF")
+    Ensure-WinFormsInitialized
+    if (-not (Get-Command Convert-ToUiText -ErrorAction SilentlyContinue)) {
+        $sd = Split-Path -Parent $MyInvocation.MyCommand.Path
+        . (Join-Path $sd 'Common\TextEncoding.ps1')
+        . (Join-Path $sd 'Common\UiText.ps1')
+    }
+    Initialize-WinFormsUiCultureFrFr
+    if (-not (Test-Path $FilePath)) {
+        $msg = Convert-ToUiText -Text ("Fichier non trouvé : $FilePath")
+        $cap = Convert-ToUiText -Text 'Erreur'
+        [System.Windows.Forms.MessageBox]::Show($msg, $cap)
+        return
+    }
+    $form = [System.Windows.Forms.Form]::new()
+    $null = $form.Add_Load({ $null = [System.Text.Encoding]::Default })
+    $form.Text = Convert-ToUiText -Text $Title
+    $form.Size = [System.Drawing.Size]::new(1000, 700)
+    $form.StartPosition = "CenterScreen"
+    $webBrowser = [System.Windows.Forms.WebBrowser]::new()
+    $webBrowser.Dock = "Fill"
+    try { $webBrowser.Navigate($FilePath); $form.Controls.Add($webBrowser) }
+    catch { Start-Process $FilePath }
+    $btnClose = [System.Windows.Forms.Button]::new()
+    $btnClose.Text = Convert-ToUiText -Text 'FERMER'
+    $btnClose.Size = [System.Drawing.Size]::new(100, 40)
+    $btnClose.Anchor = "Bottom,Right"
+    $btnClose.Location = [System.Drawing.Point]::new($form.ClientSize.Width - 120, $form.ClientSize.Height - 50)
+    $btnClose.BackColor = $script:CouleurOrange
+    $btnClose.ForeColor = $script:CouleurBlanc
+    $btnClose.FlatStyle = "Flat"
+    $btnClose.Font = $script:PoliceBouton
+    $btnClose.Add_Click({
+        param($sender, $e)
+        $frm = $sender.FindForm()
+        if ($null -ne $frm) { $frm.Close() }
+    })
+    $form.Controls.Add($btnClose)
+    $form.ShowDialog()
+}
 
