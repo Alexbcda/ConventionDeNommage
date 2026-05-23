@@ -13,6 +13,10 @@ $_cnsBilanCollecteWord = Join-Path $PSScriptRoot 'CnsBilanCollecteWord.ps1'
 if (Test-Path -LiteralPath $_cnsBilanCollecteWord) {
     . $_cnsBilanCollecteWord
 }
+$_cnsCeaPointsWord = Join-Path $PSScriptRoot 'CnsCeaPointsCollecteWord.ps1'
+if (Test-Path -LiteralPath $_cnsCeaPointsWord) {
+    . $_cnsCeaPointsWord
+}
 
 function Sanitize-CnsCoverTextForGhostscript {
     <#
@@ -1157,13 +1161,28 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     }
 
                     if ($requiresCeaPage -and $rawPnPage -gt 0 -and $ceaInjectedForPage.Add($rawPnPage)) {
-                        $ceaPdf = Copy-CnsMetierTemplatePdfToWorkDir -TemplateFileName 'CeaPointsDeCollectes.pdf' -WorkDir $tmpDir -DestLeafName ('cea_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
-                        if (-not [string]::IsNullOrWhiteSpace($ceaPdf)) {
+                        $ceaOut = Join-Path $tmpDir ('cea_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
+                        $ceaPdf = $null
+                        if (Get-Command New-CnsCeaPointsDeCollectesPdfFromWordTemplate -ErrorAction SilentlyContinue) {
+                            $segMetaCea = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $gsPair -FinalOrderToLine $foToLine -Segments $segments -ExcelOrderIndexToSegmentIndex $orderToSeg -VisitDate $VisitDate
+                            $phCea = @{}
+                            foreach ($entry in (Get-CnsCeaPointsDeCollectePlaceholders -WorkOrderEntity $woPage -PageEntity $pePage -SegmentMeta $segMetaCea -VisitDate $VisitDate -FragSlicePdfPath $slicePath).GetEnumerator()) {
+                                $phCea[[string]$entry.Key] = [string]$entry.Value
+                            }
+                            $ceaPdf = New-CnsCeaPointsDeCollectesPdfFromWordTemplate -OutPdfPath $ceaOut -Placeholders $phCea
+                        }
+                        else {
+                            Write-Warning '[CEA-POINTS] Module Word CEA non charge — fallback PDF statique legacy.'
+                            $ceaPdf = Copy-CnsMetierTemplatePdfToWorkDir -TemplateFileName 'CeaPointsDeCollectes.pdf' -WorkDir $tmpDir -DestLeafName ('cea_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
+                        }
+                        if (-not [string]::IsNullOrWhiteSpace($ceaPdf) -and (Test-Path -LiteralPath $ceaPdf)) {
+                            Write-Host ("[CEA-POINTS] PDF injecte dans frag (source DOCX dynamique) : {0}" -f (Split-Path -Leaf $ceaPdf)) -ForegroundColor Green
                             [void]$frag.Add($ceaPdf)
-                            Write-Host ("[STEP5-METIER] Document CEA injecte apres page reorder #{0} (RawPage={1})." -f $pn, $rawPnPage) -ForegroundColor Green
+                            Write-Host ("[STEP5-METIER] Document CEA injecte apres page reorder #{0} (RawPage={1}, fichier={2})." -f $pn, $rawPnPage, (Split-Path -Leaf $ceaPdf)) -ForegroundColor Green
                         }
                         else {
                             [void]$ceaInjectedForPage.Remove($rawPnPage)
+                            Write-Warning ("[CEA-POINTS] Generation CEA echouee pour RawPage={0} — page non injectee." -f $rawPnPage)
                         }
                     }
                 }
