@@ -112,14 +112,51 @@ function Write-CnsDestructionCertificatePdfMergeAudit {
         [string]$Phase,
         [Parameter(Mandatory = $true)][string]$PdfPath
     )
+    return (Write-CnsLibreOfficePdfMergeAudit -Phase $Phase -PdfPath $PdfPath -DocumentKind 'DESTRUCTION-CERT')
+}
+
+function Test-CnsPdfPathIsDestructionCertificateFragment {
+    param([AllowNull()][string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    $leaf = [System.IO.Path]::GetFileName($Path)
+    return ($leaf -match '(?i)^cert_dest_.*\.pdf$')
+}
+
+function Test-CnsPdfPathIsBilanCollecteFragment {
+    param([AllowNull()][string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    $leaf = [System.IO.Path]::GetFileName($Path)
+    return ($leaf -match '(?i)^bilan_seg_.*\.pdf$')
+}
+
+function Test-CnsPdfPathIsLibreOfficeStep5Fragment {
+    <#
+    .SYNOPSIS
+        PDF produits par LibreOffice (certificat, bilan) — ne jamais repasser dans pdfwrite.
+    #>
+    param([AllowNull()][string]$Path)
+    if (Test-CnsPdfPathIsDestructionCertificateFragment -Path $Path) { return $true }
+    if (Test-CnsPdfPathIsBilanCollecteFragment -Path $Path) { return $true }
+    return $false
+}
+
+function Write-CnsLibreOfficePdfMergeAudit {
+    param(
+        [Parameter(Mandatory = $true)][ValidateSet('BEFORE_MERGE', 'AFTER_MERGE', 'GENERATED')]
+        [string]$Phase,
+        [Parameter(Mandatory = $true)][string]$PdfPath,
+        [Parameter(Mandatory = $true)][ValidateSet('DESTRUCTION-CERT', 'BILAN-COLLECTE', 'PDF-FINAL')]
+        [string]$DocumentKind
+    )
     $m = Get-CnsPdfFontStructureMarkers -PdfPath $PdfPath
     if ($null -eq $m) {
-        Write-Host ("[DESTRUCTION-CERT] CERTIFICATE PDF {0} : {1} (introuvable)" -f $Phase, $PdfPath) -ForegroundColor Yellow
+        Write-Host ("[{0}] LIBREOFFICE PDF {1} : {2} (introuvable)" -f $DocumentKind, $Phase, $PdfPath) -ForegroundColor Yellow
         return $null
     }
     $color = if ($Phase -eq 'AFTER_MERGE') { 'Cyan' } elseif ($Phase -eq 'BEFORE_MERGE') { 'DarkCyan' } else { 'Green' }
     Write-Host (
-        "[DESTRUCTION-CERT] CERTIFICATE PDF {0} : {1} | {2} bytes | pages~{3} | ToUnicode={4} FontFile2={5} TrueType={6} Type0={7}" -f
+        "[{0}] LIBREOFFICE PDF {1} : {2} | {3} bytes | pages~{4} | ToUnicode={5} FontFile2={6} TrueType={7} Type0={8}" -f
+        $DocumentKind,
         $Phase,
         $m.FileName,
         $m.ByteLength,
@@ -130,13 +167,6 @@ function Write-CnsDestructionCertificatePdfMergeAudit {
         $m.Type0
     ) -ForegroundColor $color
     return $m
-}
-
-function Test-CnsPdfPathIsDestructionCertificateFragment {
-    param([AllowNull()][string]$Path)
-    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
-    $leaf = [System.IO.Path]::GetFileName($Path)
-    return ($leaf -match '(?i)^cert_dest_.*\.pdf$')
 }
 
 function Merge-CnsPdfFilesQpdfOrdered {
@@ -236,37 +266,37 @@ function Merge-CnsPdfFilesStructurePreservingOrdered {
 function Merge-CnsPdfFilesForStep5TourneeComposition {
     <#
     .SYNOPSIS
-        Fusion finale STEP 5 : qpdf/pdftk si certificat destruction present ; sinon Ghostscript historique.
-        Les PDF cert_dest_*.pdf (LibreOffice) ne doivent jamais passer dans pdfwrite.
+        Fusion finale STEP 5 : qpdf/pdftk si PDF LibreOffice presents (certificat, bilan) ; sinon Ghostscript historique.
+        Les PDF cert_dest_*.pdf et bilan_seg_*.pdf ne doivent jamais passer dans pdfwrite.
     #>
     param(
         [Parameter(Mandatory = $true)][string[]]$InputPdfsOrdered,
         [Parameter(Mandatory = $true)][string]$DestinationPdfPath
     )
 
-    $certPaths = @(
-        $InputPdfsOrdered | Where-Object { Test-CnsPdfPathIsDestructionCertificateFragment -Path $_ }
+    $loPaths = @(
+        $InputPdfsOrdered | Where-Object { Test-CnsPdfPathIsLibreOfficeStep5Fragment -Path $_ }
     )
-    $hasCert = ($certPaths.Count -gt 0)
+    $hasLoDocs = ($loPaths.Count -gt 0)
 
-    foreach ($cp in @($certPaths)) {
-        if (Test-Path -LiteralPath $cp) {
-            Write-CnsDestructionCertificatePdfMergeAudit -Phase 'BEFORE_MERGE' -PdfPath $cp
-        }
+    foreach ($lp in @($loPaths)) {
+        if (-not (Test-Path -LiteralPath $lp)) { continue }
+        $kind = if (Test-CnsPdfPathIsDestructionCertificateFragment -Path $lp) { 'DESTRUCTION-CERT' } else { 'BILAN-COLLECTE' }
+        Write-CnsLibreOfficePdfMergeAudit -Phase 'BEFORE_MERGE' -PdfPath $lp -DocumentKind $kind
     }
 
-    if ($hasCert) {
+    if ($hasLoDocs) {
         $beforeMarkers = @{}
-        foreach ($cp in @($certPaths)) {
-            if (Test-Path -LiteralPath $cp) {
-                $beforeMarkers[$cp] = Get-CnsPdfFontStructureMarkers -PdfPath $cp
+        foreach ($lp in @($loPaths)) {
+            if (Test-Path -LiteralPath $lp) {
+                $beforeMarkers[$lp] = Get-CnsPdfFontStructureMarkers -PdfPath $lp
             }
         }
 
         $merged = Merge-CnsPdfFilesStructurePreservingOrdered -InputPdfsOrdered $InputPdfsOrdered -DestinationPdfPath $DestinationPdfPath
         if (-not $merged) {
             Write-Warning @'
-[DESTRUCTION-CERT] Fusion impossible sans qpdf/pdftk : le certificat LibreOffice ne peut pas passer dans Ghostscript pdfwrite.
+[PDF-MERGE] Fusion impossible sans qpdf/pdftk : les PDF LibreOffice (certificat, bilan) ne peuvent pas passer dans Ghostscript pdfwrite.
 Installez qpdf (https://github.com/qpdf/qpdf/releases) et definissez CN_QPDF_EXE, ou installez pdftk / PDFtk Server.
 '@
             return $false
@@ -275,7 +305,7 @@ Installez qpdf (https://github.com/qpdf/qpdf/releases) et definissez CN_QPDF_EXE
         if (-not (Test-Path -LiteralPath $DestinationPdfPath)) { return $false }
 
         $afterFinal = Get-CnsPdfFontStructureMarkers -PdfPath $DestinationPdfPath
-        Write-CnsDestructionCertificatePdfMergeAudit -Phase 'AFTER_MERGE' -PdfPath $DestinationPdfPath
+        Write-CnsLibreOfficePdfMergeAudit -Phase 'AFTER_MERGE' -PdfPath $DestinationPdfPath -DocumentKind 'PDF-FINAL'
 
         if ($null -ne $afterFinal) {
             $minTu = 0
@@ -287,16 +317,16 @@ Installez qpdf (https://github.com/qpdf/qpdf/releases) et definissez CN_QPDF_EXE
             }
             $issues = New-Object System.Collections.Generic.List[string]
             if ($minTu -gt 0 -and [int]$afterFinal.ToUnicode -lt $minTu) {
-                [void]$issues.Add(('ToUnicode final {0} < certificat {1}' -f $afterFinal.ToUnicode, $minTu))
+                [void]$issues.Add(('ToUnicode final {0} < LibreOffice min {1}' -f $afterFinal.ToUnicode, $minTu))
             }
             if ($minFf2 -gt 0 -and [int]$afterFinal.FontFile2 -lt $minFf2) {
-                [void]$issues.Add(('FontFile2 final {0} < certificat {1}' -f $afterFinal.FontFile2, $minFf2))
+                [void]$issues.Add(('FontFile2 final {0} < LibreOffice min {1}' -f $afterFinal.FontFile2, $minFf2))
             }
             if ($issues.Count -gt 0) {
-                Write-Warning ("[DESTRUCTION-CERT] Validation structure degradee apres merge : {0}" -f ($issues -join '; '))
+                Write-Warning ("[PDF-MERGE] Validation structure degradee apres merge LibreOffice : {0}" -f ($issues -join '; '))
             }
             else {
-                Write-Host '[DESTRUCTION-CERT] Validation structure OK (ToUnicode/FontFile2 preserves dans le PDF final).' -ForegroundColor Green
+                Write-Host '[PDF-MERGE] Validation structure OK (ToUnicode/FontFile2 preserves dans le PDF final).' -ForegroundColor Green
             }
         }
         return $true
@@ -306,6 +336,6 @@ Installez qpdf (https://github.com/qpdf/qpdf/releases) et definissez CN_QPDF_EXE
         Write-Warning '[PDF-MERGE] Merge-CnsPdfFilesGhostscriptOrdered indisponible.'
         return $false
     }
-    Write-Host '[PDF-MERGE] Fusion Ghostscript pdfwrite (aucun certificat destruction dans la liste).' -ForegroundColor DarkGray
+    Write-Host '[PDF-MERGE] Fusion Ghostscript pdfwrite (aucun PDF LibreOffice certificat/bilan dans la liste).' -ForegroundColor DarkGray
     return (Merge-CnsPdfFilesGhostscriptOrdered -InputPdfsOrdered $InputPdfsOrdered -DestinationPdfPath $DestinationPdfPath)
 }

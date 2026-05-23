@@ -1142,6 +1142,16 @@ Describe 'PdfPlanningOptimizer - fusion PDF certificat (structure-preserving)' {
         (Test-CnsPdfPathIsDestructionCertificateFragment -Path 'C:\tmp\main_slice_001.pdf') | Should Be $false
     }
 
+    It 'Test-CnsPdfPathIsBilanCollecteFragment : detecte bilan_seg_*.pdf' {
+        (Test-CnsPdfPathIsBilanCollecteFragment -Path 'C:\tmp\bilan_seg_001.pdf') | Should Be $true
+        (Test-CnsPdfPathIsBilanCollecteFragment -Path 'C:\tmp\cert_dest_001.pdf') | Should Be $false
+    }
+
+    It 'Test-CnsPdfPathIsLibreOfficeStep5Fragment : certificat ou bilan' {
+        (Test-CnsPdfPathIsLibreOfficeStep5Fragment -Path 'C:\tmp\bilan_seg_002.pdf') | Should Be $true
+        (Test-CnsPdfPathIsLibreOfficeStep5Fragment -Path 'C:\tmp\cover_blk_001.pdf') | Should Be $false
+    }
+
     It 'Merge-CnsPdfFilesForStep5TourneeComposition : preserve ToUnicode certificat LO apres qpdf' {
         $qpdf = Get-CnsQpdfExecutablePath
         if ($null -eq $qpdf) {
@@ -1178,5 +1188,92 @@ Describe 'PdfPlanningOptimizer - fusion PDF certificat (structure-preserving)' {
         $after.ToUnicode | Should BeGreaterThan 0
         $after.FontFile2 | Should BeGreaterThan 0
         Remove-Item -LiteralPath $docx,$certPdf,$dummyPdf,$merged -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Describe 'PdfPlanningOptimizer - bilan collecte Word' {
+
+    BeforeAll {
+        $bilanPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsBilanCollecteWord.ps1' | Resolve-Path
+        . ([string]$bilanPath)
+    }
+
+    It 'Get-CnsBilanCollectePlaceholders : date segment et collecteur' {
+        $seg = [pscustomobject]@{
+            DisplayDateJM = '18/04/2026'
+            TourDate      = [datetime]'2026-04-18'
+            Collecteur    = 'Jean Martin'
+            Vehicule      = 'AB-123-CD'
+        }
+        $ph = Get-CnsBilanCollectePlaceholders -SegmentMeta $seg -VisitDate ([datetime]'2026-01-01')
+        $ph.Date_Collecte | Should Be '18/04/2026'
+        $ph.Collecteur_Prenom | Should Be 'Jean'
+        $ph.Collecteur_Nom | Should Be 'Martin'
+    }
+
+    It 'Get-CnsBilanCollectePlaceholders : collecteur sentinelles Excel -> vide' {
+        $seg = [pscustomobject]@{ DisplayDateJM = '01/01/2026'; Collecteur = 'INCONNU' }
+        $ph = Get-CnsBilanCollectePlaceholders -SegmentMeta $seg -VisitDate ([datetime]'2026-01-01')
+        $ph.Collecteur_Nom | Should Be ''
+        $ph.Collecteur_Prenom | Should Be ''
+    }
+
+    It 'Set-CnsDocxTemplatePlaceholders : remplace balises BilanDeCollecte.docx' {
+        $tpl = Get-CnsBilanCollecteTemplatePath
+        if ($null -eq $tpl) {
+            Set-ItResult -Inconclusive -Because 'Template BilanDeCollecte.docx absent'
+        }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $work = Join-Path $env:TEMP ("cn_pester_bilan_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
+        Copy-Item -LiteralPath $tpl -Destination $work -Force
+        $ph = @{
+            Date_Collecte     = '15/03/2026'
+            Collecteur_Nom    = 'DURAND'
+            Collecteur_Prenom = 'Paul'
+        }
+        $ok = Set-CnsDocxTemplatePlaceholders -DocxPath $work -Placeholders $ph
+        $ok | Should Be $true
+        $unzip = Join-Path $env:TEMP ("cn_pester_bilan_unzip_{0}" -f ([Guid]::NewGuid().ToString('N')))
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($work, $unzip)
+        $docXml = Join-Path $unzip 'word\document.xml'
+        $plain = ([regex]::Matches([System.IO.File]::ReadAllText($docXml), '<w:t[^>]*>([^<]*)</w:t>') | ForEach-Object { $_.Groups[1].Value }) -join ''
+        $plain.Contains('{{') | Should Be $false
+        $plain.Contains('DURAND') | Should Be $true
+        $plain.Contains('15/03/2026') | Should Be $true
+        Remove-Item -LiteralPath $unzip,$work -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'Merge-CnsPdfFilesForStep5TourneeComposition : preserve ToUnicode bilan LO apres qpdf' {
+        $mergePath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsPdfStructureMerge.ps1' | Resolve-Path
+        . ([string]$mergePath)
+        $qpdf = Get-CnsQpdfExecutablePath
+        if ($null -eq $qpdf) {
+            Write-Host 'INCONCLUSIVE: qpdf non installe' -ForegroundColor Yellow
+            return
+        }
+        $tpl = Get-CnsBilanCollecteTemplatePath
+        if ($null -eq $tpl -or -not (Get-CnsLibreOfficeSofficePath)) {
+            Write-Host 'INCONCLUSIVE: template bilan ou LibreOffice absent' -ForegroundColor Yellow
+            return
+        }
+        $docx = Join-Path $env:TEMP ("cn_pester_bilan_merge_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
+        $bilanPdf = Join-Path $env:TEMP 'bilan_seg_001.pdf'
+        $dummyPdf = Join-Path $env:TEMP ("cn_pester_dummy_bilan_{0}.pdf" -f ([Guid]::NewGuid().ToString('N')))
+        $merged = Join-Path $env:TEMP ("cn_pester_merged_bilan_{0}.pdf" -f ([Guid]::NewGuid().ToString('N')))
+        Copy-Item -LiteralPath $tpl -Destination $docx -Force
+        Set-CnsDocxTemplatePlaceholders -DocxPath $docx -Placeholders @{
+            Date_Collecte = '01/01/2026'; Collecteur_Nom = 'TEST'; Collecteur_Prenom = 'Jean'
+        } | Should Be $true
+        (Convert-DocxToPdfUsingLibreOffice -DocxPath $docx -PdfPath $bilanPdf) | Should Be $true
+        Copy-Item -LiteralPath $bilanPdf -Destination $dummyPdf -Force
+        $before = Get-CnsPdfFontStructureMarkers -PdfPath $bilanPdf
+        $before.ToUnicode | Should BeGreaterThan 0
+        $before.FontFile2 | Should BeGreaterThan 0
+        $ok = Merge-CnsPdfFilesForStep5TourneeComposition -InputPdfsOrdered @($dummyPdf, $bilanPdf) -DestinationPdfPath $merged
+        $ok | Should Be $true
+        $after = Get-CnsPdfFontStructureMarkers -PdfPath $merged
+        $after.ToUnicode | Should BeGreaterThan 0
+        $after.FontFile2 | Should BeGreaterThan 0
+        Remove-Item -LiteralPath $docx,$bilanPdf,$dummyPdf,$merged -Force -ErrorAction SilentlyContinue
     }
 }

@@ -9,6 +9,10 @@ $_cnsDestructionWord = Join-Path $PSScriptRoot 'CnsDestructionCertificateWord.ps
 if (Test-Path -LiteralPath $_cnsDestructionWord) {
     . $_cnsDestructionWord
 }
+$_cnsBilanCollecteWord = Join-Path $PSScriptRoot 'CnsBilanCollecteWord.ps1'
+if (Test-Path -LiteralPath $_cnsBilanCollecteWord) {
+    . $_cnsBilanCollecteWord
+}
 
 function Sanitize-CnsCoverTextForGhostscript {
     <#
@@ -1169,10 +1173,27 @@ function Invoke-PlanningTourneePdfCoverComposition {
                 $segNumBilan = [int]$Matches[1]
                 if (-not $bilanInjectedForSeg.ContainsKey($segNumBilan)) {
                     $bilanInjectedForSeg[$segNumBilan] = $true
-                    $bilanPdf = Copy-CnsMetierTemplatePdfToWorkDir -TemplateFileName 'BilanDeCollecte.pdf' -WorkDir $tmpDir -DestLeafName ('bilan_seg_{0:D3}.pdf' -f $fi)
-                    if (-not [string]::IsNullOrWhiteSpace($bilanPdf)) {
-                        [void]$frag.Add($bilanPdf)
-                        Write-Host ("[STEP5-METIER] Bilan de collecte injecte en fin de tournée segment {0} (hors bloc __PRE__)." -f $segNumBilan) -ForegroundColor Green
+                    if (Get-Command New-CnsBilanCollectePdfFromWordTemplate -ErrorAction SilentlyContinue) {
+                        $segBilan = ($segments | Where-Object { [int]$_.SegmentIndex -eq $segNumBilan } | Select-Object -First 1)
+                        $phBilan = @{}
+                        foreach ($entry in (Get-CnsBilanCollectePlaceholders -SegmentMeta $segBilan -VisitDate $VisitDate).GetEnumerator()) {
+                            $phBilan[[string]$entry.Key] = [string]$entry.Value
+                        }
+                        $bilanOut = Join-Path $tmpDir ('bilan_seg_{0:D3}.pdf' -f $fi)
+                        $bilanPdf = New-CnsBilanCollectePdfFromWordTemplate -OutPdfPath $bilanOut -Placeholders $phBilan
+                        if (-not [string]::IsNullOrWhiteSpace($bilanPdf) -and (Test-Path -LiteralPath $bilanPdf)) {
+                            if (Get-Command Write-CnsLibreOfficePdfMergeAudit -ErrorAction SilentlyContinue) {
+                                Write-CnsLibreOfficePdfMergeAudit -Phase 'GENERATED' -PdfPath $bilanPdf -DocumentKind 'BILAN-COLLECTE'
+                            }
+                            [void]$frag.Add($bilanPdf)
+                            Write-Host ("[STEP5-METIER] Bilan de collecte dynamique injecte en fin de tournée segment {0} (fichier={1})." -f $segNumBilan, (Split-Path -Leaf $bilanPdf)) -ForegroundColor Green
+                        }
+                        else {
+                            Write-Warning ("[BILAN-COLLECTE] Generation bilan echouee pour segment {0} — page non injectee." -f $segNumBilan)
+                        }
+                    }
+                    else {
+                        Write-Warning '[BILAN-COLLECTE] Module Word bilan non charge — injection ignoree.'
                     }
                 }
             }
