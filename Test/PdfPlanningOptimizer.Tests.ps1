@@ -1277,3 +1277,90 @@ Describe 'PdfPlanningOptimizer - bilan collecte Word' {
         Remove-Item -LiteralPath $docx,$bilanPdf,$dummyPdf,$merged -Force -ErrorAction SilentlyContinue
     }
 }
+
+Describe 'PdfPlanningOptimizer - CEA points collecte Word' {
+
+    BeforeAll {
+        $ceaPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsCeaPointsCollecteWord.ps1' | Resolve-Path
+        $metierPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsPdfMetierPrestation.ps1' | Resolve-Path
+        $mergePath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsPdfStructureMerge.ps1' | Resolve-Path
+        . ([string]$metierPath)
+        . ([string]$ceaPath)
+        . ([string]$mergePath)
+    }
+
+    It 'Get-CnsCeaPointsDeCollectePlaceholders : client, date segment, ODM' {
+        $wo = [pscustomobject]@{
+            ClientID   = '24531'
+            ClientName = 'Client CEA Test'
+            WorkOrder  = '5517128-19811616'
+            Address    = @{ Street = '10 rue CEA'; PostalCode = '75001'; City = 'Paris' }
+            Services   = @()
+        }
+        $seg = [pscustomobject]@{
+            DisplayDateJM = '20/05/2026'
+            TourDate      = [datetime]'2026-05-20'
+            Collecteur    = 'Jean Martin'
+        }
+        $ph = Get-CnsCeaPointsDeCollectePlaceholders -WorkOrderEntity $wo -PageEntity $null -SegmentMeta $seg -VisitDate ([datetime]'2026-01-01') -FragSlicePdfPath $null
+        $ph.Client_ID | Should Be '24531'
+        $ph.Client_Nom | Should Be 'Client CEA Test'
+        $ph.Client_Adresse | Should Be '10 rue CEA, 75001 Paris'
+        $ph.Date_Collecte | Should Be '20/05/2026'
+        $ph.ODM_Numero | Should Be '5517128-19811616'
+        $ph.Collecteur_Nom | Should Be 'Martin'
+        $ph.Collecteur_Prenom | Should Be 'Jean'
+    }
+
+    It 'Get-CnsCeaPointsDeCollectePlaceholders : Point_Collecte_Description vide sans slice' {
+        $ph = Get-CnsCeaPointsDeCollectePlaceholders -WorkOrderEntity $null -PageEntity $null -SegmentMeta $null -VisitDate ([datetime]'2026-01-01') -FragSlicePdfPath ''
+        $ph.Point_Collecte_Description | Should Be ''
+    }
+
+    It 'Set-CnsDocxTemplatePlaceholders : remplace Date_Collecte dans CeaPointsDeCollectes.docx' {
+        $tpl = Get-CnsCeaPointsDeCollecteTemplatePath
+        if ($null -eq $tpl) {
+            Set-ItResult -Inconclusive -Because 'Template CeaPointsDeCollectes.docx absent'
+        }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $work = Join-Path $env:TEMP ("cn_pester_cea_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
+        Copy-Item -LiteralPath $tpl -Destination $work -Force
+        $ph = @{
+            Date_Collecte              = '20/05/2026'
+            Client_Nom                 = 'ACME CEA'
+            Client_ID                  = '24531'
+            Client_Adresse             = '1 rue Test'
+            ODM_Numero                 = 'ODM-CEA-1'
+            Collecteur_Nom             = 'DUPONT'
+            Point_Collecte_Description = 'CEA service logistique 24531'
+        }
+        $ok = Set-CnsDocxTemplatePlaceholders -DocxPath $work -Placeholders $ph
+        $ok | Should Be $true
+        $unzip = Join-Path $env:TEMP ("cn_pester_cea_unzip_{0}" -f ([Guid]::NewGuid().ToString('N')))
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($work, $unzip)
+        $plain = ([regex]::Matches([IO.File]::ReadAllText((Join-Path $unzip 'word\document.xml')), '<w:t[^>]*>([^<]*)</w:t>') | ForEach-Object { $_.Groups[1].Value }) -join ''
+        $plain.Contains('{{') | Should Be $false
+        $plain.Contains('20/05/2026') | Should Be $true
+        Remove-Item -LiteralPath $unzip,$work -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'New-CnsCeaPointsDeCollectesPdfFromWordTemplate : produit PDF via LibreOffice' {
+        if (-not (Get-CnsLibreOfficeSofficePath)) {
+            Set-ItResult -Inconclusive -Because 'LibreOffice absent'
+        }
+        $tpl = Get-CnsCeaPointsDeCollecteTemplatePath
+        if ($null -eq $tpl) {
+            Set-ItResult -Inconclusive -Because 'Template CEA absent'
+        }
+        $outPdf = Join-Path $env:TEMP ("cea_{0:D3}_{1:D5}.pdf" -f 1, 1)
+        $ph = @{ Date_Collecte = '01/06/2026'; Client_Nom = 'TEST'; Collecteur_Nom = 'X' }
+        $result = New-CnsCeaPointsDeCollectesPdfFromWordTemplate -OutPdfPath $outPdf -Placeholders $ph
+        $result | Should Not BeNullOrEmpty
+        (Test-Path -LiteralPath $outPdf) | Should Be $true
+        $m = Get-CnsPdfFontStructureMarkers -PdfPath $outPdf
+        if ($null -ne $m) {
+            $m.ToUnicode | Should BeGreaterThan 0
+        }
+        Remove-Item -LiteralPath $outPdf -Force -ErrorAction SilentlyContinue
+    }
+}
