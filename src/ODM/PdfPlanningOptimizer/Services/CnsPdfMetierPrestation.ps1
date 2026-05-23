@@ -550,7 +550,7 @@ function Get-CnsTourneeMetierMemoLinesForBlock {
             if ([string]::IsNullOrWhiteSpace($cl)) { $cl = 'Non specifie' }
             $key = ('{0}|{1}' -f $det, $cl)
             if ($trackSeen.Add($key)) {
-                [void]$trackLines.Add(("Realiser le document Track dechet pour : {0} - {1}" -f $det, $cl))
+                [void]$trackLines.Add(("{0} - {1}" -f $det, $cl))
             }
         }
     }
