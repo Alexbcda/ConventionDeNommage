@@ -3483,9 +3483,16 @@ function Start-PlanningRebuild {
     }
 
     try {
+        $dateFormatted = if ($null -ne $visitDate) {
+            $visitDate.ToString('dd_MM_yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
+        }
+        else {
+            (Get-Date).ToString('dd_MM_yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
+        }
+
         $outputPdfPath = [System.IO.Path]::Combine(
             [System.IO.Path]::GetDirectoryName($PdfPath),
-            ([System.IO.Path]::GetFileNameWithoutExtension($PdfPath) + '_reordonne.pdf')
+            ("planning_reordonne_du_{0}.pdf" -f $dateFormatted)
         )
 
         $pageMapping = @{}
