@@ -101,14 +101,305 @@ function Convert-DocxToPdfUsingLibreOffice {
     return (Test-Path -LiteralPath $pdfAbs)
 }
 
-function ConvertTo-CnsDocxPlaceholderXmlSafe {
-    param([AllowNull()][string]$Text)
-    if ($null -eq $Text) { return '' }
-    $s = [string]$Text
-    return $s.Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;')
+$script:CnsWordMlNamespaceUri = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+$script:CnsWordMlXPathParagraph = '//*[local-name()="p" and namespace-uri()="http://schemas.openxmlformats.org/wordprocessingml/2006/main"]'
+$script:CnsWordMlXPathTextInSubtree = './/*[local-name()="t" and namespace-uri()="http://schemas.openxmlformats.org/wordprocessingml/2006/main"]'
+
+function Select-CnsWordMlNodes {
+    param(
+        [Parameter(Mandatory = $true)][System.Xml.XmlNode]$ContextNode,
+        [Parameter(Mandatory = $true)][ValidateSet('Paragraph', 'Text')]
+        [string]$NodeKind
+    )
+    $xpath = if ($NodeKind -eq 'Paragraph') { $script:CnsWordMlXPathParagraph } else { $script:CnsWordMlXPathTextInSubtree }
+    return $ContextNode.SelectNodes($xpath)
+}
+
+function Get-CnsDocxWordContentXmlPaths {
+    param([Parameter(Mandatory = $true)][string]$ExtractDir)
+    $wordDir = Join-Path $ExtractDir 'word'
+    if (-not (Test-Path -LiteralPath $wordDir)) { return @() }
+    $names = @(
+        'document.xml', 'footnotes.xml', 'endnotes.xml'
+    )
+    $paths = New-Object System.Collections.Generic.List[string]
+    foreach ($n in $names) {
+        $p = Join-Path $wordDir $n
+        if (Test-Path -LiteralPath $p) { [void]$paths.Add($p) }
+    }
+    Get-ChildItem -LiteralPath $wordDir -File -Filter 'header*.xml' -ErrorAction SilentlyContinue |
+        ForEach-Object { [void]$paths.Add($_.FullName) }
+    Get-ChildItem -LiteralPath $wordDir -File -Filter 'footer*.xml' -ErrorAction SilentlyContinue |
+        ForEach-Object { [void]$paths.Add($_.FullName) }
+    return @($paths)
+}
+
+function Set-CnsWordMlWtElementText {
+    param(
+        [Parameter(Mandatory = $true)][System.Xml.XmlElement]$WtElement,
+        [AllowNull()][string]$Text
+    )
+    $text = if ($null -eq $Text) { '' } else { [string]$Text }
+    $doc = $WtElement.OwnerDocument
+    $xmlNs = 'http://www.w3.org/XML/1998/namespace'
+    while ($WtElement.HasChildNodes) {
+        $WtElement.RemoveChild($WtElement.FirstChild) | Out-Null
+    }
+    if ($text -match '^\s|\s\s|\s$') {
+        $null = $WtElement.SetAttribute('space', $xmlNs, 'preserve')
+    }
+    else {
+        if ($WtElement.HasAttribute('space', $xmlNs)) {
+            $WtElement.RemoveAttribute('space', $xmlNs)
+        }
+    }
+    if ($text.Length -gt 0) {
+        [void]$WtElement.AppendChild($doc.CreateTextNode($text))
+    }
+}
+
+function Get-CnsPlaceholderReplacementSpansInText {
+    param(
+        [Parameter(Mandatory = $true)][string]$FullText,
+        [Parameter(Mandatory = $true)][hashtable]$Placeholders
+    )
+    $spans = New-Object System.Collections.Generic.List[object]
+    $keys = @(
+        $Placeholders.Keys |
+            ForEach-Object { [string]$_ } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Sort-Object { $_.Length } -Descending
+    )
+    foreach ($key in $keys) {
+        $needle = ('{' + '{' + $key + '}' + '}')
+        $val = ConvertTo-CnsDestructionCertificatePlaceholderValue -Value ([string]$Placeholders[$key])
+        $idx = 0
+        while (($idx = $FullText.IndexOf($needle, $idx, [System.StringComparison]::Ordinal)) -ge 0) {
+            [void]$spans.Add([PSCustomObject]@{
+                    Start = $idx
+                    End   = $idx + $needle.Length
+                    Key   = $key
+                    Value = $val
+                })
+            $idx += $needle.Length
+        }
+    }
+    $used = New-Object System.Collections.Generic.List[object]
+    $final = New-Object System.Collections.Generic.List[object]
+    foreach ($s in ($spans | Sort-Object Start)) {
+        $conflict = $false
+        foreach ($u in $used) {
+            if ($s.Start -lt $u.End -and $s.End -gt $u.Start) {
+                $conflict = $true
+                break
+            }
+        }
+        if (-not $conflict) {
+            [void]$final.Add($s)
+            [void]$used.Add([PSCustomObject]@{ Start = $s.Start; End = $s.End })
+        }
+    }
+    return @($final | Sort-Object Start)
+}
+
+function Update-CnsWordParagraphWtNodesFromReplacements {
+    <#
+    .SYNOPSIS
+        Ne modifie que les noeuds w:t couverts par une balise {{KEY}} ; le reste du paragraphe est laisse intact.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][array]$WtParts,
+        [Parameter(Mandatory = $true)][array]$Replacements
+    )
+    if ($WtParts.Count -lt 1) { return }
+
+    foreach ($repl in @($Replacements)) {
+        $overlapping = @(
+            $WtParts | Where-Object {
+                $_.Start -lt $repl.End -and ($_.Start + $_.Length) -gt $repl.Start
+            } | Sort-Object Start
+        )
+        if ($overlapping.Count -lt 1) { continue }
+        $first = $true
+        foreach ($part in $overlapping) {
+            if ($first) {
+                Set-CnsWordMlWtElementText -WtElement $part.Node -Text ([string]$repl.Value)
+                $first = $false
+            }
+            else {
+                Set-CnsWordMlWtElementText -WtElement $part.Node -Text ''
+            }
+        }
+    }
+}
+
+function Get-CnsWordMlXmlDeclarationLine {
+    param([Parameter(Mandatory = $true)][string]$XmlPath)
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    foreach ($line in [System.IO.File]::ReadLines($XmlPath, $utf8NoBom)) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        if ($line.TrimStart().StartsWith('<?xml', [System.StringComparison]::Ordinal)) {
+            return $line.TrimEnd()
+        }
+        break
+    }
+    return $null
+}
+
+function Save-CnsWordMlXmlDocument {
+    param(
+        [Parameter(Mandatory = $true)][System.Xml.XmlDocument]$XmlDoc,
+        [Parameter(Mandatory = $true)][string]$XmlPath,
+        [AllowNull()][string]$DeclarationLine
+    )
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $tempPath = $XmlPath + '.cnssave'
+    $writerSettings = New-Object System.Xml.XmlWriterSettings
+    $writerSettings.Encoding = $utf8NoBom
+    $writerSettings.Indent = $false
+    $writerSettings.OmitXmlDeclaration = [string]::IsNullOrWhiteSpace($DeclarationLine)
+    $writerSettings.NewLineHandling = [System.Xml.NewLineHandling]::None
+    $writer = [System.Xml.XmlWriter]::Create($tempPath, $writerSettings)
+    try {
+        $XmlDoc.Save($writer)
+    }
+    finally {
+        $writer.Close()
+    }
+
+    $body = [System.IO.File]::ReadAllText($tempPath, $utf8NoBom)
+    if (-not [string]::IsNullOrWhiteSpace($DeclarationLine)) {
+        $body = [regex]::Replace($body, '^\uFEFF?\s*<\?xml[^>]*\?>\s*', '', 1)
+        $body = $DeclarationLine + $body
+    }
+    [System.IO.File]::WriteAllText($XmlPath, $body, $utf8NoBom)
+    Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+}
+
+function Invoke-CnsDocxSafePlaceholderReplaceInXmlFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$XmlPath,
+        [Parameter(Mandatory = $true)][hashtable]$Placeholders
+    )
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $origDecl = Get-CnsWordMlXmlDeclarationLine -XmlPath $XmlPath
+    $readerSettings = New-Object System.Xml.XmlReaderSettings
+    $readerSettings.IgnoreWhitespace = $false
+    $reader = [System.Xml.XmlReader]::Create($XmlPath, $readerSettings)
+    $xmlDoc = New-Object System.Xml.XmlDocument
+    $xmlDoc.PreserveWhitespace = $true
+    $xmlDoc.Load($reader)
+    $reader.Close()
+
+    $fileReplaced = 0
+    $paragraphs = Select-CnsWordMlNodes -ContextNode $xmlDoc -NodeKind 'Paragraph'
+    if ($null -eq $paragraphs -or $paragraphs.Count -lt 1) { return 0 }
+
+    foreach ($paragraph in @($paragraphs)) {
+        $wtNodes = Select-CnsWordMlNodes -ContextNode $paragraph -NodeKind 'Text'
+        if ($null -eq $wtNodes -or $wtNodes.Count -lt 1) { continue }
+
+        $wtParts = New-Object System.Collections.Generic.List[object]
+        $sb = [System.Text.StringBuilder]::new()
+        foreach ($wt in @($wtNodes)) {
+            $txt = $wt.InnerText
+            if ($null -eq $txt) { $txt = '' }
+            $start = $sb.Length
+            [void]$sb.Append($txt)
+            [void]$wtParts.Add([PSCustomObject]@{
+                    Node   = $wt
+                    Start  = $start
+                    Length = $txt.Length
+                })
+        }
+
+        $oldFull = $sb.ToString()
+        if ($oldFull.IndexOf('{{', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+        $replacements = @(Get-CnsPlaceholderReplacementSpansInText -FullText $oldFull -Placeholders $Placeholders)
+        if ($replacements.Count -lt 1) { continue }
+
+        Update-CnsWordParagraphWtNodesFromReplacements -WtParts $wtParts.ToArray() -Replacements @($replacements)
+        $fileReplaced += $replacements.Count
+        foreach ($r in $replacements) {
+            Write-Host ("[DESTRUCTION-CERT] {0} -> `"{1}`" (w:t safe)" -f $r.Key, $r.Value) -ForegroundColor DarkCyan
+        }
+    }
+
+    if ($fileReplaced -gt 0) {
+        Save-CnsWordMlXmlDocument -XmlDoc $xmlDoc -XmlPath $XmlPath -DeclarationLine $origDecl
+    }
+
+    return $fileReplaced
+}
+
+function Get-CnsDocxEntryRelativePath {
+    param(
+        [Parameter(Mandatory = $true)][string]$ExtractDir,
+        [Parameter(Mandatory = $true)][string]$FullPath
+    )
+    $root = [System.IO.Path]::GetFullPath($ExtractDir)
+    if (-not $root.EndsWith('\')) { $root += '\' }
+    $full = [System.IO.Path]::GetFullPath($FullPath)
+    if (-not $full.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [System.IO.Path]::GetFileName($full)
+    }
+    return $full.Substring($root.Length).Replace('\', '/')
+}
+
+function Publish-CnsDocxModifiedPartsToArchive {
+    <#
+    .SYNOPSIS
+        Met a jour uniquement les entrees modifiees dans le ZIP DOCX (preserve media, Content_Types, relations).
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$DocxPath,
+        [Parameter(Mandatory = $true)][string]$ExtractDir,
+        [Parameter(Mandatory = $true)][string[]]$ModifiedRelativePaths
+    )
+    if ($ModifiedRelativePaths.Count -lt 1) { return }
+
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $docxAbs = [System.IO.Path]::GetFullPath($DocxPath)
+    $archive = [System.IO.Compression.ZipFile]::Open($docxAbs, [System.IO.Compression.ZipArchiveMode]::Update)
+    try {
+        foreach ($rel in @($ModifiedRelativePaths)) {
+            if ([string]::IsNullOrWhiteSpace($rel)) { continue }
+            $relNorm = ([string]$rel).Replace('\', '/')
+            $diskPath = Join-Path $ExtractDir ($relNorm.Replace('/', [System.IO.Path]::DirectorySeparatorChar))
+            if (-not (Test-Path -LiteralPath $diskPath)) {
+                throw ("[DESTRUCTION-CERT] Fichier extrait introuvable pour entree ZIP : {0}" -f $relNorm)
+            }
+            $existing = $archive.GetEntry($relNorm)
+            if ($null -ne $existing) { $existing.Delete() }
+            $entry = $archive.CreateEntry($relNorm, [System.IO.Compression.CompressionLevel]::Optimal)
+            $input = [System.IO.File]::OpenRead($diskPath)
+            try {
+                $output = $entry.Open()
+                try {
+                    $input.CopyTo($output)
+                }
+                finally {
+                    $output.Dispose()
+                }
+            }
+            finally {
+                $input.Dispose()
+            }
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
 }
 
 function Set-CnsDocxTemplatePlaceholders {
+    <#
+    .SYNOPSIS
+        Remplace {{KEY}} dans les noeuds w:t uniquement (WordML structure preservee). Repackage ZIP par entrees, sans CreateFromDirectory.
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [string]$DocxPath,
@@ -121,32 +412,26 @@ function Set-CnsDocxTemplatePlaceholders {
     $docxAbs = [System.IO.Path]::GetFullPath($DocxPath)
     $workDir = Join-Path $env:TEMP ('cn_docx_unzip_' + [Guid]::NewGuid().ToString('N'))
     $null = New-Item -ItemType Directory -Path $workDir -Force
+    $totalReplaced = 0
+    $modifiedRelPaths = New-Object System.Collections.Generic.List[string]
 
     try {
         [System.IO.Compression.ZipFile]::ExtractToDirectory($docxAbs, $workDir)
 
-        $xmlFiles = @(Get-ChildItem -LiteralPath $workDir -Recurse -File -Filter '*.xml' -ErrorAction SilentlyContinue)
-        foreach ($xmlFile in $xmlFiles) {
-            $rel = $xmlFile.FullName.Substring($workDir.Length).TrimStart('\', '/')
-            if ($rel -notmatch '^(word/|docProps/)') { continue }
-
-            $content = [System.IO.File]::ReadAllText($xmlFile.FullName, [System.Text.UTF8Encoding]::new($false))
-            $changed = $false
-            foreach ($entry in $Placeholders.GetEnumerator()) {
-                $needle = '{{{0}}}' -f [string]$entry.Key
-                if ($content.IndexOf($needle, [System.StringComparison]::Ordinal) -lt 0) { continue }
-                $val = ConvertTo-CnsDestructionCertificatePlaceholderValue -Value ([string]$entry.Value)
-                $repl = ConvertTo-CnsDocxPlaceholderXmlSafe -Text $val
-                $content = $content.Replace($needle, $repl)
-                $changed = $true
-            }
-            if ($changed) {
-                [System.IO.File]::WriteAllText($xmlFile.FullName, $content, [System.Text.UTF8Encoding]::new($false))
+        foreach ($xmlPath in @(Get-CnsDocxWordContentXmlPaths -ExtractDir $workDir)) {
+            $n = [int](Invoke-CnsDocxSafePlaceholderReplaceInXmlFile -XmlPath $xmlPath -Placeholders $Placeholders)
+            if ($n -gt 0) {
+                $totalReplaced += $n
+                [void]$modifiedRelPaths.Add((Get-CnsDocxEntryRelativePath -ExtractDir $workDir -FullPath $xmlPath))
             }
         }
 
-        Remove-Item -LiteralPath $docxAbs -Force -ErrorAction Stop
-        [System.IO.Compression.ZipFile]::CreateFromDirectory($workDir, $docxAbs)
+        if ($totalReplaced -lt 1 -and $Placeholders.Count -gt 0) {
+            Write-Warning '[DESTRUCTION-CERT] Aucun placeholder remplace (verifier template DOCX / balises {{KEY}}).'
+            return $false
+        }
+
+        Publish-CnsDocxModifiedPartsToArchive -DocxPath $docxAbs -ExtractDir $workDir -ModifiedRelativePaths @($modifiedRelPaths)
         return $true
     }
     catch {
@@ -208,6 +493,128 @@ function Split-CnsCollecteurNomPrenom {
     }
 }
 
+function Normalize-CnsCertificateAgentLookupKey {
+    param([AllowNull()][string]$Text)
+    if ($null -eq $Text) { return '' }
+    $t = ([string]$Text).Trim()
+    if ([string]::IsNullOrWhiteSpace($t)) { return '' }
+    $norm = $t.Normalize([System.Text.NormalizationForm]::FormD)
+    $sb = [System.Text.StringBuilder]::new()
+    foreach ($ch in $norm.ToCharArray()) {
+        if ([System.Globalization.CharUnicodeInfo]::GetUnicodeCategory($ch) -ne [System.Globalization.UnicodeCategory]::NonSpacingMark) {
+            [void]$sb.Append($ch)
+        }
+    }
+    return $sb.ToString().ToUpperInvariant()
+}
+
+function Initialize-CnsCertificateAgentDbAccess {
+    if ($script:CnsCertAgentDbLoadAttempted) { return }
+    $script:CnsCertAgentDbLoadAttempted = $true
+    $dbScript = Join-Path $PSScriptRoot '..\..\..\Database\Database.ps1'
+    if (-not (Test-Path -LiteralPath $dbScript)) {
+        Write-Warning ("[DESTRUCTION-CERT] Database.ps1 introuvable : {0}" -f $dbScript)
+        return
+    }
+    try {
+        . $dbScript
+    }
+    catch {
+        Write-Warning ("[DESTRUCTION-CERT] Chargement Database.ps1 echoue : {0}" -f $_.Exception.Message)
+    }
+}
+
+function Get-CnsCertificateAgentCatalog {
+    if ($null -ne $script:CnsCertAgentCatalog) {
+        return @($script:CnsCertAgentCatalog)
+    }
+    $script:CnsCertAgentCatalog = @()
+    Initialize-CnsCertificateAgentDbAccess
+    if (-not (Get-Command Get-Agents -ErrorAction SilentlyContinue)) {
+        return @()
+    }
+    try {
+        $script:CnsCertAgentCatalog = @(Get-Agents)
+        Write-Host ("[DESTRUCTION-CERT] Catalogue Agent charge ({0} actifs)." -f $script:CnsCertAgentCatalog.Count) -ForegroundColor DarkGray
+    }
+    catch {
+        Write-Warning ("[DESTRUCTION-CERT] Get-Agents echoue : {0}" -f $_.Exception.Message)
+        $script:CnsCertAgentCatalog = @()
+    }
+    return @($script:CnsCertAgentCatalog)
+}
+
+function Find-CnsAgentNomByPrenomForCertificate {
+    <#
+    .SYNOPSIS
+        Recherche Agent.nom par prenom (match exact normalise). Retourne $null si absent.
+    #>
+    param([AllowNull()][string]$PrenomSearch)
+    $key = Normalize-CnsCertificateAgentLookupKey -Text $PrenomSearch
+    if ([string]::IsNullOrWhiteSpace($key)) { return $null }
+
+    $agentHits = New-Object System.Collections.Generic.List[object]
+    foreach ($agent in @(Get-CnsCertificateAgentCatalog)) {
+        if ($null -eq $agent) { continue }
+        try {
+            $ap = Normalize-CnsCertificateAgentLookupKey -Text ([string]$agent.prenom)
+            if ($ap -eq $key) { [void]$agentHits.Add($agent) }
+        }
+        catch { }
+    }
+    if ($agentHits.Count -lt 1) { return $null }
+
+    $chosen = $agentHits[0]
+    for ($i = 0; $i -lt $agentHits.Count; $i++) {
+        $agent = $agentHits[$i]
+        try {
+            $poste = Normalize-CnsCertificateAgentLookupKey -Text ([string]$agent.poste)
+            if ($poste -match 'COLLECTEUR') { $chosen = $agent; break }
+        }
+        catch { }
+    }
+
+    try {
+        $nom = [string]$chosen.nom
+        if ([string]::IsNullOrWhiteSpace($nom)) { return $null }
+        return $nom.Trim()
+    }
+    catch {
+        return $null
+    }
+}
+
+function Resolve-CnsCollecteurFieldsForCertificate {
+    <#
+    .SYNOPSIS
+        Prenom depuis Excel (segment) ; Nom depuis BDD Agent (match prenom) sinon fallback split Excel.
+    #>
+    param([AllowNull()][string]$CollecteurExcelRaw)
+    $npExcel = Split-CnsCollecteurNomPrenom -CollecteurText $CollecteurExcelRaw
+    [string]$prenomOut = [string]$npExcel.Prenom
+    if ([string]::IsNullOrWhiteSpace($prenomOut)) {
+        $t = ConvertTo-CnsDestructionCertificatePlaceholderValue -Value $CollecteurExcelRaw
+        if (-not [string]::IsNullOrWhiteSpace($t)) {
+            $prenomOut = (($t -split '\s+') | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1)
+        }
+    }
+
+    [string]$nomOut = [string]$npExcel.Nom
+    $nomBdd = Find-CnsAgentNomByPrenomForCertificate -PrenomSearch $prenomOut
+    if (-not [string]::IsNullOrWhiteSpace($nomBdd)) {
+        $nomOut = $nomBdd
+        Write-Host ("[DESTRUCTION-CERT] Collecteur_Nom depuis BDD Agent (prenom={0}, nom={1})." -f $prenomOut, $nomOut) -ForegroundColor DarkCyan
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($nomOut)) {
+        Write-Host ("[DESTRUCTION-CERT] Collecteur_Nom depuis Excel (fallback split, prenom={0})." -f $prenomOut) -ForegroundColor DarkGray
+    }
+
+    return @{
+        Prenom = $prenomOut
+        Nom    = $nomOut
+    }
+}
+
 function Get-CnsDestructionCertificatePlaceholders {
     param(
         [Parameter(Mandatory = $true)]
@@ -251,7 +658,7 @@ function Get-CnsDestructionCertificatePlaceholders {
         try { $collecteurRaw = [string]$SegmentMeta.Collecteur } catch { }
         try { $vehicule = [string]$SegmentMeta.Vehicule } catch { }
     }
-    $np = Split-CnsCollecteurNomPrenom -CollecteurText $collecteurRaw
+    $collecteurResolved = Resolve-CnsCollecteurFieldsForCertificate -CollecteurExcelRaw $collecteurRaw
 
     return [ordered]@{
         Date_Collecte     = $dateCollecte
@@ -260,8 +667,8 @@ function Get-CnsDestructionCertificatePlaceholders {
         Client_Adresse    = (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value $street)
         Client_CP         = (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value $cp)
         Client_Ville      = (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value $ville)
-        Collecteur_Nom    = (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value ([string]$np.Nom))
-        Collecteur_Prenom = (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value ([string]$np.Prenom))
+        Collecteur_Nom    = (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value ([string]$collecteurResolved.Nom))
+        Collecteur_Prenom = (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value ([string]$collecteurResolved.Prenom))
         Vehicule_Immat    = (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value $vehicule)
         ODM_Numero        = (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value $odmNum)
     }
@@ -312,7 +719,12 @@ function New-CnsDestructionCertificatePdfFromWordTemplate {
     }
     finally {
         if (Test-Path -LiteralPath $workDocx) {
-            Remove-Item -LiteralPath $workDocx -Force -ErrorAction SilentlyContinue
+            if (-not [string]::IsNullOrWhiteSpace($env:CN_KEEP_DESTRUCTION_CERT_DOCX)) {
+                Write-Host ("[DESTRUCTION-CERT] DOCX conserve (CN_KEEP_DESTRUCTION_CERT_DOCX) : {0}" -f $workDocx) -ForegroundColor DarkYellow
+            }
+            else {
+                Remove-Item -LiteralPath $workDocx -Force -ErrorAction SilentlyContinue
+            }
         }
         $loPdfSide = Join-Path $env:TEMP ([System.IO.Path]::GetFileNameWithoutExtension($workDocx) + '.pdf')
         if (Test-Path -LiteralPath $loPdfSide) {

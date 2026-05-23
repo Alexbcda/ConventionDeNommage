@@ -1046,6 +1046,23 @@ Describe 'PdfPlanningOptimizer - certificat destruction Word' {
         $r.Prenom | Should Be ''
     }
 
+    It 'Resolve-CnsCollecteurFieldsForCertificate : prenom Excel, nom BDD si match prenom' {
+        $script:CnsCertAgentCatalog = @(
+            [pscustomobject]@{ nom = 'MARTIN-BDD'; prenom = 'Jean'; poste = 'Collecteur' },
+            [pscustomobject]@{ nom = 'AUTRE'; prenom = 'Jean'; poste = 'Trieur' }
+        )
+        $r = Resolve-CnsCollecteurFieldsForCertificate -CollecteurExcelRaw 'Jean Martin Excel'
+        $r.Prenom | Should Be 'Jean'
+        $r.Nom | Should Be 'MARTIN-BDD'
+    }
+
+    It 'Resolve-CnsCollecteurFieldsForCertificate : fallback split Excel sans BDD' {
+        $script:CnsCertAgentCatalog = @()
+        $r = Resolve-CnsCollecteurFieldsForCertificate -CollecteurExcelRaw 'Paul Durand'
+        $r.Prenom | Should Be 'Paul'
+        $r.Nom | Should Be 'Durand'
+    }
+
     It 'Get-CnsLibreOfficeSofficePath : soffice.exe present ou inconclusive' {
         $p = Get-CnsLibreOfficeSofficePath
         if ($null -eq $p) {
@@ -1054,5 +1071,112 @@ Describe 'PdfPlanningOptimizer - certificat destruction Word' {
         else {
             (Test-Path -LiteralPath $p) | Should Be $true
         }
+    }
+
+    It 'Set-CnsDocxTemplatePlaceholders : remplace balises w:t sans casser structure OOXML' {
+        $tpl = Get-CnsDestructionCertificateTemplatePath
+        if ($null -eq $tpl) {
+            Set-ItResult -Inconclusive -Because 'Template CertificatDeDestruction.docx absent'
+        }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $tplUnzip = Join-Path $env:TEMP ("cn_pester_tpl_{0}" -f ([Guid]::NewGuid().ToString('N')))
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($tpl, $tplUnzip)
+        $tplDocXml = Join-Path $tplUnzip 'word\document.xml'
+        $tplXml = [xml](Get-Content -LiteralPath $tplDocXml -Raw -Encoding UTF8)
+        $ns = New-Object System.Xml.XmlNamespaceManager($tplXml.NameTable)
+        [void]$ns.AddNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main')
+        $drawingsBefore = @($tplXml.SelectNodes('//w:drawing', $ns)).Count
+        $txbxBefore = @($tplXml.SelectNodes('//w:txbxContent', $ns)).Count
+        $hasMedia = Test-Path -LiteralPath (Join-Path $tplUnzip 'word\media\image1.png')
+
+        $work = Join-Path $env:TEMP ("cn_pester_cert_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
+        Copy-Item -LiteralPath $tpl -Destination $work -Force
+        $ph = @{
+            Date_Collecte     = '01/02/2026'
+            Client_Nom        = 'ACME TEST'
+            Client_Adresse    = '10 rue Test'
+            Client_CP         = '75002'
+            Client_Ville      = 'Paris'
+            Collecteur_Nom    = 'DUPONT'
+            Collecteur_Prenom = 'Jean'
+            Client_ID         = '99999'
+            ODM_Numero        = 'ODM-TEST'
+            Vehicule_Immat    = 'AB-001-CD'
+        }
+        $ok = Set-CnsDocxTemplatePlaceholders -DocxPath $work -Placeholders $ph
+        $ok | Should Be $true
+
+        $unzip = Join-Path $env:TEMP ("cn_pester_unzip_{0}" -f ([Guid]::NewGuid().ToString('N')))
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($work, $unzip)
+        $docXml = Join-Path $unzip 'word\document.xml'
+        (Test-Path -LiteralPath $docXml) | Should Be $true
+        $xml = [xml](Get-Content -LiteralPath $docXml -Raw -Encoding UTF8)
+        $ns2 = New-Object System.Xml.XmlNamespaceManager($xml.NameTable)
+        [void]$ns2.AddNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main')
+        @($xml.SelectNodes('//w:drawing', $ns2)).Count | Should Be $drawingsBefore
+        @($xml.SelectNodes('//w:txbxContent', $ns2)).Count | Should Be $txbxBefore
+        if ($hasMedia) {
+            (Test-Path -LiteralPath (Join-Path $unzip 'word\media\image1.png')) | Should Be $true
+        }
+        $plain = (($xml.SelectNodes('//w:t', $ns2) | ForEach-Object { $_.InnerText }) -join '')
+        $plain.Contains('{{') | Should Be $false
+        $plain.Contains('ACME TEST') | Should Be $true
+        $plain.Contains('DUPONT') | Should Be $true
+        Remove-Item -LiteralPath $unzip -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $tplUnzip -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $work -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Describe 'PdfPlanningOptimizer - fusion PDF certificat (structure-preserving)' {
+
+    BeforeAll {
+        $mergePath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsPdfStructureMerge.ps1' | Resolve-Path
+        $wordPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsDestructionCertificateWord.ps1' | Resolve-Path
+        . ([string]$mergePath)
+        . ([string]$wordPath)
+    }
+
+    It 'Test-CnsPdfPathIsDestructionCertificateFragment : detecte cert_dest_*.pdf' {
+        (Test-CnsPdfPathIsDestructionCertificateFragment -Path 'C:\tmp\cert_dest_001_00001.pdf') | Should Be $true
+        (Test-CnsPdfPathIsDestructionCertificateFragment -Path 'C:\tmp\main_slice_001.pdf') | Should Be $false
+    }
+
+    It 'Merge-CnsPdfFilesForStep5TourneeComposition : preserve ToUnicode certificat LO apres qpdf' {
+        $qpdf = Get-CnsQpdfExecutablePath
+        if ($null -eq $qpdf) {
+            Write-Host 'INCONCLUSIVE: qpdf non installe (CN_QPDF_EXE ou PATH requis pour fusion certificat)' -ForegroundColor Yellow
+            return
+        }
+        $tpl = Get-CnsDestructionCertificateTemplatePath
+        if ($null -eq $tpl) {
+            Write-Host 'INCONCLUSIVE: template certificat absent' -ForegroundColor Yellow
+            return
+        }
+        if (-not (Get-CnsLibreOfficeSofficePath)) {
+            Write-Host 'INCONCLUSIVE: LibreOffice absent' -ForegroundColor Yellow
+            return
+        }
+        $docx = Join-Path $env:TEMP ("cn_pester_merge_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
+        $certPdf = Join-Path $env:TEMP ("cert_dest_001_00001.pdf")
+        $dummyPdf = Join-Path $env:TEMP ("cn_pester_dummy_{0}.pdf" -f ([Guid]::NewGuid().ToString('N')))
+        $merged = Join-Path $env:TEMP ("cn_pester_merged_{0}.pdf" -f ([Guid]::NewGuid().ToString('N')))
+        Copy-Item -LiteralPath $tpl -Destination $docx -Force
+        $ph = @{
+            Date_Collecte = '01/01/2026'; Client_Nom = 'ACME'; Client_Adresse = '1 rue'
+            Client_CP = '75001'; Client_Ville = 'Paris'; Collecteur_Nom = 'DUPONT'; Collecteur_Prenom = 'Jean'
+        }
+        Set-CnsDocxTemplatePlaceholders -DocxPath $docx -Placeholders $ph | Should Be $true
+        (Convert-DocxToPdfUsingLibreOffice -DocxPath $docx -PdfPath $certPdf) | Should Be $true
+        Copy-Item -LiteralPath $certPdf -Destination $dummyPdf -Force
+        $before = Get-CnsPdfFontStructureMarkers -PdfPath $certPdf
+        $before.ToUnicode | Should BeGreaterThan 0
+        $before.FontFile2 | Should BeGreaterThan 0
+        $ok = Merge-CnsPdfFilesForStep5TourneeComposition -InputPdfsOrdered @($dummyPdf, $certPdf) -DestinationPdfPath $merged
+        $ok | Should Be $true
+        $after = Get-CnsPdfFontStructureMarkers -PdfPath $merged
+        $after.ToUnicode | Should BeGreaterThan 0
+        $after.FontFile2 | Should BeGreaterThan 0
+        Remove-Item -LiteralPath $docx,$certPdf,$dummyPdf,$merged -Force -ErrorAction SilentlyContinue
     }
 }

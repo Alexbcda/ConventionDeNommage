@@ -4,6 +4,7 @@
 . (Join-Path $PSScriptRoot '..\..\..\Core\GhostscriptResolve.ps1')
 . (Join-Path $PSScriptRoot 'PlanningExcelTourneeSegments.ps1')
 . (Join-Path $PSScriptRoot 'CnsPdfMetierPrestation.ps1')
+. (Join-Path $PSScriptRoot 'CnsPdfStructureMerge.ps1')
 $_cnsDestructionWord = Join-Path $PSScriptRoot 'CnsDestructionCertificateWord.ps1'
 if (Test-Path -LiteralPath $_cnsDestructionWord) {
     . $_cnsDestructionWord
@@ -1133,6 +1134,9 @@ function Invoke-PlanningTourneePdfCoverComposition {
                                 $certOut = Join-Path $tmpDir ('cert_dest_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
                                 $certPdf = New-CnsDestructionCertificatePdfFromWordTemplate -OutPdfPath $certOut -Placeholders $phTable
                                 if (-not [string]::IsNullOrWhiteSpace($certPdf) -and (Test-Path -LiteralPath $certPdf)) {
+                                    if (Get-Command Write-CnsDestructionCertificatePdfMergeAudit -ErrorAction SilentlyContinue) {
+                                        Write-CnsDestructionCertificatePdfMergeAudit -Phase 'GENERATED' -PdfPath $certPdf
+                                    }
                                     [void]$frag.Add($certPdf)
                                     Write-Host ("[DESTRUCTION-CERT] Certificat injecte apres page reorder #{0} (WO={1}, PDF ODM, fichier={2})." -f $pn, $woCacheKey, (Split-Path -Leaf $certPdf)) -ForegroundColor Green
                                 }
@@ -1175,7 +1179,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
         }
 
         $outFinal = Join-Path $tmpDir 'composed_final.pdf'
-        $merged = Merge-CnsPdfFilesGhostscriptOrdered -InputPdfsOrdered @($frag.ToArray()) -DestinationPdfPath $outFinal
+        $merged = Merge-CnsPdfFilesForStep5TourneeComposition -InputPdfsOrdered @($frag.ToArray()) -DestinationPdfPath $outFinal
         if (-not $merged) {
             throw '[TOURNEE] Fusion Ghostscript (couvertures + corps) echouee.'
         }
