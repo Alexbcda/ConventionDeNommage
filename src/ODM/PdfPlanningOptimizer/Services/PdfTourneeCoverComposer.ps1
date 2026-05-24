@@ -667,6 +667,16 @@ function New-CnsTourneeHeaderCoverPdf {
         [AllowEmptyCollection()]
         [string[]]$MetierMemoLines = @()
     )
+    if ([string]::IsNullOrWhiteSpace($DateJJMMAAAA)) {
+        $DateJJMMAAAA = (Get-Date).ToString('dd/MM/yyyy')
+        Write-Verbose '[COVER] Date manquante, utilisation de la date du jour'
+    }
+    if ([string]::IsNullOrWhiteSpace($Collecteur)) {
+        $Collecteur = 'INCONNU'
+    }
+    if ([string]::IsNullOrWhiteSpace($Vehicule)) {
+        $Vehicule = 'NON SPECIFIE'
+    }
     $dateTitle = Format-CnsTourneeCoverGardeDateTitle -DateJJMMAAAA $DateJJMMAAAA
     $banner = if ($TourneeIncomplete) { 'TOURNEE NON MATCHEE' } else { $null }
     $body = Build-CnsTourneeHeaderCoverPostScriptBody -DateTitle $dateTitle -Collecteur $Collecteur -Vehicule $Vehicule -MetierMemoLines @($MetierMemoLines) -IncompleteBanner $banner
@@ -925,6 +935,104 @@ function Build-PlanningTourneeCoverBlocks {
     return @($blocks.ToArray())
 }
 
+function Get-CnsOdmPagePrestationDetectionLabel {
+    param(
+        $PageEntity,
+        $WorkOrderEntity,
+        [bool]$RequiresCea = $false
+    )
+    $parts = [System.Collections.Generic.List[string]]::new()
+    $metierPage = Get-CnsPdfPageMetierAnalysis -PageEntity $PageEntity -WorkOrderEntity $WorkOrderEntity
+    if ($metierPage.RequiresDestructionCertificate) { [void]$parts.Add('Destruction confidentielle detectee') }
+    if ($RequiresCea) { [void]$parts.Add('CEA detecte') }
+    foreach ($entry in @($metierPage.TrackDechetEntries)) {
+        if ($null -eq $entry) { continue }
+        $det = [string]$entry.Detail
+        if ($det -match '(?i)pile') { [void]$parts.Add('Piles detectees') }
+        if ($det -match '(?i)deee') { [void]$parts.Add('DEEE detecte') }
+    }
+    if ($parts.Count -lt 1) { return 'Aucune prestation metier specifique detectee' }
+    return ($parts -join ', ')
+}
+
+function Write-TourneeCompositionTreeLine {
+    param(
+        [AllowNull()][scriptblock]$ProgressCallback,
+        [string]$TreePrefix,
+        [string]$Text = '',
+        [int]$StepIndex = 5,
+        [int]$StepCount = 5
+    )
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        Write-Verbose '[TREE] Ignored empty line'
+        return
+    }
+    if ($null -eq $ProgressCallback) { return }
+    try {
+        & $ProgressCallback @{
+            StepIndex  = $StepIndex
+            StepCount  = $StepCount
+            Label      = 'Composition pages de garde'
+            Status     = 'TreeLine'
+            TreePrefix = $TreePrefix
+            Detail     = $Text
+        }
+    }
+    catch { }
+}
+
+function Add-TourneeCompositionGeneratedDocCount {
+    param([int]$Delta = 1)
+    if ($null -eq $script:PlanningTourneeGeneratedDocCount) { $script:PlanningTourneeGeneratedDocCount = 0 }
+    $script:PlanningTourneeGeneratedDocCount += $Delta
+}
+
+function Get-CnsTourneeBlockPrestationDetectionLabel {
+    param(
+        [Parameter(Mandatory = $true)] $Block,
+        [Parameter(Mandatory = $true)][object[]]$SortedGsPairs,
+        [AllowEmptyCollection()][object[]]$WorkOrders = @(),
+        [AllowEmptyCollection()][object[]]$PdfEntities = @()
+    )
+    $hasDestruction = $false
+    $hasCea = $false
+    $hasPiles = $false
+    $hasDeee = $false
+    $sortedPairsArr = @($SortedGsPairs)
+    for ($pn = [int]$Block.MainFrom1; $pn -le [int]$Block.MainTo1; $pn++) {
+        $pairIdx = $pn - 1
+        if ($pairIdx -lt 0 -or $pairIdx -ge $sortedPairsArr.Count) { continue }
+        $gsPair = $sortedPairsArr[$pairIdx]
+        [int]$rawPnPage = 0
+        try { $rawPnPage = [int]$gsPair.RawPageNum } catch { $rawPnPage = 0 }
+        $woPage = Resolve-CnsWorkOrderEntityForStep5 -GsPair $gsPair -FinalOrderToLine @{} -OrderToWorkOrder @{} -WorkOrders $WorkOrders -PdfEntities @($PdfEntities)
+        $pePage = $null
+        if ($rawPnPage -gt 0) {
+            $pePage = Get-CnsPageEntityByPhysicalPage -PageNumberOneBased $rawPnPage -PdfEntities @($PdfEntities)
+        }
+        $metierPage = Get-CnsPdfPageMetierAnalysis -PageEntity $pePage -WorkOrderEntity $woPage
+        if ($metierPage.RequiresDestructionCertificate) { $hasDestruction = $true }
+        foreach ($entry in @($metierPage.TrackDechetEntries)) {
+            if ($null -eq $entry) { continue }
+            $det = [string]$entry.Detail
+            if ($det -match '(?i)pile') { $hasPiles = $true }
+            if ($det -match '(?i)deee') { $hasDeee = $true }
+        }
+        if ($null -ne $pePage) {
+            $txt = Get-CnsPdfOdmPageTextContent -PageEntity $pePage -WorkOrderEntity $woPage
+            $norm = ConvertTo-CnsMetierMatchNormalizedText -Text $txt
+            if ($norm -match '(?i)\bcea\b') { $hasCea = $true }
+        }
+    }
+    $parts = [System.Collections.Generic.List[string]]::new()
+    if ($hasDestruction) { [void]$parts.Add('Destruction confidentielle detectee') }
+    if ($hasCea) { [void]$parts.Add('CEA detecte') }
+    if ($hasPiles) { [void]$parts.Add('Piles detectees') }
+    if ($hasDeee) { [void]$parts.Add('DEEE detecte') }
+    if ($parts.Count -lt 1) { return 'Aucune prestation metier specifique detectee' }
+    return ($parts -join ', ')
+}
+
 function Invoke-PlanningTourneePdfCoverComposition {
     <#
     .SYNOPSIS
@@ -959,7 +1067,8 @@ function Invoke-PlanningTourneePdfCoverComposition {
         [Parameter(Mandatory = $false)]
         [AllowEmptyCollection()]
         [object[]]$PdfEntities = @(),
-        $MatchResult = $null
+        $MatchResult = $null,
+        [scriptblock]$ProgressCallback = $null
     )
 
     if ($env:CN_SKIP_TOURNEE_COVERS -in @('1', 'true')) {
@@ -1077,6 +1186,9 @@ function Invoke-PlanningTourneePdfCoverComposition {
     }
 
     $blocks = @(Build-PlanningTourneeCoverBlocks -SortedGsPairs $SortedGsPairs -FinalOrderToLine $foToLine -ExcelOrderIndexToSegmentIndex $orderToSeg)
+    $blockTotal = @($blocks).Count
+    $script:PlanningTourneeBlockTotal = $blockTotal
+    $script:PlanningTourneeGeneratedDocCount = 0
 
     $frag = [System.Collections.Generic.List[string]]::new()
     $runId = [Guid]::NewGuid().ToString('N')
@@ -1088,6 +1200,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
 
         $globalCov = Join-Path $tmpDir 'cover_global.pdf'
 
+        Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix '  ' -Text 'Phase 1 : Preparation'
         Write-Host '[TOURNEE] Creation page de garde globale (premiere page du PDF final).' -ForegroundColor Cyan
         $gcOk = (New-CnsGlobalMismatchCoverPdf -OutPdfPath $globalCov `
                 -TotalOdmCount $totalODM `
@@ -1096,6 +1209,12 @@ function Invoke-PlanningTourneePdfCoverComposition {
             throw 'Ghostscript global cover echouee'
         }
         [void]$frag.Add($globalCov)
+        Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix '  ├── ' `
+            -Text 'Creation page de garde globale (synthese ODM)... [OK]'
+        Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix '  └── ' `
+            -Text ("Detection des tournees : {0} tournees trouvees [OK]" -f $blockTotal)
+
+        Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix '  ' -Text 'Phase 2 : Traitement des tournees'
 
         $seenSegments = @{}
         $prefaceAlreadyAdded = $false
@@ -1106,8 +1225,39 @@ function Invoke-PlanningTourneePdfCoverComposition {
         $fi = 0
         foreach ($blk in @($blocks)) {
             $fi++
+            $isLastTour = ($fi -eq $blockTotal)
+            $tBranch = if ($isLastTour) { '  └── ' } else { '  ├── ' }
+            $tChild = if ($isLastTour) { '      ' } else { '  │   ' }
+
+            $segmentName = [string]$blk.GroupKey
+            $tourHeaderDetail = $segmentName
+            $segUi = $null
+            if ([string]$blk.GroupKey -match '^SEG(\d+)$') {
+                $segNumUi = [int]$Matches[1]
+                $segUi = ($segments | Where-Object { [int]$_.SegmentIndex -eq $segNumUi } | Select-Object -First 1)
+                if ($null -ne $segUi) {
+                    $segLabel = [string]$segUi.Collecteur
+                    if ([string]::IsNullOrWhiteSpace($segLabel)) { $segLabel = [string]$segUi.Vehicule }
+                    if (-not [string]::IsNullOrWhiteSpace($segLabel)) { $segmentName = $segLabel }
+                    $jjUi = [string]$segUi.DisplayDateJM
+                    if ([string]::IsNullOrWhiteSpace($jjUi)) {
+                        try { $jjUi = ($segUi.TourDate).ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture) } catch { $jjUi = $VisitDate.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture) }
+                    }
+                    $dateTitleUi = Format-CnsTourneeCoverGardeDateTitle -DateJJMMAAAA $jjUi
+                    $tourHeaderDetail = ('{0} - Collecteur : {1}' -f $dateTitleUi, $segLabel)
+                }
+            }
+            if ([string]::IsNullOrWhiteSpace($tourHeaderDetail)) { $tourHeaderDetail = 'Operation en cours' }
+            Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix $tBranch `
+                -Text ("Tournee {0}/{1} : {2}" -f $fi, $blockTotal, $tourHeaderDetail)
+
+            $odmTotal = ([int]$blk.MainTo1 - [int]$blk.MainFrom1 + 1)
+            if ($odmTotal -lt 1) { $odmTotal = 0 }
+            $hasSegBilan = [string]$blk.GroupKey -match '^SEG(\d+)$'
+            $coverBranch = if ($odmTotal -gt 0 -or $hasSegBilan) { '├── ' } else { '└── ' }
 
             $coverPath = Join-Path $tmpDir ('cover_blk_{0}.pdf' -f $fi)
+            $coverCreated = $false
 
             switch -Regex ([string]$blk.GroupKey) {
                 '^SEG(\d+)$' {
@@ -1126,6 +1276,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                             Write-Host ("[TOURNEE-COVER] Segment={0} Incomplete=True (metadata absente) Date={1}" -f $n, $fdMin) -ForegroundColor Cyan
                             if (New-CnsTourneeHeaderCoverPdf -OutPdfPath $minimal -DateJJMMAAAA $fdMin -Collecteur 'INCONNU' -Vehicule 'NON SPECIFIE' -TourneeIncomplete:$true -MetierMemoLines @()) {
                                 [void]$frag.Add($minimal)
+                                $coverCreated = $true
                             }
                             else {
                                 Write-Warning '[TOURNEE] Garde minimale segment GS echouee'
@@ -1145,6 +1296,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                             Write-Host ("[STEP5-METIER] Segment {0} : {1} memo(s) garde tournée (source PDF ODM)." -f $n, $metierMemos.Count) -ForegroundColor DarkCyan
                             if (New-CnsTourneeHeaderCoverPdf -OutPdfPath $coverPath -DateJJMMAAAA $jj -Collecteur ([string]$seg.Collecteur) -Vehicule ([string]$seg.Vehicule) -TourneeIncomplete:$inc -MetierMemoLines $metierMemos) {
                                 [void]$frag.Add($coverPath)
+                                $coverCreated = $true
                             }
                             else {
                                 Write-Warning "[TOURNEE] Cover segment $n GS failure"
@@ -1160,6 +1312,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                         if (New-CnsPrefaceSectionCoverPdf -OutPdfPath $coverPath -TotalOdmCount $totalODM -UnmatchedOdmCount $unmatchedCount) {
                             [void]$frag.Add($coverPath)
                             $prefaceAlreadyAdded = $true
+                            $coverCreated = $true
                         }
                         else {
                             Write-Warning '[TOURNEE] Cover prefixe echouee'
@@ -1168,9 +1321,16 @@ function Invoke-PlanningTourneePdfCoverComposition {
                 }
             }
 
+            if ($coverCreated) {
+                Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix ($tChild + $coverBranch) `
+                    -Text 'Creation page de garde tournee... [OK]'
+            }
+
             $sliceIx = 0
+            $odmIdx = 0
             for ($pn = [int]$blk.MainFrom1; $pn -le [int]$blk.MainTo1; $pn++) {
                 $sliceIx++
+                $odmIdx++
                 $slicePath = Join-Path $tmpDir ('main_slice_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
                 if (-not (Invoke-CnsGhostscriptExtractOnePage -SourcePdf $mainAbs -FirstPageOneBased $pn -OutPdfPath $slicePath)) {
                     throw ("[TOURNEE] Extraction page principale #{0} echouee." -f $pn)
@@ -1190,6 +1350,25 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     }
                     $metierPage = Get-CnsPdfPageMetierAnalysis -PageEntity $pePage -WorkOrderEntity $woPage
                     $requiresCeaPage = Test-CnsStep5FragSliceRequiresCeaDocument -FragSlicePdfPath $slicePath
+                    $odmLabel = Get-CnsOdmPagePrestationDetectionLabel -PageEntity $pePage -WorkOrderEntity $woPage -RequiresCea:$requiresCeaPage
+                    if ([string]::IsNullOrWhiteSpace($odmLabel)) { $odmLabel = 'Operation en cours' }
+
+                    $willCert = $false
+                    $willCea = $false
+                    if ($metierPage.RequiresDestructionCertificate -and $null -ne $woPage) {
+                        $woKeyProbe = Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage
+                        if (-not [string]::IsNullOrWhiteSpace($woKeyProbe) -and -not $certInjectedForWo.Contains($woKeyProbe)) {
+                            $willCert = $true
+                        }
+                    }
+                    if ($requiresCeaPage -and $rawPnPage -gt 0 -and -not $ceaInjectedForPage.Contains($rawPnPage)) {
+                        $willCea = $true
+                    }
+
+                    $analyseIsLast = ($odmIdx -eq $odmTotal) -and -not $willCert -and -not $willCea -and -not $hasSegBilan
+                    $analyseBranch = if ($analyseIsLast) { '└── ' } else { '├── ' }
+                    Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix ($tChild + $analyseBranch) `
+                        -Text ("Analyse ODM {0}/{1} : {2}" -f $odmIdx, $odmTotal, $odmLabel)
 
                     if ($metierPage.RequiresDestructionCertificate -and $null -ne $woPage) {
                         $woCacheKey = Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage
@@ -1207,6 +1386,9 @@ function Invoke-PlanningTourneePdfCoverComposition {
                                         Write-CnsDestructionCertificatePdfMergeAudit -Phase 'GENERATED' -PdfPath $certPdf
                                     }
                                     [void]$frag.Add($certPdf)
+                                    Add-TourneeCompositionGeneratedDocCount
+                                    Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix ($tChild + '│   └── ') `
+                                        -Text 'Generation certificat destruction... [OK]'
                                     Write-Host ("[DESTRUCTION-CERT] Certificat injecte apres page reorder #{0} (WO={1}, PDF ODM, fichier={2})." -f $pn, $woCacheKey, (Split-Path -Leaf $certPdf)) -ForegroundColor Green
                                 }
                                 else {
@@ -1239,6 +1421,9 @@ function Invoke-PlanningTourneePdfCoverComposition {
                         if (-not [string]::IsNullOrWhiteSpace($ceaPdf) -and (Test-Path -LiteralPath $ceaPdf)) {
                             Write-Host ("[CEA-POINTS] PDF injecte dans frag (source DOCX dynamique) : {0}" -f (Split-Path -Leaf $ceaPdf)) -ForegroundColor Green
                             [void]$frag.Add($ceaPdf)
+                            Add-TourneeCompositionGeneratedDocCount
+                            Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix ($tChild + '│   └── ') `
+                                -Text 'Generation document CEA... [OK]'
                             Write-Host ("[STEP5-METIER] Document CEA injecte apres page reorder #{0} (RawPage={1}, fichier={2})." -f $pn, $rawPnPage, (Split-Path -Leaf $ceaPdf)) -ForegroundColor Green
                         }
                         else {
@@ -1266,6 +1451,9 @@ function Invoke-PlanningTourneePdfCoverComposition {
                                 Write-CnsLibreOfficePdfMergeAudit -Phase 'GENERATED' -PdfPath $bilanPdf -DocumentKind 'BILAN-COLLECTE'
                             }
                             [void]$frag.Add($bilanPdf)
+                            Add-TourneeCompositionGeneratedDocCount
+                            Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix ($tChild + '└── ') `
+                                -Text 'Generation bilan collecte... [OK]'
                             Write-Host ("[STEP5-METIER] Bilan de collecte dynamique injecte en fin de tournée segment {0} (fichier={1})." -f $segNumBilan, (Split-Path -Leaf $bilanPdf)) -ForegroundColor Green
                         }
                         else {
@@ -1279,15 +1467,24 @@ function Invoke-PlanningTourneePdfCoverComposition {
             }
         }
 
+        Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix '  ' -Text 'Phase 3 : Assemblage final'
+        $fragCount = @($frag).Count
+        $mergeMsg = "Fusion des {0} elements PDF... [OK]" -f $fragCount
+        if ([string]::IsNullOrWhiteSpace($mergeMsg)) { $mergeMsg = 'Operation en cours' }
         $outFinal = Join-Path $tmpDir 'composed_final.pdf'
         $merged = Merge-CnsPdfFilesForStep5TourneeComposition -InputPdfsOrdered @($frag.ToArray()) -DestinationPdfPath $outFinal
         if (-not $merged) {
             throw '[TOURNEE] Fusion Ghostscript (couvertures + corps) echouee.'
         }
+        Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix '  ├── ' -Text $mergeMsg
 
         Copy-Item -LiteralPath $outFinal -Destination $mainAbs -Force
         $nCoverSheets = 1 + @($blocks).Count
-        Write-Host ("[TOURNEE] PDF final compose : {0} garde(s) + {1} page(s) corps reorder (Ghostscript reorder inchange)." -f $nCoverSheets, $mainPageCount) -ForegroundColor Green
+        $tourneeMsg = "[TOURNEE] PDF final compose : {0} garde(s) + {1} page(s) corps reorder (Ghostscript reorder inchange)." -f $nCoverSheets, $mainPageCount
+        Write-Host $tourneeMsg -ForegroundColor Green
+        if (Get-Command Write-PlanningRebuildUiLog -ErrorAction SilentlyContinue) {
+            Write-PlanningRebuildUiLog $tourneeMsg
+        }
         return $true
     }
     catch {
@@ -1296,6 +1493,8 @@ function Invoke-PlanningTourneePdfCoverComposition {
     }
     finally {
         if ([string]::IsNullOrWhiteSpace($tmpDir) -eq $false -and (Test-Path -LiteralPath $tmpDir)) {
+            Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix '  └── ' `
+                -Text 'Nettoyage des fichiers temporaires... [OK]'
             Remove-Item -LiteralPath $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
