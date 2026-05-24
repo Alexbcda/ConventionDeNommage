@@ -2124,16 +2124,17 @@ function Match-WorkOrderToExcelOrderSmart {
     if ($null -eq $script:PlanningMatchFuzzyCount) { $script:PlanningMatchFuzzyCount = 0 }
     $script:PlanningMatchExactCount = 0
     $script:PlanningMatchFuzzyCount = 0
-    Write-PlanningExcelSubStep -Message 'Matching ClientID exact...' -Status 'SubRunning' -SubRatio 0.55
+    Write-PlanningExcelSubStep -SubStepIndex 6 -Title 'Matching ClientID exact' -Status 'SubStepStart' -SubRatio 0.55
 
+    $pendingFuzzy = [System.Collections.Generic.List[object]]::new()
     foreach ($slot in @($slots)) {
         $slotIdx++
+        Write-PlanningExcelSubStep -SubStepIndex 6 -Status 'SubStepProgress' `
+            -Detail ("client {0}/{1}" -f $slotIdx, $slotTotal) `
+            -SubRatio (0.55 + 0.07 * ($slotIdx / [Math]::Max(1, $slotTotal)))
+
         $excelIdNorm = Normalize-ClientIdForJoin $slot.ClientId
         $matchedWo = $null
-        $matchType = 'NONE'
-        $matchReason = 'NO_MATCH'
-        $matchScore = 0
-        $similarity = 0
 
         if (-not [string]::IsNullOrWhiteSpace($excelIdNorm) -and $workOrdersByClientId.ContainsKey($excelIdNorm)) {
             foreach ($cand in @($workOrdersByClientId[$excelIdNorm].ToArray())) {
@@ -2145,16 +2146,49 @@ function Match-WorkOrderToExcelOrderSmart {
         }
 
         if ($null -ne $matchedWo) {
+            $script:PlanningMatchExactCount++
             $pdfIdNorm = Normalize-ClientIdForJoin $matchedWo.ClientID
+            $woKey = script:Get-PlanningGraphStableWorkOrderRef -WorkOrder $matchedWo
+            [void]$usedWoKeys.Add($woKey)
             Write-Host ("[MATCH] TYPE=ID SCORE=100 ExcelClientID={0} PdfClientID={1}" -f $excelIdNorm, $pdfIdNorm)
+            Write-Host ("[MATCH-RESULT] Type=ID ExcelClientID={0} PDFClientID={1}" -f $excelIdNorm, $pdfIdNorm)
             $script:ClientIdMatcherStatus = 'PASS'
-            $matchType = 'ID'
-            $matchReason = 'CLIENTID_EXACT'
-            $matchScore = 100
-            $similarity = 100
+            [void]$matches.Add([pscustomobject]@{
+                ExcelOrder  = $slot.OrderIndex
+                ExcelLabel  = $slot.Label
+                MatchScore  = 100
+                Similarity  = 100
+                MatchReason = 'CLIENTID_EXACT'
+                WorkOrder   = $matchedWo
+                Entity      = $null
+            })
         }
         else {
-            $excelContext = ExcelContextTextForJoin -Slot $slot
+            [void]$pendingFuzzy.Add($slot)
+        }
+    }
+
+    Write-PlanningExcelSubStep -SubStepIndex 6 -Title 'Matching ClientID exact' -Status 'SubStepEnd' `
+        -Detail ("({0} correspondances)" -f $script:PlanningMatchExactCount) -SubRatio 0.62
+
+    Write-PlanningExcelSubStep -SubStepIndex 7 -Title 'Matching flou (nom/adresse)' -Status 'SubStepStart' -SubRatio 0.65
+
+    $fuzzyTotal = @($pendingFuzzy).Count
+    $fuzzyIdx = 0
+    foreach ($slot in @($pendingFuzzy)) {
+        $fuzzyIdx++
+        Write-PlanningExcelSubStep -SubStepIndex 7 -Status 'SubStepProgress' `
+            -Detail ("client {0}/{1}" -f $fuzzyIdx, $fuzzyTotal) `
+            -SubRatio (0.65 + 0.13 * ($fuzzyIdx / [Math]::Max(1, $fuzzyTotal)))
+
+        $excelIdNorm = Normalize-ClientIdForJoin $slot.ClientId
+        $matchedWo = $null
+        $matchType = 'NONE'
+        $matchReason = 'NO_MATCH'
+        $matchScore = 0
+        $similarity = 0
+
+        $excelContext = ExcelContextTextForJoin -Slot $slot
             $excelContextNorm = Normalize-ContextKey -Text $excelContext
 
             $excelName = ''
@@ -2315,11 +2349,9 @@ function Match-WorkOrderToExcelOrderSmart {
                     $similarity = $simPct
                 }
             }
-        }
 
         if ($null -ne $matchedWo) {
-            if ($matchType -eq 'ID') { $script:PlanningMatchExactCount++ }
-            elseif ($matchType -in @('NAME', 'ADDRESS', 'CITY')) { $script:PlanningMatchFuzzyCount++ }
+            $script:PlanningMatchFuzzyCount++
             $pdfIdNorm = Normalize-ClientIdForJoin $matchedWo.ClientID
             $woKey = script:Get-PlanningGraphStableWorkOrderRef -WorkOrder $matchedWo
             [void]$usedWoKeys.Add($woKey)
@@ -2344,14 +2376,12 @@ function Match-WorkOrderToExcelOrderSmart {
         }
     }
 
-    Write-PlanningExcelSubStep -Message 'Matching ClientID exact...' -Status 'SubOK' `
-        -Detail ("{0} correspondances" -f $script:PlanningMatchExactCount) -SubRatio 0.62
-    Write-PlanningExcelSubStep -Message 'Matching flou (nom/adresse)...' -Status 'SubRunning' -SubRatio 0.65
-    Write-PlanningExcelSubStep -Message 'Matching flou (nom/adresse)...' -Status 'SubOK' `
-        -Detail ("{0} correspondances" -f $script:PlanningMatchFuzzyCount) -SubRatio 0.78
-    Write-PlanningExcelSubStep -Message 'Resolution des conflits...' -Status 'SubRunning' -SubRatio 0.82
-    Write-PlanningExcelSubStep -Message 'Resolution des conflits...' -Status 'SubOK' `
-        -Detail ("{0} non-matches" -f @($missing).Count) -SubRatio 0.95
+    Write-PlanningExcelSubStep -SubStepIndex 7 -Title 'Matching flou (nom/adresse)' -Status 'SubStepEnd' `
+        -Detail ("({0} correspondances)" -f $script:PlanningMatchFuzzyCount) -SubRatio 0.78
+
+    Write-PlanningExcelSubStep -SubStepIndex 8 -Title 'Resolution des conflits' -Status 'SubStepStart' -SubRatio 0.82
+    Write-PlanningExcelSubStep -SubStepIndex 8 -Title 'Resolution des conflits' -Status 'SubStepEnd' `
+        -Detail ("({0} non-matches)" -f @($missing).Count) -SubRatio 0.95
 
     return [pscustomobject]@{
         Matches = Sort-Safe -InputObject @(
@@ -3129,15 +3159,18 @@ function ConvertTo-PlanningExcelColumnLetter {
 
 function Write-PlanningExcelSubStep {
     param(
-        [Parameter(Mandatory = $true)][string]$Message,
-        [Parameter(Mandatory = $true)][ValidateSet('SubRunning', 'SubOK', 'SubError')]
+        [Parameter(Mandatory = $true)][int]$SubStepIndex,
+        [string]$Title = $null,
+        [Parameter(Mandatory = $true)][ValidateSet('SubStepStart', 'SubStepProgress', 'SubStepEnd', 'SubStepError')]
         [string]$Status,
         [string]$Detail = $null,
         [double]$SubRatio = 0
     )
     if ($null -eq $script:PlanningRebuildProgressCallback) { return }
+    $subStepTitle = if (-not [string]::IsNullOrWhiteSpace($Title)) { $Title.TrimEnd('.') } else { $null }
     Write-PlanningRebuildProgress -ProgressCallback $script:PlanningRebuildProgressCallback `
-        -StepIndex 2 -StepCount 5 -Label 'Lecture Excel + matching' -Status $Status -SubStep $Message -Detail $Detail `
+        -StepIndex 2 -StepCount 5 -Label 'Lecture Excel + matching' -Status $Status `
+        -SubStep $subStepTitle -Detail $Detail -SubStepIndex $SubStepIndex -SubStepCount 8 `
         -Percent (Get-PlanningRebuildStepPercent -StepIndex 2 -StepCount 5 -SubRatio $SubRatio)
 }
 
@@ -3168,7 +3201,7 @@ function Write-PlanningRebuildProgress {
         [int]$StepIndex = 0,
         [int]$StepCount = 5,
         [string]$Label = '',
-        [Parameter(Mandatory = $true)][ValidateSet('Running', 'OK', 'Error', 'Log', 'SubRunning', 'SubOK', 'SubError', 'TourRunning', 'TourInfo', 'TreeLine', 'Complete')]
+        [Parameter(Mandatory = $true)][ValidateSet('Running', 'OK', 'Error', 'Log', 'SubRunning', 'SubOK', 'SubError', 'SubStepStart', 'SubStepProgress', 'SubStepEnd', 'SubStepError', 'TourRunning', 'TourInfo', 'TreeLine', 'TourneeStart', 'TourneeProgress', 'TourneeEnd', 'Complete')]
         [string]$Status,
         [string]$Detail = $null,
         [int]$Percent = -1,
@@ -3238,11 +3271,14 @@ function Start-PlanningRebuild {
     Write-Host "[PIPELINE] STEP 1: Extraction PDF" -ForegroundColor Cyan
     Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 1 -StepCount $planningStepTotal -Label 'Extraction PDF' -Status 'Running' -Percent 0
     $pdfExtractProgressCb = {
-        param([int]$PageNumber, [int]$TotalPages)
+        param([int]$PageNumber, [int]$TotalPages, [string]$Detail = $null)
         if ($TotalPages -lt 1) { return }
+        if ([string]::IsNullOrWhiteSpace($Detail)) {
+            $Detail = ("pages extraites : {0}/{1}" -f $PageNumber, $TotalPages)
+        }
         $ratio = [double]$PageNumber / [double]$TotalPages
         Update-PlanningRebuildStepProgress -StepIndex 1 -StepCount $planningStepTotal -Label 'Extraction PDF' -Status 'Running' `
-            -Detail ("page {0}/{1}" -f $PageNumber, $TotalPages) -SubRatio $ratio
+            -Detail $Detail -SubRatio $ratio
     }
     $pdfData = $null
     try {
@@ -3324,8 +3360,6 @@ function Start-PlanningRebuild {
         -Detail ("({0} pages extraites)" -f $extractedPageCount) -Percent (Get-PlanningRebuildStepPercent -StepIndex 1 -StepCount $planningStepTotal -SubRatio 1.0)
 
     Write-Host "[PIPELINE] STEP 2: Lecture Excel + matching" -ForegroundColor Cyan
-    Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 2 -StepCount $planningStepTotal -Label 'Lecture Excel + matching' -Status 'Running' `
-        -Percent (Get-PlanningRebuildStepPercent -StepIndex 2 -StepCount $planningStepTotal -SubRatio 0)
     $script:ClientIdPipelineStatus = 'PASS'
     $script:ClientIdMatcherStatus = 'FAIL'
     $excelData = $null
@@ -3333,7 +3367,7 @@ function Start-PlanningRebuild {
     $excelOrder = $null
     Trace-DeepObjectLeak -Value $excelOrder -Name "excelOrder" -Location "Start-PlanningRebuild.init"
     try {
-        Write-PlanningExcelSubStep -Message 'Verification du fichier Excel...' -Status 'SubRunning' -SubRatio 0.05
+        Write-PlanningExcelSubStep -SubStepIndex 1 -Title 'Verification du fichier Excel' -Status 'SubStepStart' -SubRatio 0.05
         if (Get-Command Test-ExcelFileIntegrity -ErrorAction SilentlyContinue) {
             $excelIntegrity = Test-ExcelFileIntegrity -Path $ExcelPath
             if (-not $excelIntegrity.IsValid) {
@@ -3341,29 +3375,29 @@ function Start-PlanningRebuild {
                 throw "[ExcelLoader] Fichier structurellement invalide: $integrityErr"
             }
         }
-        Write-PlanningExcelSubStep -Message 'Verification du fichier Excel...' -Status 'SubOK' -SubRatio 0.1
+        Write-PlanningExcelSubStep -SubStepIndex 1 -Title 'Verification du fichier Excel' -Status 'SubStepEnd' -SubRatio 0.1
 
-        Write-PlanningExcelSubStep -Message 'Ouverture du classeur...' -Status 'SubRunning' -SubRatio 0.12
+        Write-PlanningExcelSubStep -SubStepIndex 2 -Title 'Ouverture du classeur' -Status 'SubStepStart' -SubRatio 0.12
         $excelData = Import-PlanningExcel -ExcelPath $ExcelPath
-        Write-PlanningExcelSubStep -Message 'Ouverture du classeur...' -Status 'SubOK' -SubRatio 0.2
+        Write-PlanningExcelSubStep -SubStepIndex 2 -Title 'Ouverture du classeur' -Status 'SubStepEnd' -SubRatio 0.2
 
-        Write-PlanningExcelSubStep -Message 'Recherche de la colonne date...' -Status 'SubRunning' -SubRatio 0.22
+        Write-PlanningExcelSubStep -SubStepIndex 3 -Title 'Recherche de la colonne date' -Status 'SubStepStart' -SubRatio 0.22
         $column = Find-ExcelColumnFromDate -ExcelData $excelData -VisitDate $visitDate -ExcelPath $ExcelPath
         $colLetter = ConvertTo-PlanningExcelColumnLetter -ColumnIndexOneBased ([int]$column.ColumnIndex)
         $colHeader = [string]$column.HeaderText
         if ([string]::IsNullOrWhiteSpace($colHeader)) { $colHeader = '(sans en-tete)' }
-        Write-PlanningExcelSubStep -Message 'Recherche de la colonne date...' -Status 'SubOK' `
+        Write-PlanningExcelSubStep -SubStepIndex 3 -Title 'Recherche de la colonne date' -Status 'SubStepEnd' `
             -Detail ('(colonne {0}, en-tete "{1}")' -f $colLetter, $colHeader) -SubRatio 0.32
 
-        Write-PlanningExcelSubStep -Message 'Extraction des lignes clients...' -Status 'SubRunning' -SubRatio 0.35
+        Write-PlanningExcelSubStep -SubStepIndex 4 -Title 'Extraction des lignes clients' -Status 'SubStepStart' -SubRatio 0.35
         $excelOrder = Extract-ExcelOrder -ExcelData $excelData -ColumnInfo $column
         Trace-DeepObjectLeak -Value $excelOrder -Name "excelOrder" -Location "Start-PlanningRebuild.afterExtractExcelOrder"
         $clientCount = @($excelOrder).Count
-        Write-PlanningExcelSubStep -Message 'Extraction des lignes clients...' -Status 'SubOK' `
-            -Detail ("{0} clients trouves" -f $clientCount) -SubRatio 0.45
+        Write-PlanningExcelSubStep -SubStepIndex 4 -Title 'Extraction des lignes clients' -Status 'SubStepEnd' `
+            -Detail ("({0} clients trouves)" -f $clientCount) -SubRatio 0.45
 
-        Write-PlanningExcelSubStep -Message 'Normalisation des textes...' -Status 'SubRunning' -SubRatio 0.48
-        Write-PlanningExcelSubStep -Message 'Normalisation des textes...' -Status 'SubOK' -SubRatio 0.52
+        Write-PlanningExcelSubStep -SubStepIndex 5 -Title 'Normalisation des textes' -Status 'SubStepStart' -SubRatio 0.48
+        Write-PlanningExcelSubStep -SubStepIndex 5 -Title 'Normalisation des textes' -Status 'SubStepEnd' -SubRatio 0.52
     } catch {
         Write-Host ("[ERROR] Excel / colonne planning : {0}" -f $_.Exception.Message) -ForegroundColor Red
         Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 2 -StepCount $planningStepTotal -Label 'Lecture Excel + matching' -Status 'Error'
