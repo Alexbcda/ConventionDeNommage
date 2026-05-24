@@ -978,7 +978,7 @@ function Invoke-PdfExtraction {
                         FilteredLines = $empty
                     })
                     if ($null -ne $ProgressCallback) {
-                        try { & $ProgressCallback $i $pageCount } catch { }
+                        try { & $ProgressCallback $i $pageCount ("pages extraites : {0}/{1}" -f $i, $pageCount) } catch { }
                     }
                 }
             }
@@ -1025,7 +1025,7 @@ Debug :
                     FilteredLines = $rawCopy
                 })
                 if ($null -ne $ProgressCallback) {
-                    try { & $ProgressCallback $i $pageCount } catch { }
+                    try { & $ProgressCallback $i $pageCount ("pages extraites : {0}/{1}" -f $i, $pageCount) } catch { }
                 }
             }
         }

@@ -10,6 +10,71 @@ $script:PlanningLastTourHeaderIndex = 0
 $script:PlanningStepHadSubLines = $false
 $script:PlanningCurrentStepIndex = 0
 $script:PlanningProgressHadError = $false
+$script:PlanningExcelSubStepProgressStart = 0
+$script:PlanningStep2ActivityTimer = $null
+$script:PlanningStep2ActivityLabel = $null
+$script:PlanningStep2EllipsisPhase = 0
+$script:PlanningStep2ActivityActive = $false
+
+function Stop-PlanningRebuildStep2ActivityAnimation {
+    $script:PlanningStep2ActivityActive = $false
+    if ($null -ne $script:PlanningStep2ActivityTimer) {
+        $script:PlanningStep2ActivityTimer.Stop()
+    }
+    if ($null -ne $script:PlanningStep2ActivityLabel) {
+        $script:PlanningStep2ActivityLabel.Visible = $false
+        $script:PlanningStep2ActivityLabel.Text = ''
+    }
+}
+
+function Start-PlanningRebuildStep2ActivityAnimation {
+    param([System.Windows.Forms.Label]$ActivityLabel)
+    if ($null -eq $ActivityLabel) { return }
+    if ($script:PlanningStep2ActivityActive -and $script:PlanningStep2ActivityLabel -eq $ActivityLabel) { return }
+
+    Stop-PlanningRebuildStep2ActivityAnimation
+    $script:PlanningStep2ActivityLabel = $ActivityLabel
+    $script:PlanningStep2EllipsisPhase = 0
+    $script:PlanningStep2ActivityActive = $true
+    $ActivityLabel.Visible = $true
+    $ActivityLabel.Text = 'Analyse en cours.'
+
+    if ($null -eq $script:PlanningStep2ActivityTimer) {
+        $script:PlanningStep2ActivityTimer = [System.Windows.Forms.Timer]::new()
+        $script:PlanningStep2ActivityTimer.Interval = 450
+        $script:PlanningStep2ActivityTimer.Add_Tick({
+            if (-not $script:PlanningStep2ActivityActive -or $null -eq $script:PlanningStep2ActivityLabel) { return }
+            $script:PlanningStep2EllipsisPhase = ($script:PlanningStep2EllipsisPhase + 1) % 4
+            $dots = switch ($script:PlanningStep2EllipsisPhase) {
+                0 { '.' }
+                1 { '..' }
+                2 { '...' }
+                default { '.' }
+            }
+            $script:PlanningStep2ActivityLabel.Text = "Analyse en cours$dots"
+        })
+    }
+    $script:PlanningStep2ActivityTimer.Start()
+}
+
+function Sync-PlanningRebuildStep2ActivityAnimation {
+    param(
+        [int]$StepIndex,
+        [string]$Status
+    )
+    if ($StepIndex -eq 2) {
+        if ($Status -in @('SubStepStart', 'SubStepProgress', 'SubStepEnd', 'SubRunning', 'SubOK', 'Running')) {
+            Start-PlanningRebuildStep2ActivityAnimation -ActivityLabel $script:PlanningStep2ActivityLabel
+        }
+        elseif ($Status -in @('OK', 'Error', 'SubStepError')) {
+            Stop-PlanningRebuildStep2ActivityAnimation
+        }
+        return
+    }
+    if ($StepIndex -gt 2 -and $script:PlanningStep2ActivityActive) {
+        Stop-PlanningRebuildStep2ActivityAnimation
+    }
+}
 
 function Reset-PlanningRebuildProgressUiState {
     $script:PlanningCurrentProgressLine = $null
@@ -19,6 +84,7 @@ function Reset-PlanningRebuildProgressUiState {
     $script:PlanningSubStepOpen = $false
     $script:PlanningLastTourHeaderIndex = 0
     $script:PlanningStepHadSubLines = $false
+    $script:PlanningExcelSubStepProgressStart = 0
 }
 
 function Get-PlanningRebuildOutputFileSizeLabel {
@@ -39,27 +105,37 @@ function Get-PlanningRebuildOutputFileSizeLabel {
     return ('{0} octets' -f ($bytes.ToString('N0', $fr)))
 }
 
+function Scroll-PlanningRebuildDebugToEnd {
+    param([System.Windows.Forms.TextBoxBase]$DebugBox)
+    if ($null -eq $DebugBox) { return }
+
+    $DebugBox.Select($DebugBox.TextLength, 0)
+    $DebugBox.ScrollToCaret()
+    $DebugBox.SelectionStart = $DebugBox.TextLength
+    $DebugBox.SelectionLength = 0
+    if (-not $DebugBox.Focused) { [void]$DebugBox.Focus() }
+    $DebugBox.Refresh()
+    [System.Windows.Forms.Application]::DoEvents()
+}
+
 function Add-PlanningRebuildDebugLogLine {
     param(
-        [System.Windows.Forms.TextBox]$DebugBox,
+        [System.Windows.Forms.TextBoxBase]$DebugBox,
         [string]$Line
     )
     if ($null -eq $DebugBox -or [string]::IsNullOrWhiteSpace($Line)) { return }
     [void]$DebugBox.AppendText($Line + [Environment]::NewLine)
-    $DebugBox.SelectionStart = $DebugBox.Text.Length
-    $DebugBox.SelectionLength = 0
-    $DebugBox.ScrollToCaret()
-    [System.Windows.Forms.Application]::DoEvents()
+    Scroll-PlanningRebuildDebugToEnd -DebugBox $DebugBox
 }
 
 function Update-PlanningRebuildDebugProgress {
     param(
-        [System.Windows.Forms.TextBox]$DebugBox,
+        [System.Windows.Forms.TextBoxBase]$DebugBox,
         [System.Windows.Forms.ProgressBar]$ProgressBar,
         [int]$StepIndex,
         [int]$StepCount,
         [string]$Label,
-        [ValidateSet('Running', 'OK', 'Error', 'SubRunning', 'SubOK', 'SubError', 'TourRunning', 'TourInfo', 'TreeLine', 'Complete')]
+        [ValidateSet('Running', 'OK', 'Error', 'SubRunning', 'SubOK', 'SubError', 'SubStepStart', 'SubStepProgress', 'SubStepEnd', 'SubStepError', 'TourRunning', 'TourInfo', 'TreeLine', 'TourneeStart', 'TourneeProgress', 'TourneeEnd', 'Complete')]
         [string]$Status,
         [string]$Detail = $null,
         [int]$Percent = -1,
@@ -69,9 +145,15 @@ function Update-PlanningRebuildDebugProgress {
         [string]$TreePrefix = $null,
         [string]$OutputPath = $null
     )
-    if ($null -eq $DebugBox) { return }
+
+    if ($null -eq $DebugBox) {
+        return
+    }
+
+    Sync-PlanningRebuildStep2ActivityAnimation -StepIndex $StepIndex -Status $Status
 
     if ($Status -eq 'Complete') {
+        Stop-PlanningRebuildStep2ActivityAnimation
         $DebugBox.Clear()
         Reset-PlanningRebuildProgressUiState
         $script:PlanningCurrentStepIndex = 0
@@ -87,11 +169,152 @@ function Update-PlanningRebuildDebugProgress {
         }
         [void]$DebugBox.AppendText('========================================' + [Environment]::NewLine)
         if ($null -ne $ProgressBar) { $ProgressBar.Value = 100 }
-        $DebugBox.SelectionStart = $DebugBox.Text.Length
-        $DebugBox.SelectionLength = 0
-        $DebugBox.ScrollToCaret()
-        [System.Windows.Forms.Application]::DoEvents()
+        Scroll-PlanningRebuildDebugToEnd -DebugBox $DebugBox
         return
+    }
+
+    if ($StepIndex -eq 1 -and $Status -eq 'Running' -and -not [string]::IsNullOrWhiteSpace($Detail) -and $Detail -match '(?i)^pages extraites\s*:') {
+        $script:PlanningStepHadSubLines = $false
+        $script:PlanningActiveStepIndex = $StepIndex
+        $script:PlanningCurrentStepIndex = $StepIndex
+        $newLine = ('[{0}/{1}] Extraction PDF... {2}' -f $StepIndex, $StepCount, $Detail)
+        if ($null -ne $script:PlanningCurrentProgressLine -and $script:PlanningActiveStepIndex -eq $StepIndex -and $DebugBox.Text.Length -ge $script:PlanningProgressTextStart) {
+            $DebugBox.Text = $DebugBox.Text.Substring(0, $script:PlanningProgressTextStart)
+        }
+        elseif ($DebugBox.Text.Length -gt 0 -and -not $DebugBox.Text.EndsWith([Environment]::NewLine)) {
+            [void]$DebugBox.AppendText([Environment]::NewLine)
+            $script:PlanningProgressTextStart = $DebugBox.Text.Length
+        }
+        else {
+            $script:PlanningProgressTextStart = $DebugBox.Text.Length
+        }
+        [void]$DebugBox.AppendText($newLine)
+        $script:PlanningCurrentProgressLine = $newLine
+        if ($null -ne $ProgressBar -and $Percent -ge 0) {
+            $clamped = [Math]::Min(100, [Math]::Max($ProgressBar.Minimum, $Percent))
+            if ($ProgressBar.Value -ne $clamped) { $ProgressBar.Value = $clamped }
+        }
+        Scroll-PlanningRebuildDebugToEnd -DebugBox $DebugBox
+        return
+    }
+
+    if ($StepIndex -eq 5 -and $Status -eq 'TourneeStart') {
+        $DebugBox.Clear()
+        Reset-PlanningRebuildProgressUiState
+        $script:PlanningCurrentStepIndex = 5
+        $script:PlanningStepHadSubLines = $true
+        $script:PlanningActiveStepIndex = 5
+        $script:PlanningProgressTextStart = 0
+        [void]$DebugBox.AppendText(('[{0}/{1}] {2}...{3}' -f $StepIndex, $StepCount, $Label, [Environment]::NewLine))
+        [void]$DebugBox.AppendText([Environment]::NewLine)
+        [void]$DebugBox.AppendText('  Phase 2 : Traitement des tournees' + [Environment]::NewLine)
+        $tourIdx = if (-not [string]::IsNullOrWhiteSpace($Detail)) { [string]$Detail } else { '?' }
+        [void]$DebugBox.AppendText(("  Tournee {0} en cours{1}" -f $tourIdx, [Environment]::NewLine))
+        [void]$DebugBox.AppendText([Environment]::NewLine)
+        $script:PlanningCurrentProgressLine = ('[{0}/{1}] {2}...' -f $StepIndex, $StepCount, $Label)
+        if ($null -ne $ProgressBar -and $Percent -ge 0) {
+            $clamped = [Math]::Min(100, [Math]::Max($ProgressBar.Minimum, $Percent))
+            if ($ProgressBar.Value -ne $clamped) { $ProgressBar.Value = $clamped }
+        }
+        Scroll-PlanningRebuildDebugToEnd -DebugBox $DebugBox
+        return
+    }
+
+    if ($StepIndex -eq 5 -and $Status -eq 'TourneeProgress' -and -not [string]::IsNullOrWhiteSpace($Detail)) {
+        $script:PlanningStepHadSubLines = $true
+        [void]$DebugBox.AppendText(('  {0}{1}' -f $Detail, [Environment]::NewLine))
+        if ($null -ne $ProgressBar -and $Percent -ge 0) {
+            $clamped = [Math]::Min(100, [Math]::Max($ProgressBar.Minimum, $Percent))
+            if ($ProgressBar.Value -ne $clamped) { $ProgressBar.Value = $clamped }
+        }
+        Scroll-PlanningRebuildDebugToEnd -DebugBox $DebugBox
+        return
+    }
+
+    if ($StepIndex -eq 5 -and $Status -eq 'TourneeEnd') {
+        return
+    }
+
+    if ($StepIndex -eq 2 -and $Status -eq 'SubStepStart') {
+        $DebugBox.Clear()
+        Reset-PlanningRebuildProgressUiState
+        $script:PlanningCurrentStepIndex = 2
+        $script:PlanningStepHadSubLines = $true
+        $script:PlanningActiveStepIndex = 2
+        $stepNum = if ($SubStepIndex -gt 0) { $SubStepIndex } else { 1 }
+        $stepTotal = if ($SubStepCount -gt 0) { $SubStepCount } else { 8 }
+        $title = if (-not [string]::IsNullOrWhiteSpace($SubStep)) { [string]$SubStep } else { [string]$Detail }
+        $title = $title.TrimEnd('.')
+        [void]$DebugBox.AppendText(('[{0}/{1}] {2}...{3}' -f $StepIndex, $StepCount, $Label, [Environment]::NewLine))
+        [void]$DebugBox.AppendText([Environment]::NewLine)
+        $script:PlanningExcelSubStepProgressStart = $DebugBox.Text.Length
+        [void]$DebugBox.AppendText(('  Etape {0}/{1} : {2}...' -f $stepNum, $stepTotal, $title))
+        $script:PlanningCurrentProgressLine = ('[{0}/{1}] {2}...' -f $StepIndex, $StepCount, $Label)
+        if ($null -ne $ProgressBar -and $Percent -ge 0) {
+            $clamped = [Math]::Min(100, [Math]::Max($ProgressBar.Minimum, $Percent))
+            if ($ProgressBar.Value -ne $clamped) { $ProgressBar.Value = $clamped }
+        }
+        Scroll-PlanningRebuildDebugToEnd -DebugBox $DebugBox
+        return
+    }
+
+    if ($StepIndex -eq 2 -and $Status -eq 'SubStepProgress' -and -not [string]::IsNullOrWhiteSpace($Detail)) {
+        $script:PlanningStepHadSubLines = $true
+        if ($DebugBox.Text.Length -ge $script:PlanningExcelSubStepProgressStart) {
+            $DebugBox.Text = $DebugBox.Text.Substring(0, $script:PlanningExcelSubStepProgressStart)
+        }
+        $script:PlanningExcelSubStepProgressStart = $DebugBox.Text.Length
+        [void]$DebugBox.AppendText(('  {0}' -f $Detail))
+        if ($null -ne $ProgressBar -and $Percent -ge 0) {
+            $clamped = [Math]::Min(100, [Math]::Max($ProgressBar.Minimum, $Percent))
+            if ($ProgressBar.Value -ne $clamped) { $ProgressBar.Value = $clamped }
+        }
+        Scroll-PlanningRebuildDebugToEnd -DebugBox $DebugBox
+        return
+    }
+
+    if ($StepIndex -eq 2 -and $Status -eq 'SubStepEnd') {
+        $script:PlanningStepHadSubLines = $true
+        $title = if (-not [string]::IsNullOrWhiteSpace($SubStep)) { [string]$SubStep } else { 'Etape' }
+        $title = $title.TrimEnd('.')
+        if ($DebugBox.Text.Length -ge $script:PlanningExcelSubStepProgressStart) {
+            $DebugBox.Text = $DebugBox.Text.Substring(0, $script:PlanningExcelSubStepProgressStart)
+        }
+        $resultSuffix = ''
+        if (-not [string]::IsNullOrWhiteSpace($Detail)) {
+            $d = [string]$Detail
+            if (-not $d.StartsWith(' ') -and -not $d.StartsWith('(')) { $d = " $d" }
+            $resultSuffix = $d
+        }
+        [void]$DebugBox.AppendText(('  {0}... [OK]{1}' -f $title, $resultSuffix))
+        [void]$DebugBox.AppendText([Environment]::NewLine)
+        if ($null -ne $ProgressBar -and $Percent -ge 0) {
+            $clamped = [Math]::Min(100, [Math]::Max($ProgressBar.Minimum, $Percent))
+            if ($ProgressBar.Value -ne $clamped) { $ProgressBar.Value = $clamped }
+        }
+        Scroll-PlanningRebuildDebugToEnd -DebugBox $DebugBox
+        return
+    }
+
+    if ($StepIndex -eq 2 -and $Status -eq 'SubStepError') {
+        $script:PlanningProgressHadError = $true
+        $title = if (-not [string]::IsNullOrWhiteSpace($SubStep)) { [string]$SubStep } else { 'Etape' }
+        $errSuffix = ''
+        if (-not [string]::IsNullOrWhiteSpace($Detail)) {
+            $errSuffix = if ([string]$Detail.StartsWith(' ')) { [string]$Detail } else { " $Detail" }
+        }
+        if ($DebugBox.Text.Length -ge $script:PlanningExcelSubStepProgressStart) {
+            $DebugBox.Text = $DebugBox.Text.Substring(0, $script:PlanningExcelSubStepProgressStart)
+        }
+        [void]$DebugBox.AppendText(('  {0}... [ERREUR]{1}' -f $title, $errSuffix))
+        [void]$DebugBox.AppendText([Environment]::NewLine)
+        Scroll-PlanningRebuildDebugToEnd -DebugBox $DebugBox
+        return
+    }
+
+    $detailSuffix = ''
+    if (-not [string]::IsNullOrWhiteSpace($Detail)) {
+        $detailSuffix = " $Detail"
     }
 
     if ($Status -eq 'Error') {
@@ -105,25 +328,10 @@ function Update-PlanningRebuildDebugProgress {
         $script:PlanningCurrentStepIndex = $StepIndex
     }
 
-    $detailSuffix = ''
-    if (-not [string]::IsNullOrWhiteSpace($Detail)) {
-        $detailSuffix = " $Detail"
-    }
-
     switch ($Status) {
         'Running' {
-            $isPageDetail = (-not [string]::IsNullOrWhiteSpace($Detail)) -and ($Detail -match '^(?i)page \d+/\d+$')
-            if ($isPageDetail -and $script:PlanningActiveStepIndex -eq $StepIndex -and $null -ne $script:PlanningCurrentProgressLine) {
-                $script:PlanningStepHadSubLines = $true
-                if ($DebugBox.Text.Length -gt 0 -and -not $DebugBox.Text.EndsWith([Environment]::NewLine)) {
-                    [void]$DebugBox.AppendText([Environment]::NewLine)
-                }
-                [void]$DebugBox.AppendText(('  {0}' -f $Detail))
-                [void]$DebugBox.AppendText([Environment]::NewLine)
-                break
-            }
             $script:PlanningStepHadSubLines = $false
-            $line = ('[{0}/{1}] {2}...{3}' -f $StepIndex, $StepCount, $Label, $(if ($isPageDetail) { '' } else { $detailSuffix }))
+            $line = ('[{0}/{1}] {2}...{3}' -f $StepIndex, $StepCount, $Label, $detailSuffix)
             if ($null -ne $script:PlanningCurrentProgressLine -and $script:PlanningActiveStepIndex -eq $StepIndex) {
                 if ($DebugBox.Text.Length -ge $script:PlanningProgressTextStart) {
                     $DebugBox.Text = $DebugBox.Text.Substring(0, $script:PlanningProgressTextStart)
@@ -263,10 +471,7 @@ function Update-PlanningRebuildDebugProgress {
         }
     }
 
-    $DebugBox.SelectionStart = $DebugBox.Text.Length
-    $DebugBox.SelectionLength = 0
-    $DebugBox.ScrollToCaret()
-    [System.Windows.Forms.Application]::DoEvents()
+    Scroll-PlanningRebuildDebugToEnd -DebugBox $DebugBox
 }
 
 function Show-PlanningRebuilderPanel {
@@ -324,20 +529,15 @@ function Show-PlanningRebuilderPanel {
     $btnRun.Location = [System.Drawing.Point]::new(380, 140)
     $panel.Controls.Add($btnRun)
 
-    $listResult = [System.Windows.Forms.ListBox]::new()
-    $listResult.Name = "listResult"
-    $listResult.Location = [System.Drawing.Point]::new(20, 200)
-    $listResult.Size = [System.Drawing.Size]::new(1100, 220)
-    $listResult.Anchor = "Top,Left,Right"
-    $panel.Controls.Add($listResult)
-
-    $txtDebug = [System.Windows.Forms.TextBox]::new()
+    $txtDebug = [System.Windows.Forms.RichTextBox]::new()
     $txtDebug.Name = "txtDebug"
     $txtDebug.Multiline = $true
     $txtDebug.ScrollBars = "Vertical"
     $txtDebug.ReadOnly = $true
-    $txtDebug.Location = [System.Drawing.Point]::new(20, 435)
-    $txtDebug.Size = [System.Drawing.Size]::new(1100, 230)
+    $txtDebug.HideSelection = $false
+    $txtDebug.WordWrap = $false
+    $txtDebug.Location = [System.Drawing.Point]::new(20, 200)
+    $txtDebug.Size = [System.Drawing.Size]::new(1100, 465)
     $txtDebug.Anchor = "Top,Bottom,Left,Right"
     $panel.Controls.Add($txtDebug)
 
@@ -352,6 +552,18 @@ function Show-PlanningRebuilderPanel {
     $progressBar.Visible = $true
     $progressBar.Anchor = 'Bottom,Left,Right'
     $panel.Controls.Add($progressBar)
+
+    $lblStep2Activity = [System.Windows.Forms.Label]::new()
+    $lblStep2Activity.Name = 'lblStep2Activity'
+    $lblStep2Activity.Text = ''
+    $lblStep2Activity.Visible = $false
+    $lblStep2Activity.AutoSize = $true
+    $lblStep2Activity.Location = [System.Drawing.Point]::new(20, 668)
+    $lblStep2Activity.Font = $script:PoliceLabelSecondaireFenetre
+    $lblStep2Activity.ForeColor = $script:CouleurTexteSecondairePanel
+    $lblStep2Activity.Anchor = 'Bottom,Left'
+    $panel.Controls.Add($lblStep2Activity)
+    $script:PlanningStep2ActivityLabel = $lblStep2Activity
 
     function script:Get-PlanningCtrl {
         param(
@@ -402,9 +614,11 @@ function Show-PlanningRebuilderPanel {
         }
 
         $root = $this.Parent
-        $list = Get-PlanningCtrl -Root $root -Name "listResult" -ExpectedType ([System.Windows.Forms.ListBox])
-        $dbg = Get-PlanningCtrl -Root $root -Name "txtDebug" -ExpectedType ([System.Windows.Forms.TextBox])
+        $dbg = Get-PlanningCtrl -Root $root -Name "txtDebug" -ExpectedType ([System.Windows.Forms.TextBoxBase])
         $pbar = Get-PlanningCtrl -Root $root -Name "progressBar" -ExpectedType ([System.Windows.Forms.ProgressBar])
+        if ($null -eq $dbg) {
+            Write-Host '[DEBUG] txtDebug introuvable ou type incompatible (attendu TextBoxBase/RichTextBox)' -ForegroundColor Red
+        }
         if ([string]::IsNullOrWhiteSpace($script:PlanningPdfPath) -or [string]::IsNullOrWhiteSpace($script:PlanningExcelPath)) {
             [System.Windows.Forms.MessageBox]::Show(
                 "Selectionnez d'abord un PDF et un Excel.",
@@ -416,18 +630,20 @@ function Show-PlanningRebuilderPanel {
         }
 
         $script:PlanningRebuildUiBusy = $true
+        Stop-PlanningRebuildStep2ActivityAnimation
         Reset-PlanningRebuildProgressUiState
         $script:PlanningCurrentStepIndex = 0
         $script:PlanningProgressHadError = $false
+        $script:PlanningStep2ActivityLabel = Get-PlanningCtrl -Root $root -Name 'lblStep2Activity' -ExpectedType ([System.Windows.Forms.Label])
         if ($null -ne $btnRun) { $btnRun.Enabled = $false }
         try {
             if ($__dbg) { Write-Host '[DEBUG] ENTER Start-PlanningRebuild (UI)' -ForegroundColor Magenta }
-            if ($null -ne $list) { $list.Items.Clear() }
             if ($null -ne $dbg) { $dbg.Clear() }
             if ($null -ne $pbar) { $pbar.Value = 0 }
             [System.Windows.Forms.Application]::DoEvents()
 
             $progressCb = {
+                try {
                 if ($args.Count -eq 1 -and $args[0] -is [hashtable]) {
                     $h = $args[0]
                     $st = [string]$h.Status
@@ -453,18 +669,21 @@ function Show-PlanningRebuilderPanel {
                 Update-PlanningRebuildDebugProgress -DebugBox $dbg -ProgressBar $pbar -StepIndex $StepIndex -StepCount $StepCount `
                     -Label $Label -Status $Status -Detail $Detail -Percent $Percent `
                     -SubStep $SubStep -SubStepIndex $SubStepIndex -SubStepCount $SubStepCount -TreePrefix $TreePrefix -OutputPath $OutputPath
+                }
+                catch {
+                    $stFail = if ($args.Count -eq 1 -and $args[0] -is [hashtable]) { [string]$args[0].Status } else { $Status }
+                    Write-Warning ("[PLANNING-UI] progressCb echoue (Status={0}) : {1}" -f $stFail, $_.Exception.Message)
+                }
             }
 
             $result = Start-PlanningRebuild -PdfPath $script:PlanningPdfPath -ExcelPath $script:PlanningExcelPath -ProgressCallback $progressCb
 
             if ($null -eq $result) {
-                if ($null -ne $list) { $list.Items.Add("Echec : pipeline interrompu (extraction, dates, ou autre arret) — consulter la sortie console.") | Out-Null }
                 if ($null -ne $dbg) {
                     if ($null -eq $script:PlanningCurrentProgressLine) {
                         [void]$dbg.AppendText("Traitement interrompu." + [Environment]::NewLine)
                     }
-                    $dbg.SelectionStart = $dbg.Text.Length
-                    $dbg.ScrollToCaret()
+                    Scroll-PlanningRebuildDebugToEnd -DebugBox $dbg
                 }
                 if ($null -ne $pbar) { $pbar.Value = 0 }
                 return
@@ -472,11 +691,6 @@ function Show-PlanningRebuilderPanel {
 
             if (-not [string]::IsNullOrWhiteSpace([string]$result.OutputPdf)) {
                 if ($null -ne $pbar) { $pbar.Value = 100 }
-            }
-
-            if ($null -ne $list) { $list.Items.Add("Planning final :") | Out-Null }
-            foreach ($line in @($result.ReorderedPlanning)) {
-                if ($null -ne $list) { $list.Items.Add(("{0} -> {1} [{2}]" -f $line.FinalOrder, $line.ClientName, $line.MatchScore)) | Out-Null }
             }
 
         }
@@ -488,8 +702,7 @@ function Show-PlanningRebuilderPanel {
                     $script:PlanningCurrentProgressLine = $null
                 }
                 [void]$dbg.AppendText(("ERREUR: {0}" -f $_.Exception.Message) + [Environment]::NewLine)
-                $dbg.SelectionStart = $dbg.Text.Length
-                $dbg.ScrollToCaret()
+                Scroll-PlanningRebuildDebugToEnd -DebugBox $dbg
                 [System.Windows.Forms.Application]::DoEvents()
             }
             [System.Windows.Forms.MessageBox]::Show(
@@ -500,6 +713,7 @@ function Show-PlanningRebuilderPanel {
             ) | Out-Null
         }
         finally {
+            Stop-PlanningRebuildStep2ActivityAnimation
             if ($null -ne $btnRun) { $btnRun.Enabled = $true }
             if ($null -ne $pbar -and $null -eq $result) { $pbar.Value = 0 }
             $script:PlanningRebuildUiBusy = $false

@@ -955,6 +955,71 @@ function Get-CnsOdmPagePrestationDetectionLabel {
     return ($parts -join ', ')
 }
 
+function Write-TourneeCompositionTourStart {
+    param(
+        [AllowNull()][scriptblock]$ProgressCallback,
+        [Parameter(Mandatory = $true)][string]$Detail,
+        [int]$StepIndex = 5,
+        [int]$StepCount = 5
+    )
+    if ($null -eq $ProgressCallback) { return }
+    try {
+        & $ProgressCallback @{
+            StepIndex  = $StepIndex
+            StepCount  = $StepCount
+            Label      = 'Composition pages de garde'
+            Status     = 'TourneeStart'
+            Detail     = $Detail
+        }
+    }
+    catch {
+        Write-Warning ("[TOURNEE-UI] ProgressCallback echoue (Status=TourneeStart) : {0}" -f $_.Exception.Message)
+    }
+}
+
+function Write-TourneeCompositionTourProgress {
+    param(
+        [AllowNull()][scriptblock]$ProgressCallback,
+        [Parameter(Mandatory = $true)][string]$Detail,
+        [int]$StepIndex = 5,
+        [int]$StepCount = 5
+    )
+    if ($null -eq $ProgressCallback -or [string]::IsNullOrWhiteSpace($Detail)) { return }
+    try {
+        & $ProgressCallback @{
+            StepIndex  = $StepIndex
+            StepCount  = $StepCount
+            Label      = 'Composition pages de garde'
+            Status     = 'TourneeProgress'
+            Detail     = $Detail
+        }
+    }
+    catch {
+        Write-Warning ("[TOURNEE-UI] ProgressCallback echoue (Status=TourneeProgress) : {0}" -f $_.Exception.Message)
+    }
+}
+
+function Write-TourneeCompositionTourEnd {
+    param(
+        [AllowNull()][scriptblock]$ProgressCallback,
+        [int]$StepIndex = 5,
+        [int]$StepCount = 5
+    )
+    if ($null -eq $ProgressCallback) { return }
+    try {
+        & $ProgressCallback @{
+            StepIndex  = $StepIndex
+            StepCount  = $StepCount
+            Label      = 'Composition pages de garde'
+            Status     = 'TourneeEnd'
+            Detail     = $null
+        }
+    }
+    catch {
+        Write-Warning ("[TOURNEE-UI] ProgressCallback echoue (Status=TourneeEnd) : {0}" -f $_.Exception.Message)
+    }
+}
+
 function Write-TourneeCompositionTreeLine {
     param(
         [AllowNull()][scriptblock]$ProgressCallback,
@@ -967,18 +1032,8 @@ function Write-TourneeCompositionTreeLine {
         Write-Verbose '[TREE] Ignored empty line'
         return
     }
-    if ($null -eq $ProgressCallback) { return }
-    try {
-        & $ProgressCallback @{
-            StepIndex  = $StepIndex
-            StepCount  = $StepCount
-            Label      = 'Composition pages de garde'
-            Status     = 'TreeLine'
-            TreePrefix = $TreePrefix
-            Detail     = $Text
-        }
-    }
-    catch { }
+    $pfx = if ($null -ne $TreePrefix) { [string]$TreePrefix } else { '' }
+    Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback -Detail ($pfx + $Text) -StepIndex $StepIndex -StepCount $StepCount
 }
 
 function Add-TourneeCompositionGeneratedDocCount {
@@ -1200,7 +1255,6 @@ function Invoke-PlanningTourneePdfCoverComposition {
 
         $globalCov = Join-Path $tmpDir 'cover_global.pdf'
 
-        Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix '  ' -Text 'Phase 1 : Preparation'
         Write-Host '[TOURNEE] Creation page de garde globale (premiere page du PDF final).' -ForegroundColor Cyan
         $gcOk = (New-CnsGlobalMismatchCoverPdf -OutPdfPath $globalCov `
                 -TotalOdmCount $totalODM `
@@ -1209,12 +1263,6 @@ function Invoke-PlanningTourneePdfCoverComposition {
             throw 'Ghostscript global cover echouee'
         }
         [void]$frag.Add($globalCov)
-        Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix '  ├── ' `
-            -Text 'Creation page de garde globale (synthese ODM)... [OK]'
-        Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix '  └── ' `
-            -Text ("Detection des tournees : {0} tournees trouvees [OK]" -f $blockTotal)
-
-        Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix '  ' -Text 'Phase 2 : Traitement des tournees'
 
         $seenSegments = @{}
         $prefaceAlreadyAdded = $false
@@ -1226,8 +1274,8 @@ function Invoke-PlanningTourneePdfCoverComposition {
         foreach ($blk in @($blocks)) {
             $fi++
             $isLastTour = ($fi -eq $blockTotal)
-            $tBranch = if ($isLastTour) { '  └── ' } else { '  ├── ' }
-            $tChild = if ($isLastTour) { '      ' } else { '  │   ' }
+            $tBranchCore = if ($isLastTour) { '└── ' } else { '├── ' }
+            $tChildCore = if ($isLastTour) { '    ' } else { '│   ' }
 
             $segmentName = [string]$blk.GroupKey
             $tourHeaderDetail = $segmentName
@@ -1248,8 +1296,9 @@ function Invoke-PlanningTourneePdfCoverComposition {
                 }
             }
             if ([string]::IsNullOrWhiteSpace($tourHeaderDetail)) { $tourHeaderDetail = 'Operation en cours' }
-            Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix $tBranch `
-                -Text ("Tournee {0}/{1} : {2}" -f $fi, $blockTotal, $tourHeaderDetail)
+            Write-TourneeCompositionTourStart -ProgressCallback $ProgressCallback -Detail ("{0}/{1}" -f $fi, $blockTotal)
+            Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
+                -Detail ("{0}Tournee {1}/{2} : {3}" -f $tBranchCore, $fi, $blockTotal, $tourHeaderDetail)
 
             $odmTotal = ([int]$blk.MainTo1 - [int]$blk.MainFrom1 + 1)
             if ($odmTotal -lt 1) { $odmTotal = 0 }
@@ -1322,8 +1371,8 @@ function Invoke-PlanningTourneePdfCoverComposition {
             }
 
             if ($coverCreated) {
-                Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix ($tChild + $coverBranch) `
-                    -Text 'Creation page de garde tournee... [OK]'
+                Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
+                    -Detail ("{0}Creation page de garde tournee... [OK]" -f ($tChildCore + $coverBranch))
             }
 
             $sliceIx = 0
@@ -1367,8 +1416,8 @@ function Invoke-PlanningTourneePdfCoverComposition {
 
                     $analyseIsLast = ($odmIdx -eq $odmTotal) -and -not $willCert -and -not $willCea -and -not $hasSegBilan
                     $analyseBranch = if ($analyseIsLast) { '└── ' } else { '├── ' }
-                    Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix ($tChild + $analyseBranch) `
-                        -Text ("Analyse ODM {0}/{1} : {2}" -f $odmIdx, $odmTotal, $odmLabel)
+                    Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
+                        -Detail ("{0}Analyse ODM {1}/{2} : {3}" -f ($tChildCore + $analyseBranch), $odmIdx, $odmTotal, $odmLabel)
 
                     if ($metierPage.RequiresDestructionCertificate -and $null -ne $woPage) {
                         $woCacheKey = Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage
@@ -1387,8 +1436,8 @@ function Invoke-PlanningTourneePdfCoverComposition {
                                     }
                                     [void]$frag.Add($certPdf)
                                     Add-TourneeCompositionGeneratedDocCount
-                                    Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix ($tChild + '│   └── ') `
-                                        -Text 'Generation certificat destruction... [OK]'
+                                    Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
+                                        -Detail ("{0}Generation certificat destruction... [OK]" -f ($tChildCore + '│   └── '))
                                     Write-Host ("[DESTRUCTION-CERT] Certificat injecte apres page reorder #{0} (WO={1}, PDF ODM, fichier={2})." -f $pn, $woCacheKey, (Split-Path -Leaf $certPdf)) -ForegroundColor Green
                                 }
                                 else {
@@ -1422,8 +1471,8 @@ function Invoke-PlanningTourneePdfCoverComposition {
                             Write-Host ("[CEA-POINTS] PDF injecte dans frag (source DOCX dynamique) : {0}" -f (Split-Path -Leaf $ceaPdf)) -ForegroundColor Green
                             [void]$frag.Add($ceaPdf)
                             Add-TourneeCompositionGeneratedDocCount
-                            Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix ($tChild + '│   └── ') `
-                                -Text 'Generation document CEA... [OK]'
+                            Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
+                                -Detail ("{0}Generation document CEA... [OK]" -f ($tChildCore + '│   └── '))
                             Write-Host ("[STEP5-METIER] Document CEA injecte apres page reorder #{0} (RawPage={1}, fichier={2})." -f $pn, $rawPnPage, (Split-Path -Leaf $ceaPdf)) -ForegroundColor Green
                         }
                         else {
@@ -1452,8 +1501,8 @@ function Invoke-PlanningTourneePdfCoverComposition {
                             }
                             [void]$frag.Add($bilanPdf)
                             Add-TourneeCompositionGeneratedDocCount
-                            Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix ($tChild + '└── ') `
-                                -Text 'Generation bilan collecte... [OK]'
+                            Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
+                                -Detail ("{0}Generation bilan collecte... [OK]" -f ($tChildCore + '└── '))
                             Write-Host ("[STEP5-METIER] Bilan de collecte dynamique injecte en fin de tournée segment {0} (fichier={1})." -f $segNumBilan, (Split-Path -Leaf $bilanPdf)) -ForegroundColor Green
                         }
                         else {
@@ -1465,9 +1514,10 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     }
                 }
             }
+            Write-TourneeCompositionTourEnd -ProgressCallback $ProgressCallback
         }
 
-        Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix '  ' -Text 'Phase 3 : Assemblage final'
+        Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback -Detail 'Phase 3 : Assemblage final'
         $fragCount = @($frag).Count
         $mergeMsg = "Fusion des {0} elements PDF... [OK]" -f $fragCount
         if ([string]::IsNullOrWhiteSpace($mergeMsg)) { $mergeMsg = 'Operation en cours' }
@@ -1476,7 +1526,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
         if (-not $merged) {
             throw '[TOURNEE] Fusion Ghostscript (couvertures + corps) echouee.'
         }
-        Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix '  ├── ' -Text $mergeMsg
+        Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback -Detail ("├── {0}" -f $mergeMsg)
 
         Copy-Item -LiteralPath $outFinal -Destination $mainAbs -Force
         $nCoverSheets = 1 + @($blocks).Count
@@ -1493,8 +1543,8 @@ function Invoke-PlanningTourneePdfCoverComposition {
     }
     finally {
         if ([string]::IsNullOrWhiteSpace($tmpDir) -eq $false -and (Test-Path -LiteralPath $tmpDir)) {
-            Write-TourneeCompositionTreeLine -ProgressCallback $ProgressCallback -TreePrefix '  └── ' `
-                -Text 'Nettoyage des fichiers temporaires... [OK]'
+            Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
+                -Detail '└── Nettoyage des fichiers temporaires... [OK]'
             Remove-Item -LiteralPath $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
