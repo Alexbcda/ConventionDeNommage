@@ -922,7 +922,9 @@ function Invoke-PdfExtraction {
         [Parameter(Mandatory = $true)]
         [string]$PdfPath,
 
-        [switch]$PdfDebug
+        [switch]$PdfDebug,
+
+        [scriptblock]$ProgressCallback = $null
     )
 
     $prevDiagList = $script:PdfExtractionDiagList
@@ -975,6 +977,9 @@ function Invoke-PdfExtraction {
                         RawLines      = $empty
                         FilteredLines = $empty
                     })
+                    if ($null -ne $ProgressCallback) {
+                        try { & $ProgressCallback $i $pageCount } catch { }
+                    }
                 }
             }
             else {
@@ -1019,6 +1024,9 @@ Debug :
                     RawLines      = $rawCopy
                     FilteredLines = $rawCopy
                 })
+                if ($null -ne $ProgressCallback) {
+                    try { & $ProgressCallback $i $pageCount } catch { }
+                }
             }
         }
 

@@ -235,7 +235,8 @@ function Reorganiser-PDF {
         [string]$OutputPDF, 
         [hashtable]$Mapping,
         [int[]]$OrderedPhysicalPages = @(),
-        [int]$SourcePdfPageCountHint = 0
+        [int]$SourcePdfPageCountHint = 0,
+        [scriptblock]$ProgressCallback = $null
     )
     
     Write-Host "`n[PDF] === DEBUT REORGANISATION ===" -ForegroundColor Cyan
@@ -359,6 +360,9 @@ function Reorganiser-PDF {
                 foreach ($_a in $gsArgsSingle) { $cmdChars += $_a.Length + 1 }
                 Write-Host "[GS-PREP] singlePass approxArgChars=$cmdChars" -ForegroundColor DarkGray
                 $process = Start-Process -FilePath $gsPath -ArgumentList $gsArgsSingle -NoNewWindow -Wait -PassThru -RedirectStandardError $errFile
+                if ($null -ne $ProgressCallback) {
+                    try { & $ProgressCallback 1 1 $only } catch { }
+                }
             }
             else {
                 $disableBatchSlices = ([string]::Equals(([string]$env:CN_GS_BATCH_SLICES).Trim(), '0', [System.StringComparison]::OrdinalIgnoreCase))
@@ -413,6 +417,9 @@ function Reorganiser-PDF {
                         for ($ri = 0; $ri -lt $mRep; $ri++) {
                             [void]$tempSingles.Add($sliceOut)
                         }
+                        if ($null -ne $ProgressCallback) {
+                            try { & $ProgressCallback $bi $nb $fP } catch { }
+                        }
                     }
                 }
                 else {
@@ -448,6 +455,9 @@ function Reorganiser-PDF {
                             return $false
                         }
                         [void]$tempSingles.Add($sliceOut)
+                        if ($null -ne $ProgressCallback) {
+                            try { & $ProgressCallback $pi $pageNumbers.Count $pnI } catch { }
+                        }
                     }
                 }
 
@@ -565,7 +575,11 @@ function Reorganiser-PDF {
         }
 
         $sz = (Get-Item -LiteralPath $outAbs).Length
-        Write-Host ("[PDF] OK — sortie vérifiée (en-tête %PDF- + {0} octet(s))" -f $sz) -ForegroundColor Green
+        $pdfOkMsg = "[PDF] OK — sortie vérifiée (en-tête %PDF- + {0} octet(s))" -f $sz
+        Write-Host $pdfOkMsg -ForegroundColor Green
+        if (Get-Command Write-PlanningRebuildUiLog -ErrorAction SilentlyContinue) {
+            Write-PlanningRebuildUiLog $pdfOkMsg
+        }
         return $true
     } else {
         Write-Warning "Ghostscript (gswin64c) introuvable : pas de génération PDF automatique. Définir GHOSTSCRIPT_EXE vers l'exécutable, ou ajouter gswin64c au PATH, ou installer Ghostscript (ex. https://ghostscript.com/releases/gsdnld.html) — le binaire PDF24 est souvent sous Program Files\PDF24\gs\bin\."
