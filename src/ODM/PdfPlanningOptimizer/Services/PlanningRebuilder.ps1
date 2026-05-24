@@ -3040,6 +3040,45 @@ function Build-ReorderedPlanning {
     return (script:Complete-ReorderedPlanningSequentialFinalOrder -ReorderedLines @($combined.ToArray()))
 }
 
+function Get-OdmPlanningOutputPdfLeafName {
+    <#
+    .SYNOPSIS
+        Nom de fichier planning final : ODM_Mardi_23_Avril_2026.pdf (culture fr-FR, date de collecte ODM).
+    #>
+    param([AllowNull()][datetime]$VisitDate)
+
+    $dt = if ($null -ne $VisitDate) { $VisitDate.Date } else { (Get-Date).Date }
+    $fr = [System.Globalization.CultureInfo]::GetCultureInfo('fr-FR')
+
+    [string]$dayName = $dt.ToString('dddd', $fr)
+    if ($dayName.Length -ge 1) {
+        $dayName = $dayName.Substring(0, 1).ToUpper() + $dayName.Substring(1)
+    }
+
+    [string]$monthName = $dt.ToString('MMMM', $fr)
+    if ($monthName.Length -ge 1) {
+        $monthName = $monthName.Substring(0, 1).ToUpper() + $monthName.Substring(1)
+    }
+
+    $leaf = ('ODM_{0}_{1}_{2}_{3}.pdf' -f $dayName, $dt.Day, $monthName, $dt.Year)
+
+    $invalid = [System.IO.Path]::GetInvalidFileNameChars()
+    $sb = [System.Text.StringBuilder]::new()
+    foreach ($ch in $leaf.ToCharArray()) {
+        if ($invalid -contains $ch) {
+            [void]$sb.Append('_')
+        }
+        else {
+            [void]$sb.Append($ch)
+        }
+    }
+    $safe = $sb.ToString()
+    if ([string]::IsNullOrWhiteSpace($safe)) {
+        return 'ODM.pdf'
+    }
+    return $safe
+}
+
 function Start-PlanningRebuild {
     [CmdletBinding()]
     param(
@@ -3483,16 +3522,10 @@ function Start-PlanningRebuild {
     }
 
     try {
-        $dateFormatted = if ($null -ne $visitDate) {
-            $visitDate.ToString('dd_MM_yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
-        }
-        else {
-            (Get-Date).ToString('dd_MM_yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
-        }
-
+        $outputLeaf = Get-OdmPlanningOutputPdfLeafName -VisitDate $visitDate
         $outputPdfPath = [System.IO.Path]::Combine(
             [System.IO.Path]::GetDirectoryName($PdfPath),
-            ("planning_reordonne_du_{0}.pdf" -f $dateFormatted)
+            $outputLeaf
         )
 
         $pageMapping = @{}
