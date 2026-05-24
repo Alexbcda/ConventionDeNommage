@@ -243,7 +243,7 @@ function Format-CnsFrenchLongDateForCoverLabels {
     param([AllowNull()][AllowEmptyString()][string]$LongFr)
     if ([string]::IsNullOrWhiteSpace($LongFr)) { return $LongFr }
     $repl = [ordered]@{
-        'janvier' = 'Janvier'; 'février' = 'Février'; 'fevrier' = 'Février'; 'mars' = 'Mars'; 'avril' = 'Avril'
+        'janvier' = 'Janvier'; 'février' = 'Fevrier'; 'fevrier' = 'Fevrier'; 'mars' = 'Mars'; 'avril' = 'Avril'
         'mai' = 'Mai'; 'juin' = 'Juin'; 'juillet' = 'Juillet'; 'août' = 'Aout'; 'aout' = 'Aout'
         'septembre' = 'Septembre'; 'octobre' = 'Octobre'; 'novembre' = 'Novembre'; 'décembre' = 'Decembre'; 'decembre' = 'Decembre'
     }
@@ -257,6 +257,51 @@ function Format-CnsFrenchLongDateForCoverLabels {
     return $s
 }
 
+function Format-CnsTourneeCoverGardeDateTitle {
+    <#
+    .SYNOPSIS
+        Titre date garde tournée : "Lundi 23 Avril 2026" (fr-FR, sans prefixe ODM/Date).
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$DateJJMMAAAA)
+    $title = Format-CnsTourneeCoverDateFrLong -DateJJMMAAAA $DateJJMMAAAA
+    if ([string]::IsNullOrWhiteSpace($title)) {
+        $fr = [System.Globalization.CultureInfo]::GetCultureInfo('fr-FR')
+        $today = [datetime]::Today
+        $title = $today.ToString('dddd dd MMMM yyyy', $fr)
+        if ($title.Length -ge 2) {
+            $title = $title.Substring(0, 1).ToUpper() + $title.Substring(1)
+        }
+    }
+    return (Format-CnsFrenchLongDateForCoverLabels -LongFr $title)
+}
+
+function Get-CnsCoverPostScriptFontBlackName {
+    <#
+    .NOTES
+        Arial-Black non disponible en PostScript Ghostscript standard — Helvetica-Bold equivalent visuel.
+    #>
+    return 'Helvetica-Bold'
+}
+
+function Get-CnsCoverPostScriptFontRegularName {
+    return 'Helvetica'
+}
+
+function New-CnsPostScriptRightAlignedTextShowBlock {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text,
+        [Parameter(Mandatory = $true)][string]$FontName,
+        [Parameter(Mandatory = $true)][int]$FontSize,
+        [Parameter(Mandatory = $true)][int]$RightX,
+        [Parameter(Mandatory = $true)][int]$Y
+    )
+    $lit = ConvertTo-CnsPsHelveticaParenBody -Text $Text
+    return @"
+/$FontName findfont $FontSize scalefont setfont
+($lit) dup stringwidth pop $RightX exch sub $Y moveto show
+"@
+}
+
 function Build-CnsCoverTextLinesPostScriptAppend {
     param(
         [AllowNull()]
@@ -267,19 +312,100 @@ function Build-CnsCoverTextLinesPostScriptAppend {
         [Parameter(Mandatory = $true)]
         [int]$LineStep,
         [Parameter(Mandatory = $true)]
-        [int]$MinY
+        [int]$MinY,
+        [string]$FontName = 'Helvetica',
+        [int]$FontSize = 11
     )
     $parts = New-Object System.Collections.Generic.List[string]
     [int]$y = $StartY
     foreach ($line in @($Lines)) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
         $lit = ConvertTo-CnsPsHelveticaParenBody -Text $line
-        [void]$parts.Add("/Helvetica findfont 11 scalefont setfont`n50 $y moveto`n($lit) show")
+        [void]$parts.Add("/$FontName findfont $FontSize scalefont setfont`n50 $y moveto`n($lit) show")
         $y -= $LineStep
         if ($y -lt $MinY) { break }
     }
     if ($parts.Count -lt 1) { return '' }
     return (($parts.ToArray()) -join "`n")
+}
+
+function Get-CnsTourneeCoverCollecteurPrenomDisplay {
+    <#
+    .SYNOPSIS
+        Prenom seul pour la garde tournée ("Jean DUPONT" -> "Jean"). Vide si absent ou sentinelle Excel.
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Collecteur)
+    if ([string]::IsNullOrWhiteSpace($Collecteur)) { return '' }
+    $value = ([string]$Collecteur).Trim()
+    $plain = $value.ToUpperInvariant()
+    foreach ($s in @('INCONNU', 'NON SPECIFIE', 'NON SPECIFIEE', '-', 'N/A', 'NA', 'ND')) {
+        if ($plain -eq $s) { return '' }
+    }
+    $parts = @(
+        ($value -split '\s+') |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    if ($parts.Count -lt 1) { return '' }
+    return [string]$parts[0]
+}
+
+function Build-CnsTourneeHeaderCoverPostScriptBody {
+    param(
+        [Parameter(Mandatory = $true)][string]$DateTitle,
+        [Parameter(Mandatory = $true)][string]$Collecteur,
+        [Parameter(Mandatory = $true)][string]$Vehicule,
+        [AllowEmptyCollection()][string[]]$MetierMemoLines = @(),
+        [AllowNull()][AllowEmptyString()][string]$IncompleteBanner = $null
+    )
+    $fontBlack = Get-CnsCoverPostScriptFontBlackName
+    $fontReg = Get-CnsCoverPostScriptFontRegularName
+    $litDate = ConvertTo-CnsPsHelveticaParenBody -Text $DateTitle
+    [string]$prenom = Get-CnsTourneeCoverCollecteurPrenomDisplay -Collecteur $Collecteur
+    [string]$vehText = if ([string]::IsNullOrWhiteSpace($Vehicule)) { '' } else { ([string]$Vehicule).Trim() }
+
+    $headerFontSize = 18
+
+    if (-not [string]::IsNullOrWhiteSpace($IncompleteBanner)) {
+        $line1Y = 770
+        $vehY = 740
+        $memoY = 700
+        $rightX = 550
+        $litBanner = ConvertTo-CnsPsHelveticaParenBody -Text $IncompleteBanner
+        $bannerPs = @"
+/$fontBlack findfont 14 scalefont setfont
+50 835 moveto
+($litBanner) show
+"@
+    }
+    else {
+        $line1Y = 800
+        $vehY = 770
+        $memoY = 730
+        $rightX = 550
+        $bannerPs = ''
+    }
+
+    $prenomPs = ''
+    if (-not [string]::IsNullOrWhiteSpace($prenom)) {
+        $prenomPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $prenom -FontName $fontBlack -FontSize $headerFontSize -RightX $rightX -Y $line1Y
+    }
+
+    $vehPs = ''
+    if (-not [string]::IsNullOrWhiteSpace($vehText)) {
+        $vehPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $vehText -FontName $fontBlack -FontSize $headerFontSize -RightX $rightX -Y $vehY
+    }
+
+    $memoPs = Build-CnsCoverTextLinesPostScriptAppend -Lines @($MetierMemoLines) -StartY $memoY -LineStep 14 -MinY 72 -FontName $fontReg -FontSize 12
+
+    return @"
+$bannerPs
+/$fontBlack findfont $headerFontSize scalefont setfont
+50 $line1Y moveto
+($litDate) show
+$prenomPs
+$vehPs
+$memoPs
+"@
 }
 
 function Get-CnsPlanningWorkOrderCacheKey {
@@ -541,74 +667,9 @@ function New-CnsTourneeHeaderCoverPdf {
         [AllowEmptyCollection()]
         [string[]]$MetierMemoLines = @()
     )
-    if ($TourneeIncomplete) {
-        $litBanner = ConvertTo-CnsPsHelveticaParenBody -Text 'TOURNEE NON MATCHEE'
-        $dateShown = Format-CnsFrenchLongDateForCoverLabels -LongFr (Format-CnsTourneeCoverDateFrLong -DateJJMMAAAA $DateJJMMAAAA)
-        $litL1 = ConvertTo-CnsPsHelveticaParenBody -Text ("Date : {0}" -f $dateShown)
-        $litL2 = ConvertTo-CnsPsHelveticaParenBody -Text ("Collecteur : {0}" -f $Collecteur)
-        $litL3 = ConvertTo-CnsPsHelveticaParenBody -Text ("Vehicule   : {0}" -f $Vehicule)
-        $memoPsInc = (Build-CnsCoverTextLinesPostScriptAppend -Lines @($MetierMemoLines) -StartY 655 -LineStep 15 -MinY 72)
-        $body = @"
-/Helvetica-Bold findfont 14 scalefont setfont
-50 800 moveto
-($litBanner) show
-/Helvetica findfont 12 scalefont setfont
-50 760 moveto
-($litL1) show
-50 725 moveto
-($litL2) show
-50 690 moveto
-($litL3) show
-$memoPsInc
-"@
-        return (Write-CnsPostScriptPdfPage -PsBodySansShowpage $body -OutPdfPath $OutPdfPath)
-    }
-
-    $culture = [System.Globalization.CultureInfo]::GetCultureInfo('fr-FR')
-    $invCc = [System.Globalization.CultureInfo]::InvariantCulture
-    [datetime]$dateObj = [datetime]::Today
-    $dj = if ($null -eq $DateJJMMAAAA) { '' } else { ([string]$DateJJMMAAAA).Trim() }
-    $dateParsedOk = $false
-    foreach ($patDj in @('dd/MM/yyyy', 'd/M/yyyy', 'dd/MM/yy')) {
-        if ([datetime]::TryParseExact($dj, $patDj, $invCc, [System.Globalization.DateTimeStyles]::None, [ref]$dateObj)) {
-            $dateParsedOk = $true
-            break
-        }
-    }
-    if (-not $dateParsedOk) {
-        [datetime]$tmpDj = $dateObj
-        if ([datetime]::TryParse($dj, $culture, [System.Globalization.DateTimeStyles]::None, [ref]$tmpDj)) {
-            $dateObj = $tmpDj
-            $dateParsedOk = $true
-        }
-        elseif ([datetime]::TryParse($dj, $invCc, [System.Globalization.DateTimeStyles]::None, [ref]$tmpDj)) {
-            $dateObj = $tmpDj
-            $dateParsedOk = $true
-        }
-    }
-    $dateFormatted = if ($dateParsedOk) {
-        $sFr = $dateObj.ToString('dddd dd MMMM yyyy', $culture)
-        if ($sFr.Length -ge 2) { $sFr.Substring(0, 1).ToUpper() + $sFr.Substring(1) } else { $sFr }
-    }
-    else {
-        Format-CnsTourneeCoverDateFrLong -DateJJMMAAAA $DateJJMMAAAA
-    }
-    $dateFormatted = Format-CnsFrenchLongDateForCoverLabels -LongFr $dateFormatted
-    $litL1 = ConvertTo-CnsPsHelveticaParenBody -Text ("Date : {0}" -f $dateFormatted)
-    $litL2 = ConvertTo-CnsPsHelveticaParenBody -Text ("Collecteur : {0}" -f $Collecteur)
-    $litL3 = ConvertTo-CnsPsHelveticaParenBody -Text ("Vehicule   : {0}" -f $Vehicule)
-    $memoPs = (Build-CnsCoverTextLinesPostScriptAppend -Lines @($MetierMemoLines) -StartY 675 -LineStep 15 -MinY 72)
-
-    $body = @"
-/Helvetica findfont 12 scalefont setfont
-50 780 moveto
-($litL1) show
-50 745 moveto
-($litL2) show
-50 710 moveto
-($litL3) show
-$memoPs
-"@
+    $dateTitle = Format-CnsTourneeCoverGardeDateTitle -DateJJMMAAAA $DateJJMMAAAA
+    $banner = if ($TourneeIncomplete) { 'TOURNEE NON MATCHEE' } else { $null }
+    $body = Build-CnsTourneeHeaderCoverPostScriptBody -DateTitle $dateTitle -Collecteur $Collecteur -Vehicule $Vehicule -MetierMemoLines @($MetierMemoLines) -IncompleteBanner $banner
     return (Write-CnsPostScriptPdfPage -PsBodySansShowpage $body -OutPdfPath $OutPdfPath)
 }
 
