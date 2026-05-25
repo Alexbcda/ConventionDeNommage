@@ -126,12 +126,14 @@ function Write-CnsPostScriptPdfPage {
         [Parameter(Mandatory = $true)]
         [string]$PsBodySansShowpage,
         [Parameter(Mandatory = $true)]
-        [string]$OutPdfPath
+        [string]$OutPdfPath,
+        [switch]$SkipTrailingShowpage
     )
     $prolog = "<< /PageSize [595 842] >> setpagedevice`n"
     $runId = [Guid]::NewGuid().ToString('N')
     $psPath = Join-Path $env:TEMP ("cn_cover_{0}.ps1gen.ps" -f $runId)
-    $psDoc = "%!PS-Adobe-3.0`r`n" + $prolog + $PsBodySansShowpage + "`r`nshowpage`r`n"
+    $footer = if ($SkipTrailingShowpage) { "`r`n" } else { "`r`nshowpage`r`n" }
+    $psDoc = "%!PS-Adobe-3.0`r`n" + $prolog + $PsBodySansShowpage + $footer
     try {
         [System.IO.File]::WriteAllText($psPath, $psDoc, [System.Text.UTF8Encoding]::new($false))
     }
@@ -174,6 +176,304 @@ function Write-CnsPostScriptPdfPage {
     return (Test-Path -LiteralPath $outAbs)
 }
 
+function Split-CnsCoverTextToMaxWidth {
+    param(
+        [AllowNull()][AllowEmptyString()][string]$Text,
+        [int]$MaxLen = 88
+    )
+    if ([string]::IsNullOrWhiteSpace($Text)) { return @() }
+    $words = @(([string]$Text).Trim() -split '\s+')
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $current = ''
+    foreach ($w in @($words)) {
+        if ([string]::IsNullOrWhiteSpace($w)) { continue }
+        if ([string]::IsNullOrWhiteSpace($current)) {
+            $current = $w
+            continue
+        }
+        if (($current.Length + 1 + $w.Length) -le $MaxLen) {
+            $current = "$current $w"
+        }
+        else {
+            [void]$lines.Add($current)
+            $current = $w
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($current)) {
+        [void]$lines.Add($current)
+    }
+    return @($lines.ToArray())
+}
+
+function Get-CnsCoverGapVerticalCost {
+    param([string]$Kind)
+    switch ($Kind) {
+        'G12' { return 12 }
+        'G15' { return 15 }
+        'G20' { return 20 }
+        'G25' { return 25 }
+        'S8'  { return 8 }
+        'S15' { return 15 }
+        'BLK' { return 8 }
+        default { return 0 }
+    }
+}
+
+function Get-CnsCoverElementVerticalCost {
+    param(
+        $Element,
+        [int]$PageWidth = 612
+    )
+    if ($null -eq $Element) { return 0 }
+    $kind = [string]$Element.Kind
+    $txt = [string]$Element.Text
+    $gap = Get-CnsCoverGapVerticalCost -Kind $kind
+    if ($gap -gt 0) { return $gap }
+
+    switch ($kind) {
+        'TC12' {
+            $n = @((Split-CnsCoverTextToMaxWidth -Text $txt -MaxLen 72)).Count
+            if ($n -lt 1) { return 14 }
+            return (14 * $n)
+        }
+        'T12' {
+            $n = @((Split-CnsCoverTextToMaxWidth -Text $txt -MaxLen 85)).Count
+            if ($n -lt 1) { return 11 }
+            return (11 * $n)
+        }
+        'B11' {
+            $n = @((Split-CnsCoverTextToMaxWidth -Text $txt -MaxLen 85)).Count
+            if ($n -lt 1) { return 11 }
+            return (11 * $n)
+        }
+        { $_ -in @('H10', 'VE', 'I10', 'N10') } {
+            $n = @((Split-CnsCoverTextToMaxWidth -Text $txt -MaxLen 85)).Count
+            if ($n -lt 1) { return 10 }
+            return (10 * $n)
+        }
+        default {
+            if ([string]::IsNullOrWhiteSpace($txt)) { return 0 }
+            $n = @((Split-CnsCoverTextToMaxWidth -Text $txt -MaxLen 85)).Count
+            if ($n -lt 1) { return 10 }
+            return (10 * $n)
+        }
+    }
+}
+
+function Build-CnsMismatchCoverPostScriptFromElements {
+    <#
+    .SYNOPSIS
+        Page(s) de garde non-matches : polices compactes, pagination, message de troncature si besoin.
+    #>
+    param(
+        [AllowEmptyCollection()][object[]]$Elements,
+        [Parameter(Mandatory = $true)][int]$StartY,
+        [Parameter(Mandatory = $true)][int]$MinY,
+        [int]$PageWidth = 612,
+        [switch]$Multipage
+    )
+    if ($null -eq $Elements -or @($Elements).Count -lt 1) { return '' }
+
+    $elList = @($Elements)
+    $parts = New-Object System.Collections.Generic.List[string]
+    [int]$xLeft = 50
+    [int]$xIndent = 70
+    [int]$idx = 0
+    [int]$pageNum = 1
+    $truncationDrawn = $false
+
+    function script:Add-CnsCoverPsTextAtX {
+        param(
+            [string]$Text,
+            [string]$FontName,
+            [int]$FontSize,
+            [int]$X,
+            [int]$LineStep,
+            $PartsList,
+            [ref]$YRef,
+            [int]$YMin
+        )
+        if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+        $drew = $false
+        $wrapped = @(Split-CnsCoverTextToMaxWidth -Text $Text -MaxLen 85)
+        foreach ($wl in @($wrapped)) {
+            if ($YRef.Value -lt $YMin) { return $drew }
+            $lit = ConvertTo-CnsPsHelveticaParenBody -Text $wl
+            [void]$PartsList.Add("/$FontName findfont $FontSize scalefont setfont`n$X $($YRef.Value) moveto`n($lit) show")
+            $YRef.Value -= $LineStep
+            $drew = $true
+        }
+        return $drew
+    }
+
+    function script:Add-CnsCoverPsTextCentered {
+        param(
+            [string]$Text,
+            [string]$FontName,
+            [int]$FontSize,
+            [int]$LineStep,
+            $PartsList,
+            [ref]$YRef,
+            [int]$YMin,
+            [int]$PageW
+        )
+        if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+        $drew = $false
+        $wrapped = @(Split-CnsCoverTextToMaxWidth -Text $Text -MaxLen 72)
+        foreach ($wl in @($wrapped)) {
+            if ($YRef.Value -lt $YMin) { return $drew }
+            $lit = ConvertTo-CnsPsHelveticaParenBody -Text $wl
+            [void]$PartsList.Add(@"
+/$FontName findfont $FontSize scalefont setfont
+($lit) dup stringwidth pop $PageW exch sub 2 div $($YRef.Value) moveto show
+"@)
+            $YRef.Value -= $LineStep
+            $drew = $true
+        }
+        return $drew
+    }
+
+    function script:Render-CnsCoverElement {
+        param(
+            $Element,
+            $PartsList,
+            [ref]$YRef,
+            [int]$YMin,
+            [int]$PageW,
+            [int]$XLeft,
+            [int]$XIndent
+        )
+        if ($null -eq $Element) { return $true }
+        $kind = [string]$Element.Kind
+        $txt = [string]$Element.Text
+        switch ($kind) {
+            'TC12' {
+                return (script:Add-CnsCoverPsTextCentered -Text $txt -FontName 'Helvetica-Bold' -FontSize 14 -LineStep 14 `
+                    -PartsList $PartsList -YRef $YRef -YMin $YMin -PageW $PageW)
+            }
+            'T12' {
+                return (script:Add-CnsCoverPsTextAtX -Text $txt -FontName 'Helvetica-Bold' -FontSize 10 -X $XLeft -LineStep 11 `
+                    -PartsList $PartsList -YRef $YRef -YMin $YMin)
+            }
+            'H10' {
+                return (script:Add-CnsCoverPsTextAtX -Text $txt -FontName 'Helvetica' -FontSize 9 -X $XLeft -LineStep 10 `
+                    -PartsList $PartsList -YRef $YRef -YMin $YMin)
+            }
+            'VE' {
+                return (script:Add-CnsCoverPsTextAtX -Text $txt -FontName 'Helvetica' -FontSize 9 -X $XLeft -LineStep 10 `
+                    -PartsList $PartsList -YRef $YRef -YMin $YMin)
+            }
+            'B11' {
+                return (script:Add-CnsCoverPsTextAtX -Text $txt -FontName 'Helvetica-Bold' -FontSize 10 -X $XLeft -LineStep 11 `
+                    -PartsList $PartsList -YRef $YRef -YMin $YMin)
+            }
+            'I10' {
+                return (script:Add-CnsCoverPsTextAtX -Text $txt -FontName 'Helvetica' -FontSize 9 -X $XIndent -LineStep 10 `
+                    -PartsList $PartsList -YRef $YRef -YMin $YMin)
+            }
+            'N10' {
+                return (script:Add-CnsCoverPsTextAtX -Text $txt -FontName 'Helvetica' -FontSize 9 -X $XLeft -LineStep 10 `
+                    -PartsList $PartsList -YRef $YRef -YMin $YMin)
+            }
+            { $_ -in @('S8', 'S15', 'G12', 'G15', 'G20', 'G25', 'BLK') } {
+                $YRef.Value -= (Get-CnsCoverGapVerticalCost -Kind $kind)
+                return $true
+            }
+            default {
+                if ([string]::IsNullOrWhiteSpace($txt)) { return $true }
+                return (script:Add-CnsCoverPsTextAtX -Text $txt -FontName 'Helvetica' -FontSize 9 -X $XLeft -LineStep 10 `
+                    -PartsList $PartsList -YRef $YRef -YMin $YMin)
+            }
+        }
+    }
+
+    function script:Add-CnsCoverTruncationNotice {
+        param(
+            [int]$RemainingCount,
+            $PartsList,
+            [int]$YMin
+        )
+        if ($RemainingCount -lt 1) { return }
+        $truncMsg = "... et $RemainingCount autre(s) ODM non affiche(s) (voir fichier diagnostic)"
+        $lit = ConvertTo-CnsPsHelveticaParenBody -Text $truncMsg
+        $yMsg = $YMin + 10
+        [void]$PartsList.Add("/Helvetica findfont 9 scalefont setfont`n$xLeft $yMsg moveto`n($lit) show")
+    }
+
+    while ($idx -lt $elList.Count) {
+        if ($pageNum -gt 1) {
+            [void]$parts.Add('showpage')
+            $contTitle = '=== SYNTHESE DES ODM NON MATCHES (suite) ==='
+            $litCont = ConvertTo-CnsPsHelveticaParenBody -Text $contTitle
+            [void]$parts.Add("/Helvetica-Bold findfont 14 scalefont setfont`n50 780 moveto`n($litCont) show")
+        }
+
+        [int]$y = $StartY
+        [int]$startIdx = $idx
+        while ($idx -lt $elList.Count) {
+            $el = $elList[$idx]
+            $cost = Get-CnsCoverElementVerticalCost -Element $el -PageWidth $PageWidth
+            if (($y - $cost) -lt $MinY) {
+                break
+            }
+            $null = script:Render-CnsCoverElement -Element $el -PartsList $parts -YRef ([ref]$y) -YMin $MinY `
+                -PageW $PageWidth -XLeft $xLeft -XIndent $xIndent
+            $idx++
+        }
+
+        if ($idx -eq $startIdx) {
+            if (-not $truncationDrawn) {
+                $remaining = $elList.Count - $idx
+                script:Add-CnsCoverTruncationNotice -RemainingCount $remaining -PartsList $parts -YMin $MinY
+                $truncationDrawn = $true
+            }
+            break
+        }
+
+        if ($idx -lt $elList.Count) {
+            $pageNum++
+            if (-not $Multipage) {
+                if (-not $truncationDrawn) {
+                    $remaining = $elList.Count - $idx
+                    script:Add-CnsCoverTruncationNotice -RemainingCount $remaining -PartsList $parts -YMin $MinY
+                    $truncationDrawn = $true
+                }
+                break
+            }
+        }
+    }
+
+    if ($idx -lt $elList.Count -and -not $truncationDrawn) {
+        $remaining = $elList.Count - $idx
+        script:Add-CnsCoverTruncationNotice -RemainingCount $remaining -PartsList $parts -YMin $MinY
+    }
+
+    if ($parts.Count -lt 1) { return '' }
+    $body = ($parts.ToArray()) -join "`n"
+    if ($pageNum -gt 1 -or ($body -match '(?m)^showpage\s*$')) {
+        return ($body + "`nshowpage")
+    }
+    return $body
+}
+
+function Expand-CnsCoverDiagnosticLinesForPostScript {
+    param(
+        [AllowEmptyCollection()][string[]]$Lines,
+        [int]$MaxLen = 88
+    )
+    $expanded = [System.Collections.Generic.List[string]]::new()
+    foreach ($line in @($Lines)) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $wrapped = @(Split-CnsCoverTextToMaxWidth -Text $line -MaxLen $MaxLen)
+        if ($wrapped.Count -lt 1) { continue }
+        [void]$expanded.Add($wrapped[0])
+        for ($wi = 1; $wi -lt $wrapped.Count; $wi++) {
+            [void]$expanded.Add(('    {0}' -f $wrapped[$wi]))
+        }
+    }
+    return @($expanded.ToArray())
+}
+
 function New-CnsGlobalMismatchCoverPdf {
     param(
         [Parameter(Mandatory = $true)]
@@ -181,25 +481,86 @@ function New-CnsGlobalMismatchCoverPdf {
         [Parameter(Mandatory = $true)]
         [int]$TotalOdmCount,
         [Parameter(Mandatory = $true)]
-        [int]$UnmatchedOdmCount
+        [int]$UnmatchedOdmCount,
+        [AllowEmptyCollection()]
+        [string[]]$DetailLines = @(),
+        [AllowEmptyCollection()]
+        [object[]]$CoverElements = @(),
+        [int]$Section1Count = -1,
+        [int]$Section2Count = -1,
+        [int]$Section3Count = -1,
+        [switch]$AllMatched
     )
-    $title = 'Synthese ODM / matching planning'
-    $l1 = "Nombre total d'ODM (groupes extraits du PDF) : $TotalOdmCount"
-    $l2 = "Nombre d'ODM sans correspondance : $UnmatchedOdmCount"
-    $t0 = ConvertTo-CnsPsHelveticaParenBody -Text $title
-    $t1 = ConvertTo-CnsPsHelveticaParenBody -Text $l1
-    $t2 = ConvertTo-CnsPsHelveticaParenBody -Text $l2
-    $body = @"
-/Helvetica-Bold findfont 18 scalefont setfont
-50 780 moveto
-($t0) show
-/Helvetica findfont 12 scalefont setfont
-50 730 moveto
-($t1) show
-50 700 moveto
-($t2) show
-"@
-    Write-CnsPostScriptPdfPage -PsBodySansShowpage $body -OutPdfPath $OutPdfPath
+    $mainTitle = '=== SYNTHESE DES ODM NON MATCHES ==='
+    $lTotal = "Nombre total d'ODM (groupes extraits du PDF) : $TotalOdmCount"
+    $tMain = ConvertTo-CnsPsHelveticaParenBody -Text $mainTitle
+    $tTotal = ConvertTo-CnsPsHelveticaParenBody -Text $lTotal
+    $bodyParts = [System.Collections.Generic.List[string]]::new()
+    $pageW = 595
+    $hasSectionCounts = ($Section1Count -ge 0 -or $Section2Count -ge 0 -or $Section3Count -ge 0)
+    if ($hasSectionCounts) {
+        $s1 = [Math]::Max(0, $Section1Count)
+        $s2 = [Math]::Max(0, $Section2Count)
+        $s3 = [Math]::Max(0, $Section3Count)
+        $lSec1 = "Section 1 : $s1 EXCEL SANS ODM"
+        $lSec2 = "Section 2 : $s2 ODM DIFFERENTS D'EXCEL"
+        $lSec3 = "Section 3 : $s3 ODM ABSENTS D'EXCEL"
+        $tSec1 = ConvertTo-CnsPsHelveticaParenBody -Text $lSec1
+        $tSec2 = ConvertTo-CnsPsHelveticaParenBody -Text $lSec2
+        $tSec3 = ConvertTo-CnsPsHelveticaParenBody -Text $lSec3
+        [void]$bodyParts.Add(@"
+/Helvetica-Bold findfont 14 scalefont setfont
+($tMain) dup stringwidth pop $pageW exch sub 2 div 780 moveto show
+/Helvetica findfont 10 scalefont setfont
+50 745 moveto
+($tTotal) show
+50 720 moveto
+($tSec1) show
+50 695 moveto
+($tSec2) show
+50 670 moveto
+($tSec3) show
+"@)
+    }
+    else {
+        $lLegacy = "Nombre d'ODM PDF sans correspondance Excel : $UnmatchedOdmCount"
+        $tLegacy = ConvertTo-CnsPsHelveticaParenBody -Text $lLegacy
+        [void]$bodyParts.Add(@"
+/Helvetica-Bold findfont 14 scalefont setfont
+($tMain) dup stringwidth pop $pageW exch sub 2 div 780 moveto show
+/Helvetica findfont 10 scalefont setfont
+50 745 moveto
+($tTotal) show
+50 720 moveto
+($tLegacy) show
+"@)
+    }
+
+    $detailStartY = 650
+    $detailMinY = 35
+    $detailPs = ''
+    if (@($CoverElements).Count -gt 0) {
+        $detailPs = Build-CnsMismatchCoverPostScriptFromElements -Elements @($CoverElements) `
+            -StartY $detailStartY -MinY $detailMinY -Multipage
+    }
+    elseif (@($DetailLines).Count -gt 0) {
+        $flatDetail = @(Expand-CnsCoverDiagnosticLinesForPostScript -Lines @($DetailLines))
+        if ($flatDetail.Count -gt 0) {
+            $detailPs = Build-CnsCoverTextLinesPostScriptAppend -Lines $flatDetail -StartY $detailStartY -LineStep 10 -MinY $detailMinY -FontName 'Helvetica' -FontSize 9
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($detailPs)) {
+        [void]$bodyParts.Add($detailPs)
+    }
+    elseif ($AllMatched) {
+        $okMsg = 'Tous les ODM ont ete matches avec succes.'
+        $tOk = ConvertTo-CnsPsHelveticaParenBody -Text $okMsg
+        [void]$bodyParts.Add("/Helvetica findfont 9 scalefont setfont`n50 $detailStartY moveto`n($tOk) show")
+    }
+
+    $body = ($bodyParts.ToArray()) -join "`n"
+    $skipTrailingShow = ($detailPs -match '(?m)showpage\s*$')
+    Write-CnsPostScriptPdfPage -PsBodySansShowpage $body -OutPdfPath $OutPdfPath -SkipTrailingShowpage:$skipTrailingShow
 }
 
 function Format-CnsTourneeCoverDateFrLong {
@@ -1256,9 +1617,44 @@ function Invoke-PlanningTourneePdfCoverComposition {
         $globalCov = Join-Path $tmpDir 'cover_global.pdf'
 
         Write-Host '[TOURNEE] Creation page de garde globale (premiere page du PDF final).' -ForegroundColor Cyan
+        $coverElements = @()
+        $coverAllMatched = $false
+        $coverS1 = -1
+        $coverS2 = -1
+        $coverS3 = -1
+        if (Get-Command Build-PlanningOdmMismatchThreeSectionCoverLines -ErrorAction SilentlyContinue) {
+            try {
+                $missingList = @()
+                if ($null -ne $MatchResult -and $null -ne $MatchResult.Missing) {
+                    $missingList = @($MatchResult.Missing)
+                }
+                $coverReport = Build-PlanningOdmMismatchThreeSectionCoverLines `
+                    -Missing $missingList `
+                    -WorkOrders @($WorkOrders) `
+                    -ExcelOrder @($ExcelOrder) `
+                    -MatchResult $MatchResult `
+                    -TourSegments @($segments) `
+                    -MaxEntriesPerSection 20
+                $coverAllMatched = [bool]$coverReport.AllMatched
+                $coverS1 = [int]$coverReport.Section1Count
+                $coverS2 = [int]$coverReport.Section2Count
+                $coverS3 = [int]$coverReport.Section3Count
+                if (-not $coverAllMatched -and $null -ne $coverReport.Elements) {
+                    $coverElements = @($coverReport.Elements)
+                }
+            }
+            catch {
+                Write-Warning ("[TOURNEE] Diagnostic ODM non matches indisponible : {0}" -f $_.Exception.Message)
+            }
+        }
         $gcOk = (New-CnsGlobalMismatchCoverPdf -OutPdfPath $globalCov `
                 -TotalOdmCount $totalODM `
-                -UnmatchedOdmCount $unmatchedCount )
+                -UnmatchedOdmCount $unmatchedCount `
+                -CoverElements $coverElements `
+                -Section1Count $coverS1 `
+                -Section2Count $coverS2 `
+                -Section3Count $coverS3 `
+                -AllMatched:$coverAllMatched)
         if (-not $gcOk) {
             throw 'Ghostscript global cover echouee'
         }
