@@ -1842,6 +1842,638 @@ function script:Test-ContainsNormalizedToken {
     return $HaystackNorm -like "*$tok*"
 }
 
+function Get-PlanningExcelSlotByOrderIndex {
+    param(
+        [AllowEmptyCollection()][object[]]$ExcelOrder,
+        [int]$OrderIndex
+    )
+    foreach ($slot in @($ExcelOrder)) {
+        if ($null -eq $slot) { continue }
+        try {
+            if ([int]$slot.OrderIndex -eq $OrderIndex) { return $slot }
+        }
+        catch { }
+    }
+    return $null
+}
+
+function Find-PlanningWorkOrderForMismatchDiagnostic {
+    param(
+        [AllowEmptyCollection()][object[]]$WorkOrders,
+        [string]$Label
+    )
+    if ([string]::IsNullOrWhiteSpace($Label)) { return $null }
+    $bestWo = $null
+    $bestSim = -1
+    foreach ($wo in @($WorkOrders)) {
+        if ($null -eq $wo) { continue }
+        $sim = Get-SimilarityPercent -A $Label -B ([string]$wo.ClientName)
+        if ($sim -gt $bestSim) {
+            $bestSim = $sim
+            $bestWo = $wo
+        }
+    }
+    return $bestWo
+}
+
+function Get-PlanningCoverTextSortKey {
+    param([AllowNull()][AllowEmptyString()][string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return '' }
+    $k = Remove-Diacritics -Text ([string]$Text).Trim()
+    return $k.ToLowerInvariant()
+}
+
+function Get-PlanningExcelSlotClientIdText {
+    param($ExcelSlot)
+    if ($null -eq $ExcelSlot) { return '' }
+    if ($null -eq $ExcelSlot.PSObject.Properties['ClientId']) { return '' }
+    return ([string]$ExcelSlot.ClientId).Trim()
+}
+
+function Get-PlanningExcelSlotDisplayName {
+    param($ExcelSlot)
+    if ($null -eq $ExcelSlot) { return '' }
+    return ([string]$ExcelSlot.Label).Trim()
+}
+
+function Get-PlanningTruncatedDisplayText {
+    param(
+        [string]$Text,
+        [int]$MaxLen = 80
+    )
+    $t = if ($null -eq $Text) { '' } else { ([string]$Text).Trim() }
+    if ($t.Length -le $MaxLen) { return $t }
+    return $t.Substring(0, $MaxLen - 3) + '...'
+}
+
+function Get-PlanningPotentialMatchScore {
+    <#
+    .SYNOPSIS
+        Score theorique Excel/PDF (memes regles que Match-WorkOrderToExcelOrderSmart, sans contrainte usedWoKeys).
+    #>
+    param(
+        $ExcelSlot,
+        $PdfWorkOrder
+    )
+    if ($null -eq $ExcelSlot -or $null -eq $PdfWorkOrder) {
+        return [pscustomobject]@{ Score = 0; NameSim = 0; MatchReason = 'NO_PAIR' }
+    }
+
+    $excelIdNorm = Normalize-ClientIdForJoin $ExcelSlot.ClientId
+    $pdfIdNorm = Normalize-ClientIdForJoin $PdfWorkOrder.ClientID
+    if (-not [string]::IsNullOrWhiteSpace($excelIdNorm) -and -not [string]::IsNullOrWhiteSpace($pdfIdNorm) -and $excelIdNorm -eq $pdfIdNorm) {
+        return [pscustomobject]@{ Score = 100; NameSim = 100; MatchReason = 'CLIENTID_EXACT' }
+    }
+
+    $excelName = Get-PlanningExcelSlotDisplayName -ExcelSlot $ExcelSlot
+    $pdfName = ([string]$PdfWorkOrder.ClientName).Trim()
+
+    $nameSimRaw = Get-SimilarityPercent -A $excelName -B $pdfName
+    $aN = Normalize-ClientKey $excelName
+    $bN = Normalize-ClientKey $pdfName
+    $nameSim = $nameSimRaw
+    if (
+        -not [string]::IsNullOrWhiteSpace($aN) -and
+        -not [string]::IsNullOrWhiteSpace($bN) -and
+        ($aN -cne $bN)
+    ) {
+        $sKey = if ($aN.Length -lt $bN.Length) { $aN } else { $bN }
+        $lKey = if ($aN.Length -lt $bN.Length) { $bN } else { $aN }
+        if ($sKey.Length -ge 3 -and $lKey.Contains($sKey)) {
+            $nameSim = [Math]::Max($nameSimRaw, 100)
+        }
+    }
+    if ($nameSim -ge 80) {
+        return [pscustomobject]@{ Score = 85; NameSim = $nameSim; MatchReason = 'NAME_SIMILARITY' }
+    }
+
+    $excelContext = ExcelContextTextForJoin -Slot $ExcelSlot
+    $excelContextNorm = Normalize-ContextKey -Text $excelContext
+    $addressText = Get-EntityAddressText -Entity $PdfWorkOrder
+    $street = if ($null -ne $PdfWorkOrder.Address) { ([string]$PdfWorkOrder.Address.Street).Trim() } else { '' }
+    $city = if ($null -ne $PdfWorkOrder.Address) { [string]$PdfWorkOrder.Address.City } else { '' }
+    $postal = if ($null -ne $PdfWorkOrder.Address) { [string]$PdfWorkOrder.Address.PostalCode } else { '' }
+
+    $cityOk = Test-ContainsNormalizedToken -HaystackNorm $excelContextNorm -Token $city
+    $postalOk = Test-ContainsNormalizedToken -HaystackNorm $excelContextNorm -Token $postal
+    if (-not ($cityOk -and $postalOk)) {
+        return [pscustomobject]@{ Score = 0; NameSim = $nameSim; MatchReason = 'NO_MATCH' }
+    }
+
+    $streetOk = (-not [string]::IsNullOrWhiteSpace($street)) -and (
+        Test-ContainsNormalizedToken -HaystackNorm $excelContextNorm -Token $street
+    )
+    $addrScore = if ($streetOk) { 75 } else { 65 }
+    $addrReason = if ($streetOk) { 'CONTEXT_FULL_ADDRESS' } else { 'CONTEXT_CITY_POSTAL' }
+    return [pscustomobject]@{ Score = $addrScore; NameSim = $nameSim; MatchReason = $addrReason }
+}
+
+function Get-PlanningBestExcelCandidateForPdfWorkOrder {
+    param(
+        $PdfWorkOrder,
+        [AllowEmptyCollection()][object[]]$ExcelOrder
+    )
+    $bestSlot = $null
+    $bestScore = 0
+    $bestNameSim = 0
+    foreach ($slot in @($ExcelOrder)) {
+        if ($null -eq $slot) { continue }
+        $eval = Get-PlanningPotentialMatchScore -ExcelSlot $slot -PdfWorkOrder $PdfWorkOrder
+        $sc = [int]$eval.Score
+        if ($sc -gt $bestScore) {
+            $bestScore = $sc
+            $bestSlot = $slot
+            $bestNameSim = [int]$eval.NameSim
+        }
+        elseif ($sc -eq $bestScore -and $sc -gt 0 -and $null -ne $bestSlot) {
+            $ns = [int]$eval.NameSim
+            if ($ns -gt $bestNameSim) {
+                $bestSlot = $slot
+                $bestNameSim = $ns
+            }
+        }
+        elseif ($sc -eq $bestScore -and $sc -gt 0 -and $null -eq $bestSlot) {
+            $bestSlot = $slot
+            $bestNameSim = [int]$eval.NameSim
+        }
+    }
+    return [pscustomobject]@{
+        ExcelSlot = $bestSlot
+        Score     = $bestScore
+        NameSim   = $bestNameSim
+    }
+}
+
+function Get-PlanningWorkOrderMatchKey {
+    param([AllowNull()] $WorkOrder)
+    if ($null -eq $WorkOrder) { return $null }
+    if ($WorkOrder -is [string]) {
+        $s = ([string]$WorkOrder).Trim()
+        if ([string]::IsNullOrWhiteSpace($s)) { return $null }
+        return $s
+    }
+    try {
+        $wid = ([string]$WorkOrder.WorkOrder).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($wid)) { return $wid }
+    }
+    catch { }
+    return script:Get-PlanningGraphStableWorkOrderRef -WorkOrder $WorkOrder
+}
+
+function Get-PlanningMatchedWorkOrderKeys {
+    param($MatchResult)
+    $keys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    if ($null -eq $MatchResult) { return ,$keys }
+    foreach ($m in @($MatchResult.Matches)) {
+        if ($null -eq $m) { continue }
+        $k = Get-PlanningWorkOrderMatchKey -WorkOrder $m.WorkOrder
+        if (-not [string]::IsNullOrWhiteSpace($k)) { [void]$keys.Add($k) }
+    }
+    return ,$keys
+}
+
+function Get-PlanningUnmatchedPdfWorkOrders {
+    param(
+        [AllowEmptyCollection()][object[]]$WorkOrders,
+        $MatchResult
+    )
+    $matchedKeys = Get-PlanningMatchedWorkOrderKeys -MatchResult $MatchResult
+    $orphans = [System.Collections.Generic.List[object]]::new()
+    foreach ($wo in @($WorkOrders)) {
+        if ($null -eq $wo) { continue }
+        $k = Get-PlanningWorkOrderMatchKey -WorkOrder $wo
+        if ([string]::IsNullOrWhiteSpace($k)) {
+            [void]$orphans.Add($wo)
+            continue
+        }
+        if (-not $matchedKeys.Contains($k)) {
+            [void]$orphans.Add($wo)
+        }
+    }
+    return @($orphans.ToArray())
+}
+
+function Get-PlanningPdfExcelDifferenceLines {
+    param(
+        $PdfWorkOrder,
+        $ExcelSlot
+    )
+    $lines = [System.Collections.Generic.List[string]]::new()
+    if ($null -eq $PdfWorkOrder -or $null -eq $ExcelSlot) { return @() }
+
+    $pdfId = ([string]$PdfWorkOrder.ClientID).Trim()
+    $excelId = Get-PlanningExcelSlotClientIdText -ExcelSlot $ExcelSlot
+    $pdfIdNorm = Normalize-ClientIdForJoin $pdfId
+    $excelIdNorm = Normalize-ClientIdForJoin $excelId
+
+    if (-not [string]::IsNullOrWhiteSpace($pdfIdNorm) -and [string]::IsNullOrWhiteSpace($excelIdNorm)) {
+        [void]$lines.Add('-> ClientID absent dans l''Excel')
+    }
+    elseif ([string]::IsNullOrWhiteSpace($pdfIdNorm) -and -not [string]::IsNullOrWhiteSpace($excelIdNorm)) {
+        [void]$lines.Add('-> ClientID absent dans le PDF')
+    }
+    elseif (
+        -not [string]::IsNullOrWhiteSpace($pdfIdNorm) -and
+        -not [string]::IsNullOrWhiteSpace($excelIdNorm) -and
+        $pdfIdNorm -ne $excelIdNorm
+    ) {
+        [void]$lines.Add(("-> ClientID different : PDF='{0}' / Excel='{1}'" -f $pdfId, $excelId))
+    }
+
+    $excelName = Get-PlanningExcelSlotDisplayName -ExcelSlot $ExcelSlot
+    $pdfName = ([string]$PdfWorkOrder.ClientName).Trim()
+    $nameSim = Get-SimilarityPercent -A $excelName -B $pdfName
+    if ($nameSim -lt 100) {
+        [void]$lines.Add(("-> Nom different ({0}%) : PDF='{1}' / Excel='{2}'" -f $nameSim, (Get-PlanningTruncatedDisplayText -Text $pdfName), (Get-PlanningTruncatedDisplayText -Text $excelName)))
+    }
+
+    $excelContext = ExcelContextTextForJoin -Slot $ExcelSlot
+    $excelContextNorm = Normalize-ContextKey -Text $excelContext
+    $addressText = Get-EntityAddressText -Entity $PdfWorkOrder
+    $city = if ($null -ne $PdfWorkOrder.Address) { [string]$PdfWorkOrder.Address.City } else { '' }
+    $postal = if ($null -ne $PdfWorkOrder.Address) { [string]$PdfWorkOrder.Address.PostalCode } else { '' }
+    $cityOk = Test-ContainsNormalizedToken -HaystackNorm $excelContextNorm -Token $city
+    $postalOk = Test-ContainsNormalizedToken -HaystackNorm $excelContextNorm -Token $postal
+    if (-not ($cityOk -and $postalOk)) {
+        $pdfAddr = Get-PlanningTruncatedDisplayText -Text $addressText
+        $excelAddr = Get-PlanningTruncatedDisplayText -Text $excelContext
+        [void]$lines.Add(("-> Adresse differente : PDF='{0}' / Excel='{1}'" -f $pdfAddr, $excelAddr))
+    }
+
+    return @($lines.ToArray())
+}
+
+function Get-PlanningCollecteurRawForExcelOrderIndex {
+    param(
+        [int]$OrderIndex,
+        [AllowEmptyCollection()][object[]]$TourSegments
+    )
+    foreach ($seg in @($TourSegments)) {
+        if ($null -eq $seg) { continue }
+        $ois = @()
+        if ($null -ne $seg.PSObject.Properties['OrderIndices']) { $ois = @($seg.OrderIndices) }
+        foreach ($oi in @($ois)) {
+            try {
+                if ([int]$oi -eq $OrderIndex) {
+                    try { return ([string]$seg.Collecteur).Trim() } catch { return '' }
+                }
+            }
+            catch { }
+        }
+    }
+    return ''
+}
+
+function Get-PlanningExcelSlotCollecteurDisplay {
+    param(
+        $ExcelSlot,
+        [AllowEmptyCollection()][object[]]$TourSegments = @()
+    )
+    $rawCol = ''
+    if ($null -ne $ExcelSlot) {
+        if ($ExcelSlot.PSObject.Properties['Collecteur']) {
+            $rawCol = ([string]$ExcelSlot.Collecteur).Trim()
+        }
+        if ([string]::IsNullOrWhiteSpace($rawCol)) {
+            try {
+                $oi = [int]$ExcelSlot.OrderIndex
+                $rawCol = Get-PlanningCollecteurRawForExcelOrderIndex -OrderIndex $oi -TourSegments $TourSegments
+            }
+            catch { }
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($rawCol)) { return '' }
+    $plain = $rawCol.ToUpperInvariant()
+    foreach ($s in @('INCONNU', 'NON SPECIFIE', 'NON SPECIFIEE', '-', 'N/A', 'NA', 'ND')) {
+        if ($plain -eq $s) { return '' }
+    }
+    if (Get-Command Resolve-CnsCollecteurFieldsForCertificate -ErrorAction SilentlyContinue) {
+        $resolved = Resolve-CnsCollecteurFieldsForCertificate -CollecteurExcelRaw $rawCol
+        $p = ([string]$resolved.Prenom).Trim()
+        $n = ([string]$resolved.Nom).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($p) -and -not [string]::IsNullOrWhiteSpace($n)) {
+            return "$p $n"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($n)) { return $n }
+        if (-not [string]::IsNullOrWhiteSpace($p)) { return $p }
+    }
+    return $rawCol
+}
+
+function Get-PlanningExcelMissingDisplayName {
+    param(
+        $Missing,
+        $ExcelSlot
+    )
+    $name = Get-PlanningExcelSlotDisplayName -ExcelSlot $ExcelSlot
+    if (-not [string]::IsNullOrWhiteSpace($name)) { return $name }
+    if ($null -ne $Missing) {
+        $ml = ([string]$Missing.Label).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($ml) -and $ml -notmatch '^Ligne Excel #') { return $ml }
+    }
+    if ($null -ne $ExcelSlot -and $null -ne $ExcelSlot.RawLines) {
+        foreach ($rl in @($ExcelSlot.RawLines)) {
+            $t = ([string]$rl).Trim()
+            if ([string]::IsNullOrWhiteSpace($t)) { continue }
+            if ($t -match '^\((\d{4,6})\)\s*(.+)$') {
+                return ([string]$matches[2]).Trim()
+            }
+            if ($t.Length -gt 2) {
+                return (Get-PlanningTruncatedDisplayText -Text $t -MaxLen 72)
+            }
+        }
+    }
+    return '(nom non extrait du planning)'
+}
+
+function Test-PlanningExcelMissingIsProblematic {
+    param(
+        $Missing,
+        $ExcelSlot
+    )
+    $excelId = Get-PlanningExcelSlotClientIdText -ExcelSlot $ExcelSlot
+    if ([string]::IsNullOrWhiteSpace($excelId)) { return $true }
+    $name = Get-PlanningExcelMissingDisplayName -Missing $Missing -ExcelSlot $ExcelSlot
+    if ([string]::IsNullOrWhiteSpace($name)) { return $true }
+    if ($name -eq '(nom non extrait du planning)') { return $true }
+    if ($null -ne $Missing) {
+        $ml = ([string]$Missing.Label).Trim()
+        if ($ml -match '^Ligne Excel #') { return $true }
+    }
+    return $false
+}
+
+function Get-PlanningExcelMissingDiagnosticTextLines {
+    param(
+        $Missing,
+        $ExcelSlot
+    )
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $excelOrderIdx = 0
+    try { $excelOrderIdx = [int]$Missing.ExcelOrder } catch { }
+    $excelRow = 0
+    if ($null -ne $ExcelSlot -and $ExcelSlot.PSObject.Properties['ExcelRow']) {
+        try { $excelRow = [int]$ExcelSlot.ExcelRow } catch { }
+    }
+    $slotLabel = if ($null -ne $ExcelSlot) { Get-PlanningExcelSlotDisplayName -ExcelSlot $ExcelSlot } else { '' }
+    $slotId = Get-PlanningExcelSlotClientIdText -ExcelSlot $ExcelSlot
+    $missLabel = if ($null -ne $Missing) { ([string]$missing.Label).Trim() } else { '' }
+    $dispName = Get-PlanningExcelMissingDisplayName -Missing $Missing -ExcelSlot $ExcelSlot
+    [void]$lines.Add(("  OrderIndex={0} ExcelRow={1} Label slot=`"{2}`" ClientId=`"{3}`"" -f $excelOrderIdx, $excelRow, $slotLabel, $slotId))
+    [void]$lines.Add(("  Missing.Label=`"{0}`" Nom affiche=`"{1}`"" -f $missLabel, $dispName))
+    $rawParts = [System.Collections.Generic.List[string]]::new()
+    if ($null -ne $ExcelSlot -and $null -ne $ExcelSlot.RawLines) {
+        foreach ($rl in @($ExcelSlot.RawLines)) {
+            $t = ([string]$rl).Trim()
+            if (-not [string]::IsNullOrWhiteSpace($t)) { [void]$rawParts.Add($t) }
+        }
+    }
+    if ($rawParts.Count -lt 1 -and -not [string]::IsNullOrWhiteSpace($missLabel)) {
+        [void]$rawParts.Add($missLabel)
+    }
+    if ($rawParts.Count -lt 1) {
+        [void]$lines.Add('  Raw: (vide)')
+    }
+    else {
+        $rawJoined = ($rawParts.ToArray() -join ' | ')
+        if ($rawJoined.Length -gt 200) { $rawJoined = $rawJoined.Substring(0, 197) + '...' }
+        [void]$lines.Add(("  Raw: {0}" -f $rawJoined))
+    }
+    return @($lines.ToArray())
+}
+
+function script:Add-PlanningCoverElement {
+    param(
+        $Elements,
+        [string]$Kind,
+        [string]$Text = ''
+    )
+    [void]$Elements.Add([pscustomobject]@{ Kind = $Kind; Text = [string]$Text })
+}
+
+function Build-PlanningOdmMismatchThreeSectionCoverLines {
+    <#
+    .SYNOPSIS
+        Elements structures pour page de garde globale (3 sections, presentation aeree).
+    .OUTPUTS
+        PSCustomObject Elements, Lines, Section1Count, Section2Count, Section3Count, AllMatched
+    #>
+    [CmdletBinding()]
+    param(
+        [AllowEmptyCollection()][object[]]$Missing,
+        [AllowEmptyCollection()][object[]]$WorkOrders,
+        [AllowEmptyCollection()][object[]]$ExcelOrder,
+        $MatchResult = $null,
+        [AllowEmptyCollection()][object[]]$TourSegments = @(),
+        [int]$MaxEntriesPerSection = 20
+    )
+
+    $section1Entries = [System.Collections.Generic.List[object]]::new()
+    foreach ($missing in @($Missing)) {
+        if ($null -eq $missing) { continue }
+        $excelOrderIdx = 0
+        try { $excelOrderIdx = [int]$missing.ExcelOrder } catch { continue }
+        if ($excelOrderIdx -lt 1) { continue }
+        $excelSlot = Get-PlanningExcelSlotByOrderIndex -ExcelOrder $ExcelOrder -OrderIndex $excelOrderIdx
+        $excelName = Get-PlanningExcelMissingDisplayName -Missing $missing -ExcelSlot $excelSlot
+        $excelId = Get-PlanningExcelSlotClientIdText -ExcelSlot $excelSlot
+        $idLabel = if ([string]::IsNullOrWhiteSpace($excelId)) { '(non extrait)' } else { $excelId }
+        $collecteur = Get-PlanningExcelSlotCollecteurDisplay -ExcelSlot $excelSlot -TourSegments $TourSegments
+        $block = [System.Collections.Generic.List[object]]::new()
+        [void]$block.Add([pscustomobject]@{
+            Kind = 'B11'
+            Text = ("{0} (ID={1})" -f (Get-PlanningTruncatedDisplayText -Text $excelName -MaxLen 72), $idLabel)
+        })
+        if (-not [string]::IsNullOrWhiteSpace($collecteur)) {
+            [void]$block.Add([pscustomobject]@{ Kind = 'I10'; Text = ("Collecteur : {0}" -f $collecteur) })
+        }
+        [void]$section1Entries.Add([pscustomobject]@{
+            SortKey = (Get-PlanningCoverTextSortKey -Text $excelName)
+            Block   = @($block.ToArray())
+        })
+    }
+
+    $section2Entries = [System.Collections.Generic.List[object]]::new()
+    $section3Entries = [System.Collections.Generic.List[object]]::new()
+    $orphanWos = @(Get-PlanningUnmatchedPdfWorkOrders -WorkOrders $WorkOrders -MatchResult $MatchResult)
+    foreach ($wo in @($orphanWos)) {
+        if ($null -eq $wo) { continue }
+        $pdfName = ([string]$wo.ClientName).Trim()
+        if ([string]::IsNullOrWhiteSpace($pdfName)) { $pdfName = ([string]$wo.WorkOrder).Trim() }
+        if ([string]::IsNullOrWhiteSpace($pdfName)) { $pdfName = 'ODM PDF' }
+
+        $best = Get-PlanningBestExcelCandidateForPdfWorkOrder -PdfWorkOrder $wo -ExcelOrder $ExcelOrder
+        $bestScore = [int]$best.Score
+
+        if ($bestScore -gt 0 -and $null -ne $best.ExcelSlot) {
+            $diffLines = @(Get-PlanningPdfExcelDifferenceLines -PdfWorkOrder $wo -ExcelSlot $best.ExcelSlot)
+            $block = [System.Collections.Generic.List[object]]::new()
+            [void]$block.Add([pscustomobject]@{
+                Kind = 'B11'
+                Text = (Get-PlanningTruncatedDisplayText -Text $pdfName -MaxLen 72)
+            })
+            foreach ($dl in @($diffLines)) {
+                [void]$block.Add([pscustomobject]@{ Kind = 'I10'; Text = [string]$dl })
+            }
+            if ($block.Count -lt 2) {
+                [void]$block.Add([pscustomobject]@{ Kind = 'I10'; Text = '-> Ecart detecte (score partiel, non detaille)' })
+            }
+            [void]$section2Entries.Add([pscustomobject]@{
+                SortKey = (Get-PlanningCoverTextSortKey -Text $pdfName)
+                Block   = @($block.ToArray())
+            })
+        }
+        else {
+            $pdfId = ([string]$wo.ClientID).Trim()
+            $idDisp = if ([string]::IsNullOrWhiteSpace($pdfId)) { '(absent)' } else { $pdfId }
+            $lineText = ("{0} (ID PDF={1})" -f (Get-PlanningTruncatedDisplayText -Text $pdfName -MaxLen 72), $idDisp)
+            [void]$section3Entries.Add([pscustomobject]@{
+                SortKey = (Get-PlanningCoverTextSortKey -Text $pdfName)
+                Text    = $lineText
+            })
+        }
+    }
+
+    function script:Sort-PlanningCoverSectionEntries {
+        param($Entries, [string]$PropertyName = 'SortKey')
+        return @(
+            $Entries.ToArray() |
+                Sort-Object -Property @{ Expression = { [string]$_.$PropertyName } }
+        )
+    }
+
+    function script:Append-PlanningCoverHypothesisLines {
+        param($Elements, [string]$Hypothesis)
+        script:Add-PlanningCoverElement -Elements $Elements -Kind 'S8'
+        $hypLines = @($Hypothesis -split "(`r`n|`n)")
+        foreach ($hl in @($hypLines)) {
+            $t = ([string]$hl).Trim()
+            if ([string]::IsNullOrWhiteSpace($t)) { continue }
+            script:Add-PlanningCoverElement -Elements $Elements -Kind 'H10' -Text $t
+        }
+        script:Add-PlanningCoverElement -Elements $Elements -Kind 'S8'
+    }
+
+    function script:Append-PlanningCoverSectionElements {
+        param(
+            $Elements,
+            [string]$Title,
+            [string]$Hypothesis,
+            $Entries,
+            [string]$EntryProperty,
+            [int]$MaxEntries,
+            [string]$EntryGapKind = 'G15',
+            [switch]$Section3SimpleLines
+        )
+        script:Add-PlanningCoverElement -Elements $Elements -Kind 'T12' -Text $Title
+        script:Append-PlanningCoverHypothesisLines -Elements $Elements -Hypothesis $Hypothesis
+        if ($Entries.Count -lt 1) {
+            script:Add-PlanningCoverElement -Elements $Elements -Kind 'VE' -Text 'SECTION VIDE'
+            return
+        }
+        $sorted = script:Sort-PlanningCoverSectionEntries -Entries $Entries
+        $shown = 0
+        $total = $sorted.Count
+        if ($Section3SimpleLines) {
+            $toShow = $total
+            if ($MaxEntries -gt 0 -and $toShow -gt $MaxEntries) { $toShow = $MaxEntries }
+            for ($si = 0; $si -lt $toShow; $si++) {
+                $entry = $sorted[$si]
+                script:Add-PlanningCoverElement -Elements $Elements -Kind 'N10' -Text ([string]$entry.Text)
+                if ($si -lt ($toShow - 1)) {
+                    script:Add-PlanningCoverElement -Elements $Elements -Kind $EntryGapKind
+                }
+            }
+            $shown = $toShow
+        }
+        else {
+            $listToShow = @($sorted)
+            if ($MaxEntries -gt 0 -and $listToShow.Count -gt $MaxEntries) {
+                $listToShow = @($listToShow | Select-Object -First $MaxEntries)
+            }
+            for ($ei = 0; $ei -lt $listToShow.Count; $ei++) {
+                $entry = $listToShow[$ei]
+                foreach ($item in @($entry.$EntryProperty)) {
+                    script:Add-PlanningCoverElement -Elements $Elements -Kind $item.Kind -Text $item.Text
+                }
+                if ($ei -lt ($listToShow.Count - 1)) {
+                    script:Add-PlanningCoverElement -Elements $Elements -Kind $EntryGapKind
+                }
+            }
+            $shown = $listToShow.Count
+        }
+        $extra = $total - $shown
+        if ($extra -gt 0) {
+            script:Add-PlanningCoverElement -Elements $Elements -Kind 'G20'
+            script:Add-PlanningCoverElement -Elements $Elements -Kind 'N10' -Text ("... {0} entrees supplementaires" -f $extra)
+        }
+    }
+
+    $elements = [System.Collections.Generic.List[object]]::new()
+    $s1 = $section1Entries.Count
+    $s2 = $section2Entries.Count
+    $s3 = $section3Entries.Count
+    $allMatched = ($s1 -eq 0 -and $s2 -eq 0 -and $s3 -eq 0)
+
+    if (-not $allMatched) {
+        script:Append-PlanningCoverSectionElements -Elements $elements `
+            -Title '--- SECTION 1 : POINTS DE COLLECTE EXCEL SANS ODM PDF ---' `
+            -Hypothesis @'
+(Hypothese : le point de collecte est dans Excel, on ne trouve pas l'ODM dans le PDF.
+-> Verifier si le client est dans le PDF)
+'@ `
+            -Entries $section1Entries -EntryProperty 'Block' -MaxEntries $MaxEntriesPerSection -EntryGapKind 'G15'
+        script:Add-PlanningCoverElement -Elements $elements -Kind 'G20'
+        script:Append-PlanningCoverSectionElements -Elements $elements `
+            -Title '--- SECTION 2 : ODM PDF DIFFERENTS DE L''EXCEL ---' `
+            -Hypothesis @'
+(Hypothese : des donnees differentes entre PDF et Excel.
+-> Verifier et corriger la source (ID, nom, adresse))
+'@ `
+            -Entries $section2Entries -EntryProperty 'Block' -MaxEntries $MaxEntriesPerSection -EntryGapKind 'G15'
+        script:Add-PlanningCoverElement -Elements $elements -Kind 'G20'
+        script:Append-PlanningCoverSectionElements -Elements $elements `
+            -Title '--- SECTION 3 : ODM PDF ABSENTS DE L''EXCEL ---' `
+            -Hypothesis @'
+(Hypothese : client non planifie ce jour.
+-> Verifier s'il doit etre ajoute dans l'Excel)
+'@ `
+            -Entries $section3Entries -EntryProperty 'Text' -MaxEntries $MaxEntriesPerSection `
+            -EntryGapKind 'G12' -Section3SimpleLines
+    }
+
+    return [pscustomobject]@{
+        Elements       = @($elements.ToArray())
+        Lines          = @()  # legacy : non utilise (Elements structures)
+        Section1Count  = $s1
+        Section2Count  = $s2
+        Section3Count  = $s3
+        AllMatched     = $allMatched
+    }
+}
+
+function Build-PlanningOdmMismatchDiagnosticLines {
+    <#
+    .SYNOPSIS
+        Compatibilite : delegue a Build-PlanningOdmMismatchThreeSectionCoverLines (retourne .Lines uniquement).
+    #>
+    [CmdletBinding()]
+    param(
+        [AllowEmptyCollection()][object[]]$Missing,
+        [AllowEmptyCollection()][object[]]$WorkOrders,
+        [AllowEmptyCollection()][object[]]$ExcelOrder,
+        $MatchResult = $null,
+        [int]$MaxEntries = 20
+    )
+    $report = Build-PlanningOdmMismatchThreeSectionCoverLines `
+        -Missing $Missing -WorkOrders $WorkOrders -ExcelOrder $ExcelOrder `
+        -MatchResult $MatchResult -MaxEntriesPerSection $MaxEntries
+    if ($report.AllMatched) {
+        return @('Tous les ODM ont ete matches avec succes.')
+    }
+    return @($report.Lines)
+}
+
 function script:Try-FallbackWorkOrderJoin {
     param(
         $Slot,
@@ -2089,8 +2721,18 @@ function Match-WorkOrderToExcelOrderSmart {
     if ($wos.Count -eq 0) {
         $missingAll = [System.Collections.Generic.List[object]]::new()
         foreach ($s in @($slots)) {
+            if ($null -eq $s) {
+                Write-Warning '[MATCH-MISSING] slot null (aucun WorkOrder PDF), ignore'
+                continue
+            }
+            $orderIdxNone = 0
+            try { $orderIdxNone = [int]$s.OrderIndex } catch { $orderIdxNone = 0 }
+            if ($orderIdxNone -lt 1) {
+                Write-Warning '[MATCH-MISSING] OrderIndex invalide (aucun WorkOrder PDF), slot ignore'
+                continue
+            }
             [void]$missingAll.Add([pscustomobject]@{
-                ExcelOrder = $s.OrderIndex
+                ExcelOrder = $orderIdxNone
                 Label      = $s.Label
                 Score      = 0
             })
@@ -2128,6 +2770,10 @@ function Match-WorkOrderToExcelOrderSmart {
 
     $pendingFuzzy = [System.Collections.Generic.List[object]]::new()
     foreach ($slot in @($slots)) {
+        if ($null -eq $slot) {
+            Write-Warning '[MATCH-MISSING] slot null dans passe ClientID exact, ignore'
+            continue
+        }
         $slotIdx++
         Write-PlanningExcelSubStep -SubStepIndex 6 -Status 'SubStepProgress' `
             -Detail ("client {0}/{1}" -f $slotIdx, $slotTotal) `
@@ -2164,7 +2810,14 @@ function Match-WorkOrderToExcelOrderSmart {
             })
         }
         else {
-            [void]$pendingFuzzy.Add($slot)
+            $orderIdxPending = 0
+            try { $orderIdxPending = [int]$slot.OrderIndex } catch { $orderIdxPending = 0 }
+            if ($orderIdxPending -lt 1) {
+                Write-Warning '[MATCH-MISSING] OrderIndex invalide, non ajoute a pendingFuzzy'
+            }
+            else {
+                [void]$pendingFuzzy.Add($slot)
+            }
         }
     }
 
@@ -2176,10 +2829,18 @@ function Match-WorkOrderToExcelOrderSmart {
     $fuzzyTotal = @($pendingFuzzy).Count
     $fuzzyIdx = 0
     foreach ($slot in @($pendingFuzzy)) {
+        if ($null -eq $slot) {
+            Write-Warning '[MATCH-MISSING] slot null dans pendingFuzzy, ignore'
+            continue
+        }
         $fuzzyIdx++
         Write-PlanningExcelSubStep -SubStepIndex 7 -Status 'SubStepProgress' `
             -Detail ("client {0}/{1}" -f $fuzzyIdx, $fuzzyTotal) `
             -SubRatio (0.65 + 0.13 * ($fuzzyIdx / [Math]::Max(1, $fuzzyTotal)))
+
+        if ($env:CN_DEBUG_MATCHING -in @('1', 'true')) {
+            Write-Host ("[DEBUG-MATCH] slot OrderIndex={0} Label={1}" -f $slot.OrderIndex, $slot.Label) -ForegroundColor DarkGray
+        }
 
         $excelIdNorm = Normalize-ClientIdForJoin $slot.ClientId
         $matchedWo = $null
@@ -2367,9 +3028,19 @@ function Match-WorkOrderToExcelOrderSmart {
             })
         }
         else {
+            if ($null -eq $slot) {
+                Write-Warning '[MATCH-MISSING] slot null, non ajoute a Missing'
+                continue
+            }
+            $orderIdxMiss = 0
+            try { $orderIdxMiss = [int]$slot.OrderIndex } catch { $orderIdxMiss = 0 }
+            if ($orderIdxMiss -lt 1) {
+                Write-Warning '[MATCH-MISSING] OrderIndex invalide, non ajoute a Missing'
+                continue
+            }
             Write-Host ("[MATCH-RESULT] Type=NONE ExcelClientID={0} PDFClientID=" -f $excelIdNorm)
             [void]$missing.Add([pscustomobject]@{
-                ExcelOrder = $slot.OrderIndex
+                ExcelOrder = $orderIdxMiss
                 Label      = $slot.Label
                 Score      = 0
             })
