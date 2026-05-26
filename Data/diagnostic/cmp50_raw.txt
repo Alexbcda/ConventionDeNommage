@@ -1,0 +1,39 @@
+4/10/26, 8:48 AM
+https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]… 50/75
+LAMRESEARCH-N°59367
+22CheminduVieuxChêne
+38240Meylan
+Datedepassage:23/04/2026
+Jeudi•08h30-18h00
+5722074
+Heuredepassage:
+Tournée
+G1
+Créneau
+Matin
+Boucle
+1
+Rang
+1
+Contact
+CaroleTAUPIN
+carole.taupin@lamresearch.com
+04.76.76.49.10
+RemarqueetVisaClient
+-Typederampe:Mobile
+Prestation(s) Matériel Poids/Unité Reporting
+CollectedePapier
+5722074-20455382
+Sac110L
+translucides50µ /5 kg
+COLLECTESURLABASEDE3SACS110L
+CollectedeBouteilles
+plastiquePET
+5722074-20455391
+Sac110L
+translucides50µ /5 kg
+CollectedeCanettes
+5722074-20455398
+Sac110L
+translucides50µ /5 kg
+

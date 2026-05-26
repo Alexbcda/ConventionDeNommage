@@ -1,0 +1,2431 @@
+                       AEROPORT CHAMBERY - N°23778
+                       Route de l’Aéroport
+                       73420 Voglans                                                                                         5966589
+                       Date de passage : 23/04/2026                                   Heure de passage :
+                       Jeudi • 08h00 - 12h18 / 13h00 - 16h00
+Tournée          Créneau          Boucle           Rang                 Remarque et Visa Client
+G2               Matin            1                1
+Contact
+Laure COGOLUEGNES
+laure.cogoluegnes@aviation-civile.gouv.fr
+06.17.68.37.10 / 04.85.44.09.52
+- Type de rampe : Mobile                                                - Commentaire : Rte de l'Aéroport 73420 VIVIERS DU LAC
+                                                                        Portable : 06 69 04 96 85 Contrat particulier pour ce client -
+                                                                        voir dans document CHORUS: Siret : 12006401900074 Code
+                                                                        Service : 33 N° Engagement : 1200013146 F48602 REJETEE
+                                                                        SUR CHORUS CAR FACTURE NON CONFORME : @ ENVOYE A
+                                                                        NADINE ET KHADIJA CAR PB AVEC DEVIS
+Prestation(s)               Matériel                                               Poids / Unité                 Reporting
+Collecte de Papier         Bac 120L                                /1                              kg
+5966589-21463511
+Collecte de Canettes Sac       110L 50µ
+                           translucides                            /5                              kg
+5966589-21463512
+Collecte de Bouteilles Sac     110L 50µ
+                           translucides                            /5                              kg
+plastique PET
+5966589-21463513
+Collecte de Emballages Sac     110L                                /5                              kg
+plastique en mélange translucides 50µ
+5966589-21463514
+Collecte de Verre          Sac 110L 50µ
+                           translucides                            /5                              kg
+5966589-21463515
+         Traitement filière de valorisation de Verre
+         5966589-21463519
+Collecte de Capsules et Sac    110L 50µ
+                           translucides                            /5                              kg
+dosettes café
+5966589-21463516
+Collecte de Petit          Sac 110L                                /5                              kg
+matériel de bureaux translucides 50µ
+5966589-21463517
+ STYLOS
+Collecte de Carton         Vrac                                    /1                              kg
+5966589-21463518
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]=…   1/75
+  4/10/26, 8:48 AM
+
+Prestation(s)               Matériel                                              Poids / Unité                  Reporting
+ cartons pliés à plat
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]=…   2/75
+                          AFPA PONT DE CLAIX ATALIAN -
+  4/10/26, 8:48 AM
+
+
+                          N°56568
+                          34 Avenue Victor HUGO                                                                              5790876
+                          38800 LE PONT DE CLAIX
+                          Date de passage : 23/04/2026                               Heure de passage :
+                          Jeudi • 08h00 - 17h00
+Tournée              Créneau        Boucle          Rang                Remarque et Visa Client
+G3                   Matin          1               1
+Contact
+Alexis FORGIA
+alexis.forgia@atalianworld.com
+0698281755
+- Type de rampe : Mobile                                                - Commentaire : BDC OBLIGATOIRE ENVOYER FACTURE SANS
+                                                                        N° DE COMMANDE ET RENVOYER AVEC LE NUMERO QD ON
+                                                                        RECOIT LE BDC F47738 REJETEE CAR PAS DE BDC : @ A
+                                                                        JANUEL PR DEMANDER BDC LE 17/10/25 CONTRAT CADRE
+Prestation(s)                 Matériel                                             Poids / Unité                 Reporting
+Collecte de Papier           Bac 360L                              /5                              kg
+5790876-20717080
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]=…   3/75
+                          AMPHITHEATRE       BIBLIOTHEQUE
+                          PONT DE CLAIX -ETN°24410
+  4/10/26, 8:48 AM
+
+
+
+
+                          Les Iles de Mars                                                                                   5892955
+                          38800 Le Pont-de-Claix
+                          Date de passage : 23/04/2026                               Heure de passage :
+                          Jeudi • 08h00 - 12h18 / 13h00 - 16h00
+Tournée              Créneau        Boucle           Rang               Remarque et Visa Client
+G3                   Matin          1                1
+Contact
+Pïerre EYMERI
+pierre.eymeri@ville-pontdeclaix.fr
+-
+- Type de rampe : Mobile                                                - Commentaire : Bacs amphitheatre et bibliotheque au meme
+                                                                        endroit demander acces amphitheatre 45,131247, 5,695183
+                                                                        Portable :
+Prestation(s)                 Matériel                                             Poids / Unité                 Reporting
+Collecte de Papier           Bac 360L                              /1                              kg
+5892955-21151356
+Collecte de Carton           Vrac                                  /1                              kg
+5892955-21151357
+ DANS BAC 360L
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]=…   4/75
+                         ANDERLAINE  ALBERTVILLE SR
+ 4/10/26, 8:48 AM
+
+
+                         CONSEIL - N°24896
+                         85 Rue rené cassin                                                                                  5251365
+                         73200 Albertville
+                         Date de passage : 23/04/2026                               Heure de passage :
+                         Jeudi • 08h30 - 12h00 / 13h30 - 17h00
+Tournée             Créneau        Boucle          Rang                Remarque et Visa Client
+G5                  Matin          1               1
+Contact
+LUCIA MARIANO
+albertville@srconseil.fr
+04.79.31.11.40
+- Type de rampe : Mobile                                               - Commentaire : Portable :
+Prestation(s)            Matériel                                                 Poids / Unité                 Reporting
+Collecte de Capsules et Sac 110L 35µ
+                        translucides                              /1                              kg
+dosettes café
+5251365-18852949
+Collecte de Gobelets Sac    50L
+                        transparent                               /1                              kg
+carton
+5251365-18852971
+Collecte de Papier      Sac 110L 50µ
+                        translucides                              /1                              kg
+5251365-18852991
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]=…   5/75
+                         ANDERLAINE  CHALLES LES EAUX SR
+ 4/10/26, 8:48 AM
+
+
+                         CONSEIL - N°24898
+                         245 AVENUE DES MASSETTES                                                                           5268850
+                         73190 CHALLES LES EAUX
+                         Date de passage : 23/04/2026                               Heure de passage :
+                         Jeudi • 08h30 - 12h00 / 13h30 - 17h00
+Tournée             Créneau        Boucle          Rang                Remarque et Visa Client
+G2                  Matin          1               1
+Contact
+CHRISTIANE BACHELARD
+challesleseaux@srconseil.fr
+04.79.71.08.67
+- Type de rampe : Mobile                                               - Commentaire : Portable :
+Prestation(s)            Matériel                                                 Poids / Unité                 Reporting
+Collecte de Papier      Sac 110L 50µ
+                        translucides                              /1                              kg
+5268850-18918512
+Collecte de Gobelets Sac    110L 50µ
+                        translucides                              /5                              kg
+carton
+5268850-18918533
+Collecte de Bouteilles Sac  110L 50µ
+                        translucides                              /5                              kg
+plastique PET
+5268850-18918554
+Collecte de Capsules et Sac 110L 50µ
+                        translucides                              /5                              kg
+dosettes café
+5268850-18918570
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]=…   6/75
+                         - N°24902 HERMILLON SR CONSEIL
+                         ANDERLAINE
+ 4/10/26, 8:48 AM
+
+
+
+
+                         D 906                                                                                              5249947
+                         73300 LA TOUR EN MAURIENNE
+                         Date de passage : 23/04/2026                               Heure de passage :
+                         Jeudi • 08h30 - 12h00 / 13h30 - 17h00
+Tournée             Créneau        Boucle          Rang                Remarque et Visa Client
+G4                  Matin          1               1
+Contact
+MARIE-PIERRE PALANZA
+saintjean@srconseil.fr
+04.79.64.05.22
+- Type de rampe : Mobile                                               - Commentaire : Portable :
+Prestation(s)            Matériel                                                 Poids / Unité                 Reporting
+Collecte de Papier      Sac 110L 50µ
+                        translucides                              /5                              kg
+5249947-18847908
+Collecte de Bouteilles Sac  110L 50µ
+                        translucides                              /5                              kg
+plastique PET
+5249947-18847912
+Collecte de Capsules et Sac 110L 50µ
+                        translucides                              /5                              kg
+dosettes café
+5249947-18847921
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]=…   7/75
+                         N°24904 MEYLAN SR CONSEIL -
+                         ANDERLAINE
+ 4/10/26, 8:48 AM
+
+
+
+
+                         15 Chemin de Malacher                                                                              5268308
+                         38240 Meylan
+                         Date de passage : 23/04/2026                               Heure de passage :
+                         Jeudi • 08h30 - 12h00 / 13h30 - 17h00
+Tournée             Créneau        Boucle          Rang                Remarque et Visa Client
+G1                  Matin          1               1
+Contact
+Sandrine MICHEL
+meylan@anderlaine.com
+04 76 90 36 26
+- Type de rampe : Mobile                                               - Commentaire : Portable :ANDERLAINE MEYLAN déménage le
+                                                                       17 Novembre 2025 NOUVELLE ADRESSE = 15 chemin de
+                                                                       Malacher 38240 MEYLAN
+Prestation(s)            Matériel                                                 Poids / Unité                 Reporting
+Collecte de Papier      Sac 110L 50µ
+                        translucides                              /5                              kg
+5268308-18916474
+Collecte de Carton      Vrac                                      /1                              kg
+5268308-18916498
+Collecte de Canettes Sac    110L 50µ
+                        translucides                              /5                              kg
+5268308-18916534
+Collecte de Gobelets Sac    110L 50µ
+                        translucides                              /5                              kg
+carton
+5268308-18916555
+Collecte de Capsules et Sac 110L 50µ
+                        translucides                              /5                              kg
+dosettes café
+5268308-18916572
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]=…   8/75
+  4/10/26, 8:48 AM
+
+                         APLIM CHAMBERY - N°24415
+                         28 Parc d’Activite des Cotes
+                         73249 Saint-Jeoire-Prieuré                                                                            4773760
+                         Date de passage : 23/04/2026                                Heure de passage :
+                         Jeudi • 08h30 - 12h00 / 13h30 - 17h00
+Tournée              Créneau         Boucle        Rang                 Remarque et Visa Client
+G2                   Matin           1             1
+Contact
+Magali ERESEO
+magali.ereso@aplim.fr
+0661965103
+- Type de rampe : Mobile                                                - Commentaire : Adresse complète : Z.A. Les Côtes 73190, 0 RN
+                                                                        6, 73190 Saint-Jeoire-Prieuré CONTRAT CADRE
+Prestation(s)                   Matériel                                           Poids / Unité                   Reporting
+Collecte de Papier             Bac 360L                            /1                              kg
+4773760-16932225
+ PAPIER
+Collecte de Canettes Sac 110L 50µ
+                     translucides                                  /5                              kg
+4773760-16932226
+ SAC DANS BAC 770L MD
+Collecte de Bouteilles Sac 110L 50µ
+                       translucides                                /5                              kg
+plastique PET
+4773760-16932227
+ SAC DANS BAC 770L MD
+Collecte de DIB      Sac 110L 50µ
+                     translucides                                  /5                              kg
+4773760-16932228
+ SAC DANS BAC 770L MD
+Collecte de Verre          Bac 120L                              /1                                kg
+4773760-16932229
+         Forfait traitement filière de valorisation de Verre
+         4773760-21681547                                                                                    bac1
+Collecte Ponctuel de Sac         110L 50µ
+                           translucides                          /1                                kg
+Cartouches d'encre
+4773760-22192216
+         Traitement filière de valorisation Ponctuel de Cartouches d'encre
+         4773760-22192217                                                                                    art
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]=…   9/75
+  4/10/26, 8:48 AM
+
+                         ARCHIVES PONT DE CLAIX - N°24416
+                         4 Avenue du Maquis de l'Oisans
+                         38800 Le Pont-de-Claix                                                                              5900479
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 08h00 - 12h18 / 13h00 - 16h00
+Tournée              Créneau          Boucle        Rang                 Remarque et Visa Client
+G3                   Matin            1             1
+Contact
+Pierre EYMERI
+pierre.eymeri@ville-pontdeclaix.fr
+-
+- Type de rampe : Mobile                                                 - Commentaire : Portable :
+Prestation(s)                   Matériel                                            Poids / Unité                Reporting
+Collecte de Papier             Bac 120L fermé                       /1                              kg
+5900479-21182421
+Collecte de Carton             Vrac                                 /1                              kg
+5900479-21182422
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   10/75
+                          ARTELIA SAS PONT DE CLAIX -
+  4/10/26, 8:48 AM
+
+
+                          LABORATOIRE
+                          N°73996      D'HYDRAULIQUE
+                          4 avenue charles de Gaulle                                                                           5974939
+                          38800 PONT DE CLAIX                                         Heure de passage :
+                          Date de passage : 23/04/2026
+                          Jeudi • 07h30 - 12h00 / 13h00 - 16h30
+Tournée              Créneau         Boucle         Rang                 Remarque et Visa Client
+G3                   Matin           1              1
+Contact
+Laurent PELLIER
+laurent.pellier@arteliagroup.com
+06 62 95 44 10
+- Type de rampe : Mobile                                                 - Commentaire : CONTRAT CADRE
+Prestation(s)               Matériel                                                Poids / Unité                  Reporting
+Collecte de Papier         Bac 360L                                 /1                              kg
+5974939-21499869
+Collecte de Carton         Bac 770L                                 /1                              kg
+5974939-21499870
+Collecte de Bouteilles Sac     110L 50µ
+                           translucides                             /5                              kg
+plastique PET
+5974939-21499871
+Collecte de Plastique Sac      110L 50µ
+                           translucides                             /5                              kg
+5974939-21499872
+Collecte de Essuie- Sac        110L 50µ
+                           translucides                             /5                              kg
+mains
+5974939-21499873
+Collecte de Verre          Sac 110L 50µ
+                           translucides                             /5                              kg
+5974939-21499874
+         Traitement filière de valorisation de Verre
+         5974939-21499875                                                                                    sac
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   11/75
+                         BANQUE  DE SAVOIE 01800 SAINT
+ 4/10/26, 8:48 AM
+
+
+                         JEAN DE MAURIENNE  - N°68042
+                         Place Fodère                                                                                        4773772
+                         73300 Saint-Jean-de-Maurienne
+                         Date de passage : 23/04/2026                                Heure de passage :
+                         Jeudi • 08h30 - 12h00 / 13h30 - 17h30
+Tournée             Créneau        Boucle          Rang                 Remarque et Visa Client
+G4                  Matin          1               1
+Contact
+--
+contact@mail.com
+1234567890
+- Type de rampe : Mobile
+Prestation(s)            Matériel                                                  Poids / Unité                Reporting
+Vidage Bornes de tri de Sac 110L 35µ
+                        translucides                               /2                              kg
+Papier
+4773772-16932257
+Collecte de Carton      Vrac                                       /5                              kg
+4773772-16932258
+ 5 cartons à plat maximum
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   12/75
+                          BNP ALBERTVILLE - FR002347 -
+  4/10/26, 8:48 AM
+
+
+                          N°83890
+                          15 Rue de la république                                                                            6084213
+                          73200 Albertville
+                          Date de passage : 23/04/2026                               Heure de passage :
+                          Jeudi • 09h00 - 12h30 / 14h00 - 19h00
+Tournée              Créneau        Boucle          Rang              Remarque et Visa Client
+G5                   Matin          1               1
+Contact
+--
+pascontact@gmail.com
+-
+- Type de rampe : Mobile
+Prestation(s)               Matériel                                             Poids / Unité                 Reporting
+Collecte de Multi
+déchets
+6084213-22031854
+ Collecte en point central (collecte de 20 unités maximum: 1 unité = 1 corbeille 30L, 1 sac, 1 carton ou autre)
+Collecte de Papier                                                                              kg
+6084213-22031855
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   13/75
+  4/10/26, 8:48 AM
+
+Prestation(s)             Matériel                                                 Poids / Unité                 Reporting
+ Corbeilles 30L fermées + sacs
+Collecte de Bouteilles                                                                             kg
+plastique PET
+6084213-22031856
+ Sacs
+Collecte de Canettes                                                                               kg
+6084213-22031857
+ Sacs
+Collecte de Emballages                                                                             kg
+plastique en mélange
+6084213-22031858
+ Sacs
+Collecte de Emballages                                                                             kg
+recyclables en mélange
+6084213-22031859
+  Situation provisoire, le temps d'installer le matériel Elise
+Collecte de Carton                                                                                 kg
+6084213-22031860
+Livraison Ponctuel de                                                                              un
+Corbeille fermée ELISE
+30 L x 10
+6084213-22039785
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   14/75
+                         N°6803000002 ALBERTVILLE AE -
+                         BPAURA
+ 4/10/26, 8:48 AM
+
+
+
+
+                         41 Rue de la république                                                                             4589532
+                         73200 Albertville
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 08h30 - 12h00 / 14h00 - 17h30
+Tournée             Créneau        Boucle          Rang                 Remarque et Visa Client
+G5                  Matin          1               1
+Contact
+Service Logistique BP AURA - BS -
+Service.LOGISTIQUEETFLOTTEAUTOMOBILE@bpaura.banquepopulaire.fr
+-
+- Type de rampe : Mobile                                                - Commentaire : Au 28/04/2025 : agence retail au RDC (2
+                                                                        corbeilles papier) + agence entreprise au 1er étage (1 corbeille
+                                                                        papier) > agence en travaux = l'ensemble de l'agence est
+                                                                        rassemblé au RDC jusqu'au 2 juin 2025.
+Prestation(s)            Matériel                                                  Poids / Unité                 Reporting
+Vidage Bornes de tri de Sac 110L 35µ
+                        translucides                               /3                              kg
+Papier
+4589532-16246514
+Collecte de Carton      Vrac                                       /5                              kg
+4589532-16246515
+ 5 cartons à plat maximum
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…    15/75
+                         BPAURA 00003 SAINT JEAN DE
+ 4/10/26, 8:48 AM
+
+
+                         MAURIENNE - N°68041
+                         108 Rue de la Libération                                                                           4660905
+                         73300 Saint-Jean-de-Maurienne
+                         Date de passage : 23/04/2026                                Heure de passage :
+                         Jeudi • 08h30 - 12h00 / 14h00 - 17h30
+Tournée             Créneau        Boucle          Rang                 Remarque et Visa Client
+G4                  Matin          1               1
+Contact
+Service Logistique BP AURA - BS -
+Service.LOGISTIQUE@bpaura.banquepopulaire.fr
+-
+- Type de rampe : Mobile
+Prestation(s)            Matériel                                                  Poids / Unité                Reporting
+Vidage Bornes de tri de Sac 110L 35µ
+                        translucides                               /2                              kg
+Papier
+4660905-16492646
+Collecte de Carton      Vrac                                       /5                              kg
+4660905-16492647
+ 5 cartons à plat maximum
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   16/75
+                         CORENC0990B
+                         BPAURA       SITE ADMINISTRATIF
+ 4/10/26, 8:48 AM
+
+
+                                - N°68009
+                         2 avenue du Grésivaudan                                                                            5723884
+                         38700 CORENC
+                         Date de passage : 23/04/2026                                Heure de passage :
+                         Jeudi • 08h30 - 11h30 / 13h30 - 16h30
+Tournée             Créneau        Boucle           Rang                Remarque et Visa Client
+G1                  Matin          1                1
+Contact
+Service Logistique BP AURA - BS -
+Service.LOGISTIQUE@bpaura.banquepopulaire.fr
+-
+- Type de rampe : Mobile                                                - Commentaire : Badge au nom de Jonathan JACQUIER à avoir
+                                                                        pour accéder au site. Garer le camion à côté de la rampe
+                                                                        d'accès au sous-sol au fond du site. S'adresser à l'agent
+                                                                        d'accueil du site en cas de problèmes d'accès.
+Prestation(s)         Matériel                                                     Poids / Unité                Reporting
+Collecte de Verre    Bac 120L                                      /1                              kg
+5723884-20461347
+ 1 BAC 120L CONTENANT DU VERRE
+          Frais de gestion de Verre
+          5723884-20461350                                                                                  bac1
+           1 BAC 120L CONTENANT DU VERRE
+Collecte de Papier  Bac 240L                        /6                                             kg
+5723884-20461352
+ 6 BACS 240L CONTENANT DU PAPIER EN SACS TRANSLUCIDES
+Collecte de Carton  Bac 360L                                       /4                              kg
+5723884-20461359
+ 4 BACS 360L CONTENANT DU CARTON
+Collecte de Emballages Bac 770L                     /2                                             kg
+recyclables en mélange
+5723884-20461366
+  2 BACS 770L CONTENANT EMBALLAGES PLASTIQUES EN MELANGE
+
+
+
+
+                                                                               ( )
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   17/75
+                          CADS   - N°24480 ARCALOD (852)
+                          [7869]ALBERTVILLE
+  4/10/26, 8:48 AM
+
+
+
+
+                          55 Avenue général de gaulle                                                                        5502099
+                          73200 Albertville
+                          Date de passage : 23/04/2026                               Heure de passage :
+                          Jeudi • 00h00 - 18h00 / 12h00 - 00h00
+Tournée              Créneau        Boucle          Rang               Remarque et Visa Client
+G5                   Matin          1               1
+Contact
+Michaël ASSOUS
+michael.assous@ca-des-savoie.fr
+04 50 64 70 34
+- Type de rampe : Mobile                                               - Commentaire : Portable :
+Prestation(s)                Matériel                                          Poids / Unité                Reporting
+Collecte en bureaux         ELISE 30 Lfermée
+                            Corbeille                             /5                           kg
+de Papier en corbeille
+fermée
+5502099-19767305
+Vente de Corbeille          ELISE 30 Lfermée
+                            Corbeille                             /5                           un
+fermée ELISE 30 L x 1
+5502099-19767333                                                                                             art
+Collecte de Carton          Vrac                                  /5                           kg
+5502099-19767356
+
+
+
+
+                                                                                 ( )
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   18/75
+                          CADS   - N°24482 GAMBETTA (805)
+                          [6565]ALBERTVILLE
+  4/10/26, 8:48 AM
+
+
+
+
+                          10 Rue Gambetta                                                                                    5503382
+                          73200 ALBERTVILLE
+                          Date de passage : 23/04/2026                               Heure de passage :
+                          Jeudi • 00h00 - 18h00 / 12h00 - 00h00
+Tournée              Créneau        Boucle          Rang               Remarque et Visa Client
+G5                   Matin          1               1
+Contact
+Michaël ASSOUS
+michael.assous@ca-des-savoie.fr
+04 50 64 70 34
+- Type de rampe : Mobile                                               - Commentaire : Dépose sur le portail : portaildepose-ca-des-
+                                                                       savoie.edokial.com ID : compta.alpes@elise.com.fr MP :
+                                                                       EliseALPES2022!
+Prestation(s)                Matériel                                          Poids / Unité                Reporting
+Collecte en bureaux
+de Papier en corbeille
+                            Corbeille
+                            ELISE 30 Lfermée                      /5                           kg
+fermée
+5503382-19771797
+Vente de Corbeille          ELISE 30 Lfermée
+                            Corbeille                             /5                           un
+fermée ELISE 30 L x 1
+5503382-19771827                                                                                             art
+Collecte de Carton          Vrac                                  /5                           kg
+5503382-19771852
+
+
+
+
+                                                            ( )[               ]
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   19/75
+                          CADS LA CHAMBRE (811) [2771] -
+  4/10/26, 8:48 AM
+
+
+                          N°24503
+                          Place de la Mairie                                                                                  5521778
+                          73130 LA CHAMBRE
+                          Date de passage : 23/04/2026                                 Heure de passage :
+                          Jeudi • 00h00 - 18h00 / 12h00 - 00h00
+Tournée              Créneau        Boucle          Rang               Remarque et Visa Client
+G4                   Matin          1               1
+Contact
+Michaël ASSOUS
+michael.assous@ca-des-savoie.fr
+04 50 64 70 34
+- Type de rampe : Mobile                                               - Commentaire : Portable :
+Prestation(s)                Matériel                                          Poids / Unité                Reporting
+Collecte en bureaux         ELISE 30 Lfermée
+                            Corbeille                             /5                           kg
+de Papier en corbeille
+fermée
+5521778-19827369
+Vente de Corbeille          ELISE 30 Lfermée
+                            Corbeille                             /5                           un
+fermée ELISE 30 L x 1
+5521778-19827386                                                                                             art
+Collecte de Carton          Vrac                                  /5                           kg
+5521778-19827410
+
+
+
+
+                                                             ( )[                  ]
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   20/75
+                          CADS LA ROCHETTE (820) [1908] -
+  4/10/26, 8:48 AM
+
+
+                          N°24506
+                          Rue schweighouse sur moder                                                                          5523641
+                          73110 Valgelon-La Rochette
+                          Date de passage : 23/04/2026                               Heure de passage :
+                          Jeudi • 00h00 - 18h00 / 12h00 - 00h00
+Tournée              Créneau        Boucle          Rang               Remarque et Visa Client
+G4                   Matin          1               1
+Contact
+Michaël ASSOUS
+michael.assous@ca-des-savoie.fr
+04 50 64 70 34
+- Type de rampe : Mobile                                               - Commentaire : Portable : Rue Schweighouse 73110 LA
+                                                                       ROCHETTE
+Prestation(s)                Matériel                                          Poids / Unité                Reporting
+Collecte en bureaux         ELISE 30 Lfermée
+                            Corbeille                             /5                           kg
+de Papier en corbeille
+fermée
+5523641-19833979
+Vente de Corbeille          ELISE 30 Lfermée
+                            Corbeille                             /5                           un
+fermée ELISE 30 L x 1
+5523641-19834053                                                                                             art
+Collecte de Carton          Vrac                                  /5                           kg
+5523641-19834085
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   21/75
+  4/10/26, 8:48 AM
+
+                         CCAS PONT DE CLAIX - N°24527
+                         27 avenue Antoine Girard
+                         38800 LE PONT DE CLAIX                                                                              5892883
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 08h00 - 12h18 / 13h00 - 16h00
+Tournée              Créneau          Boucle        Rang                 Remarque et Visa Client
+G3                   Matin            1             1
+Contact
+Pierre EYMERI
+pierre.eymeri@ville-pontdelcaix.fr
+-
+- Commentaire : Portable :
+Prestation(s)                   Matériel                                            Poids / Unité                Reporting
+Collecte de Papier             Bac 360L fermé                       /1                              kg
+5892883-21151236
+Collecte de Carton             Vrac                                 /1                              kg
+5892883-21151237
+ DANS BAC 360L
+
+
+
+
+                                               i       i i
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   22/75
+                          CEA  - Service Logistique et
+  4/10/26, 8:48 AM
+
+
+                          Environnement   (SLE) - N°24531
+                          17 Avenue des Martyrs                                                                              5097552
+                          38000 Grenoble
+                          Date de passage : 23/04/2026                               Heure de passage :
+                          Jeudi • 06h00 - 17h00
+Tournée              Créneau        Boucle          Rang              Remarque et Visa Client
+G6                   Matin          1               1
+Contact
+Christian DEBACQ
+christian.debacq@cea.fr
+04 38 78 30 27
+- Type de rampe : Mobile                                              - Commentaire : JANVIER 2025 la collecte récurrente CEA est
+                                                                      désormais facturée à PAPREC - GRENOBLE la collecte
+                                                                      récurrente INES esty désormais facturée à INES ONET
+                                                                      SERVICES
+Prestation(s)            Matériel                                         Poids / Unité               Reporting
+Collecte de Bio déchets Vrac                                /1                          kg
+5097552-18273905
+ Dépose des sacs collectés dans la benne DECHETS VERT de la déchetterie du CEA x50 points de collecte
+Prestation diverse sur
+site client
+5097552-18273906
+  Dépose des sacs collectés dans la benne DECHETS VERT de la déchetterie du CEA Collecte et transport en bacs roulants
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   23/75
+                         N°62685TECHNOLOGIES SAS -
+                         CEDRAT
+ 4/10/26, 8:48 AM
+
+
+
+
+                         59 Chemin du Vieux Chêne,                                                                           5726619
+                         38240 MEYLAN
+                         Date de passage : 23/04/2026                                Heure de passage :
+                         Jeudi • 09h00 - 16h00
+Tournée             Créneau        Boucle          Rang                 Remarque et Visa Client
+G1                  Matin          1               1
+Contact
+Yveline CLAEYSSEN
+rh.asf@cedrat-tec.com
+0643194255
+- Site avec interphone : CEDRAT TECHNOLOGIES                            - Type de rampe : Mobile
+Prestation(s)            Matériel                                                  Poids / Unité                Reporting
+Collecte de Papier      Sac 110L 50µ
+                        translucides                               /3                              kg
+5726619-20475518
+Collecte de Capsules et Sac 110L 50µ
+                        translucides                               /1                              kg
+dosettes café
+5726619-20475521
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   24/75
+  4/10/26, 8:48 AM
+
+                         CESI MEYLAN [8346] - N°71826
+                         16 Chemin de Malacher
+                         38240 MEYLAN                                                                                        4662486
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 08h30 - 17h30
+Tournée              Créneau         Boucle         Rang                 Remarque et Visa Client
+G1                   Matin           1              1
+Contact
+Roseline SINTUREL
+GRscolarite@cesi.fr
+04 38 70 11 80
+- Type de rampe : Mobile                                                 - Commentaire : plateforme client pour bdc:
+                                                                         https://cesi.corcentricplatform.com/ id: dchabert@elise.com.fr
+                                                                         mdp: EliseAlpes2025* BDC DIFFERENT TOUS LE SMOIS A
+                                                                         ALLER CHERCHER SUR LA PLATEFORME
+Prestation(s)                   Matériel                                            Poids / Unité                Reporting
+Collecte de Marc de            Bioseau 20 L                         /2                              kg
+café
+4662486-16497544
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   25/75
+                          CHAM        HOSPITALIER
+                               CENTREMOUTIERS
+  4/10/26, 8:48 AM
+
+
+                          ALBERTVILLE         - N°24550
+                          253 rue Pierre de Coubertin                                                                         5890092
+                          73200 ALBERTVILLE
+                          Date de passage : 23/04/2026                                 Heure de passage :
+                          Jeudi • 08h00 - 16h00
+Tournée              Créneau        Boucle          Rang                 Remarque et Visa Client
+G5                   Matin          1               1
+Contact
+Marie Julie (remplacement de Mme COUTAREL) TRILLAT
+mj.trillat@cham-savoie.fr
+04 79 89 54 79
+- Type de rampe : Mobile                                                 - Commentaire : CHORUS siret: 26731109000018 Code service:
+                                                                         10 CHAQUE ANNEE faire devis pour avoir un BDC D13989 :
+                                                                         FAIRE UNE SEULE FACTURE EN FIN D'OPERATION : CF BDC ----
+                                                                         ----------------------------------- CHANGEMENT DE SITE
+                                                                         D'EXPLOITATION : A PARTIR DE 06/2025 FAIT PAR GRENOBLE
+                                                                         ET PLUS ANNECY ----------------------------------------------
+                                                                         ----------------------------------- le 18/04/2025 : suite à
+                                                                         dialogue et mise en concurrence , j'ai baissé les prix de location
+                                                                         des bacs / pour info en 2023 , j'avais réactualisé le coût des
+                                                                         collectes ( à la hausse car prix pas cohérents ) ; hausse validé
+                                                                         compensée par maintien prix bacs alors que changements de
+                                                                         ces derniers ( donc normalement hausse de prix)
+Prestation(s)              Matériel                                                 Poids / Unité                 Reporting
+Collecte de Papier        Bac 240L fermé                            /1                              kg
+confidentiel              Bac 360L fermé                            /8                              kg
+5890092-21139756
+ Prendre le protocole de collecte
+         Destruction confidentielle de Papier confidentiel
+         5890092-21139758
+Collecte de Bouchon PP Sac   110L 50µ
+                         translucides                               /1                              kg
+5890092-21139757
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…    26/75
+                          CHAM         N°64401LEGER
+                               EHPAD -CLAUDE
+  4/10/26, 8:48 AM
+
+
+                          ALBERTVILLE
+                          457 Chemin des trois-poiriers                                                                       5330151
+                          73200 Albertville
+                          Date de passage : 23/04/2026                                Heure de passage :
+                          Jeudi • 08h00 - 16h00
+Tournée              Créneau        Boucle          Rang                 Remarque et Visa Client
+G5                   Matin          1               1
+Contact
+ELODIE COUTAREL
+e.coutarel@cham-savoie.fr
+04.79.89.54.38
+- Type de rampe : Mobile                                                 - Commentaire : code porte 1806
+Prestation(s)              Matériel                                                 Poids / Unité                Reporting
+Collecte de Papier        Bac 360L fermé                            /2                              kg
+confidentiel
+5330151-19160224
+ Prendre le protocole de collecte
+          Destruction confidentielle de Papier confidentiel
+          5330151-19160235
+
+
+
+
+                                                        (                   )
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   27/75
+                          CIC ALBERTVILLE (18294 00) -
+  4/10/26, 8:48 AM
+
+
+                          N°8412
+                          96 Rue de la République                                                                            5343694
+                          73200 ALBERTVILLE
+                          Date de passage : 23/04/2026                                Heure de passage :
+                          Jeudi • 08h00 - 18h00
+Tournée              Créneau        Boucle          Rang                 Remarque et Visa Client
+G5                   Matin          1               1
+Contact
+MARIE CAROLINE DURAND
+ccsmges7@cmccs.fr
+04 37 50 27 42
+- Type de rampe : Mobile                                                 - Commentaire : Si demande de l'agence : livrer 1 rouleau sacs
+                                                                         noirs et/ ou 1 rouleau de sacs transparent NE PAS COLLECTER
+                                                                         LES CARTOUCHES D'ENCRE Portable : 06 66 58 89 48
+Prestation(s)                Matériel                                            Poids / Unité               Reporting
+Collecte de Papier          Sac 110L 35µ
+                            translucides                           /5                            kg
+5343694-21107191
+Collecte de Carton          Vrac                                   /10                           kg
+5343694-21107192
+Collecte de Multi
+déchets
+5343694-19208823
+Vente /                                                                                          un
+Renouvellement de
+Sac 110L translucides
+50µ x 1                                                                                                      roul
+5343694-19208878
+Vente /                                                                                          un
+Renouvellement de
+Sac noir 110 L 37µ x 1                                                                                       roul
+5343694-19208898
+Livraison
+5343694-19208920
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   28/75
+  4/10/26, 8:48 AM
+
+                         CLAUGER VOGLANS - N°8528
+                         227 rue de la Prairie
+                         73420 VOGLANS                                                                                       5253467
+                         Date de passage : 23/04/2026                                Heure de passage :
+                         Jeudi • 08h30 - 12h00 / 13h30 - 17h00
+Tournée              Créneau       Boucle           Rang               Remarque et Visa Client
+G2                   Matin         1                1
+Contact
+AMELIE OGER
+aoger@clauger.fr
+04 26 17 91 80
+- Type de rampe : Mobile                                               - Commentaire : Portable :
+Prestation(s)              Matériel                                            Poids / Unité                Reporting
+Collecte de Palettes                                                                           kg
+5253467-18861607                                                                                             pal
+Collecte de Capsules Sac      110L 35µ
+                          translucides                            /1                           kg
+et dosettes café
+5253467-18861621
+Collecte de Canettes Sac      110L 50µ
+                          translucides                            /1                           kg
+5253467-18861642
+Collecte de Gobelets Sac      110L 50µ
+                          translucides                            /1                           kg
+carton
+5253467-18861658
+Collecte de Bouteilles Sac    110L 50µ
+                          translucides                            /1                           kg
+plastique PET
+5253467-18861678
+         Traitement filière de valorisation de Bouteilles plastique PET
+         5253467-18861703
+Collecte de Feuillards                                                                         kg
+PP
+5253467-18861717
+         Traitement filière de valorisation de Feuillards PP
+         5253467-18861734
+Collecte de Papier Bac 360L                                       /1                           kg
+5253467-18861757
+Collecte de Verre         Sac 110L 50µ
+                          translucides                            /1                           kg
+5253467-18861772
+         Traitement filière de valorisation de Verre
+         5253467-18861788                                                                                    sac
+Collecte de Carton         Bac 770L                               /1                           kg
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   29/75
+ 4/10/26, 8:48 AM
+
+Prestation(s)             Matériel                                            Poids / Unité                Reporting
+5253467-18861804
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   30/75
+                         CREDIT AGRICOLE ST JEAN DE
+ 4/10/26, 8:48 AM
+
+
+                         SOUDAIN_8145 - N°81349
+                         489 Route de Lyon                                                                                   5687526
+                         38110 Saint-Jean-de-Soudain
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 09h00 - 12h30
+Tournée             Créneau        Boucle          Rang                 Remarque et Visa Client
+B1                  Matin          1               1
+Contact
+(Rprod) Agents du planning PAPREC -
+lacorbeillebleuera@paprec.com
+04 72 48 22 46
+- Type de rampe : Mobile                                                - Commentaire : Prévoir un passage avant 12h30 car les
+                                                                        personnes sur place sont indisponibles l'après-midi, ils sont en
+                                                                        rendez-vous avec des clients
+Prestation(s)                Matériel                                              Poids / Unité                 Reporting
+Collecte de DIB             Sac 110L 50µ
+                            translucides                           /4                              kg
+5687526-20318905
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…    31/75
+                         CREDIT            SUD EST
+                                AGRICOLE- N°81347
+ 4/10/26, 8:48 AM
+
+
+                         MORESTEL_676
+                         29 Place de l'Hôtel de Ville                                                                        5687652
+                         38510 Morestel
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 09h00 - 12h30
+Tournée             Créneau        Boucle          Rang                 Remarque et Visa Client
+B1                  Matin          1               1
+Contact
+(Rprod) Agents du planning PAPREC -
+lacorbeillebleuera@paprec.com
+04 72 48 22 46
+- Type de rampe : Mobile                                                - Commentaire : Prévoir un passage avant 12h30 car les
+                                                                        personnes sur place sont indisponibles l'après-midi, ils sont en
+                                                                        rendez-vous avec des clients
+Prestation(s)                Matériel                                              Poids / Unité                 Reporting
+Collecte de DIB             Sac 110L 50µ
+                            translucides                           /4                              kg
+5687652-20319058
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…    32/75
+  4/10/26, 8:48 AM
+
+                         CYTOO - N°62233
+                         16 chemin du vieux chêne
+                         38240 MEYLAN                                                                                          5722158
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 08h00 - 12h00 / 13h00 - 18h00
+Tournée              Créneau       Boucle            Rang                Remarque et Visa Client
+G1                   Matin         1                 1
+Contact
+Nathalie GEFFROY
+ngeffroy@cytoo.com
+0687167545
+- Type de rampe : Mobile                                                 - Commentaire : LE 05/03/25 : POINT FAIT AVEC DENIS PAR
+                                                                         TEL, IL FAUT FACTURER SUR LA LIGNE FRAIS DE TRAITEMENT
+                                                                         PAR SAC POUR LES BOITES DE CONE QUAND NOUS AVONS DU
+                                                                         PLASTIQUE DANS MON NAEVA (PAS FILM PLASTIQUE MAIS
+                                                                         PLASTIQUE TOUT COURT)
+Prestation(s)            Matériel                                                   Poids / Unité                  Reporting
+Collecte de Carton      Bac 770L fermé                              /1                              kg
+5722158-22192545
+Collecte de Polystyrène Sac 110L 50µ
+                        translucides                                /5                              kg
+5722158-22192546
+ dans bac 770 fermé MD
+Collecte de Films      Sac 110L 50µ
+                       translucides                                 /5                              kg
+plastique PE
+5722158-22192547
+ dans bac 770 fermé MD
+Collecte de Plastique          Sac 110L 50µ
+                               translucides                         /1                              kg
+5722158-20455648
+ boîtes de cônes
+          Forfait traitement filière de valorisation de Plastique
+          5722158-20455661                                                                                   sac
+           boîtes de cônes
+
+
+
+
+                                                                            [         ]
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   33/75
+                          DOLPHIN
+                          N°24602 SEMICONDUCTOR [2314] -
+  4/10/26, 8:48 AM
+
+
+
+
+                          1 Chemin du Pré Carré                                                                               5257861
+                          38240 Meylan
+                          Date de passage : 23/04/2026                               Heure de passage :
+                          Jeudi • 09h00 - 18h00
+Tournée              Créneau        Boucle          Rang               Remarque et Visa Client
+G1                   Matin          1               1
+Contact
+Cannelle / Charlène CRIGNON / HUGONNARD
+accueil@dolphin.fr
+04 76 41 10 96
+- Type de rampe : Mobile                                               - Commentaire : pas de collecte avant 8h45 Portable :
+Prestation(s)            Matériel                                              Poids / Unité                Reporting
+Collecte de Papier Sac      110L 50µ
+                        translucides                              /5                           kg
+5257861-18876213
+ Pas de collecte avant 8h45
+Collecte de Carton Vrac                                           /1                           kg
+5257861-18876241
+ Pas de collecte avant 8h45
+Collecte de Gobelets Sac  110L 50µ
+                      translucides                                /5                           kg
+carton
+5257861-18876265
+ Sacs dans BAC 770L Pas de collecte avant 8h45
+Collecte de Canettes Sac  110L 50µ
+                      translucides                                /5                           kg
+5257861-18876310
+ Sacs dans BAC 770L Pas de collecte avant 8h45
+Collecte de Bouteilles Sac 110L 50µ
+                       translucides                               /5                           kg
+plastique PET
+5257861-18876331
+ Sacs dans BAC 770L Pas de collecte avant 8h45
+Collecte de Capsules Sac    110L 50µ
+                        translucides                              /5                           kg
+et dosettes café
+5257861-18876352
+ Pas de collecte avant 8h45
+Collecte de Masques                                                                            kg
+jetables                                                                                                     sac
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   34/75
+ 4/10/26, 8:48 AM
+
+Prestation(s)             Matériel                                            Poids / Unité                Reporting
+5257861-18876383
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   35/75
+                          EDF POLE  HYDRAULIQUE UE 3574
+  4/10/26, 8:48 AM
+
+
+                          [6666] - N°24623
+                          86 Chemin de l’Etang                                                                               5284925
+                          38950 Saint-Martin-le-Vinoux
+                          Date de passage : 23/04/2026                                Heure de passage :
+                          Jeudi • 08h00 - 12h00 / 13h00 - 16h00
+Tournée              Créneau        Boucle          Rang                 Remarque et Visa Client
+G3                   Matin          1               1
+Contact
+Cindy brun
+cindy.brun@edf.fr
+04 57 04 30 51
+- Type de rampe : Mobile                                                 - Commentaire : RECURRENT FACTURE A ADF
+                                                                         ENVIRONNEMENT PONCTUEL FACTURE A EDF * BDC
+                                                                         OBLIGATOIRE
+Prestation(s)               Matériel                                                Poids / Unité                Reporting
+Collecte de Verre          Sac  110L 50µ
+                           translucides                             /1                              kg
+5284925-20659408
+         Traitement filière de valorisation de Verre
+         5284925-20659409
+Collecte de DIB            Bac 770L                                 /1                              kg
+5284925-20659410
+ Collecter le DIB répartis sur le site
+         Traitement filière de valorisation de DIB
+         5284925-20659411
+Collecte de Papier         Sac 110L 50µ
+                           translucides                             /1                              kg
+5284925-18986110
+Collecte de Carton         Vrac                                     /1                              kg
+5284925-18986127
+Collecte de Gobelets Sac       50L
+                           transparent                              /1                              kg
+carton
+5284925-18986142
+Collecte de Canettes Sac       110L 50µ
+                           translucides                             /1                              kg
+5284925-18986162
+Collecte de Bouteilles Sac     110L 50µ
+                           translucides                             /1                              kg
+plastique PET
+5284925-18986178
+
+
+
+
+                                                                            [         ]
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   36/75
+                          EDF PONT DE CLAIX UE 773 [6666] -
+  4/10/26, 8:48 AM
+
+
+                          N°24625
+                          7 Allee de la Houille Blanche                                                                      5326840
+                          38800 Le Pont-de-Claix
+                          Date de passage : 23/04/2026                                 Heure de passage :
+                          Jeudi • 07h00 - 12h00 / 13h00 - 17h00
+Tournée              Créneau         Boucle         Rang                 Remarque et Visa Client
+G3                   Matin           1              1
+Contact
+Olivier MILLIAT
+olivier.milliat@edf.fr
+-
+- Type de rampe : Mobile                                                 - Commentaire : portail ouvert de 7h à 12h et 13h à 17h Portable
+                                                                         : 04.75.48.48.81
+Prestation(s)              Matériel                                                 Poids / Unité                Reporting
+Collecte de Papier       Sac  110L 50µ
+                         translucides                               /3                              kg
+5326840-19147064
+ Collecter papiers en sacs de 110l x 3
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   37/75
+  4/10/26, 8:48 AM
+
+                         EHPAD PONT DE CLAIX - N°24630
+                         14 Rue Auguste et Edith Goirand
+                         38800 Le Pont-de-Claix                                                                               5892991
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 08h00 - 12h18 / 13h00 - 16h00
+Tournée              Créneau          Boucle        Rang                 Remarque et Visa Client
+G3                   Matin            1             1
+Contact
+Pierre Eymeri
+pierre.eymeri@ville-pontdelcaix.fr
+-
+- Type de rampe : Mobile                                                 - Commentaire : digicode 3880 Portable :
+Prestation(s)                   Matériel                                            Poids / Unité                Reporting
+Collecte de Papier             Bac 360L                             /1                              kg
+5892991-21151416
+Collecte de Carton             Vrac                                 /1                              kg
+5892991-21151417
+ DANS BAC 360L
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   38/75
+                          DE CLAIXENERGIE
+                          EIFFAGE         SYSTEMES PONT
+  4/10/26, 8:48 AM
+
+
+                                   - N°73430
+                          13 rue Denis Papin                                                                                 4798987
+                          38800 LE PONT DE CLAIX
+                          Date de passage : 23/04/2026                                Heure de passage :
+                          Jeudi • 07h00 - 12h00 / 13h00 - 17h00
+Tournée              Créneau         Boucle         Rang                 Remarque et Visa Client
+G3                   Matin           1              1
+Contact
+Muriel ROBIN
+Muriel.ROBIN@eiffage.com
+06.86.49.74.41
+- Type de rampe : Mobile                                                 - Commentaire : ENVOYER LES FACTURES PAR COURRIER BDC
+                                                                         OBLIGATOIRE
+Prestation(s)               Matériel                                                Poids / Unité                Reporting
+Collecte de Papier         Bac 360L                                 /1                              kg
+4798987-17040388
+Collecte de Bouteilles Sac     110L 50µ
+                           translucides                             /5                              kg
+plastique PET
+4798987-17040389
+ Collecter bouteille plastique en sacs dans bac 770L
+Collecte de Canettes Sac     110L 50µ
+                         translucides                               /5                              kg
+4798987-17040390
+ Collecter canettes en sacs dans bac 770L
+Collecte de Gobelets Sac      110L 50µ
+                         translucides                               /1                              kg
+carton
+4798987-17040391
+ Collecter gobelets carton en sacs dans bac 770L
+Collecte de Verre          Sac 110L 50µ
+                           translucides                             /1                              kg
+4798987-17040392
+         Traitement filière de valorisation de Verre
+         4798987-17040393
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   39/75
+                         ENTREPOT DU BRICOLAGE SAINT
+ 4/10/26, 8:48 AM
+
+
+                         JEAN DE
+                         N°24642 MAURIENNE [2682] -
+                         240 Rue de Combe Paillarde                                                                          5313153
+                         73300 Saint-Jean-de-Maurienne                               Heure de passage :
+                         Date de passage : 23/04/2026
+                         Jeudi • 07h30 - 19h00
+Tournée             Créneau         Boucle         Rang                 Remarque et Visa Client
+G4                  Matin           1              1
+Contact
+STEPHANE BLOUET
+Stephane-blouet@samse.fr
+-
+- Type de rampe : Mobile                                                - Commentaire : Portable : 06 01 98 51 33
+Prestation(s)            Matériel                                                  Poids / Unité                Reporting
+Collecte de Papier      Bac 360L                                   /1                              kg
+5313153-19091617
+Collecte de Bouteilles Sac  110L 50µ
+                        translucides                               /5                              kg
+plastique PET
+5313153-19091632
+ sacs dans le bac 770 MD
+Collecte de Canettes Sac    110L 50µ
+                        translucides                               /5                              kg
+5313153-19091646
+ sacs dans le bac 770 MD
+Collecte de Gobelets Sac    110L 50µ
+                        translucides                               /5                              kg
+carton
+5313153-19091658
+ sacs dans le bac 770 MD
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   40/75
+ 4/10/26, 8:48 AM
+
+                        ETAT CIVIL PONT DE CLAIX - N°24650
+                        8 Place du 8 Mai 1945
+                        38800 Le Pont-de-Claix                                                                               5892919
+                        Date de passage : 23/04/2026                                 Heure de passage :
+                        Jeudi • 08h00 - 12h18 / 13h00 - 16h00
+Tournée             Créneau          Boucle        Rang                 Remarque et Visa Client
+G3                  Matin            1             1
+Contact
+Pierre Eymeri
+pierre.eymeri@ville-pontdeclaix.fr
+-
+- Type de rampe : Mobile                                                - Commentaire : Portable :
+Prestation(s)                  Matériel                                            Poids / Unité                Reporting
+Collecte de Papier            Bac 240L                             /1                              kg
+5892919-21151296
+Collecte de Carton            Vrac                                 /1                              kg
+5892919-21151297
+ DANS LE BAC 240L
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   41/75
+                          N°24656 LABAZUR BRIGNOUD -
+                          EUROFINS
+  4/10/26, 8:48 AM
+
+
+
+
+                          34 boulevard de la Libération                                                                        5501112
+                          38190 BRIGNOUD
+                          Date de passage : 23/04/2026                               Heure de passage :
+                          Jeudi • 07h00 - 12h00
+Tournée              Créneau         Boucle         Rang              Remarque et Visa Client
+G2                   Matin           1              1
+Contact
+Christophe BLOT
+ChristopheBlot@eurofins-biologie.com
+06 82 97 88 94
+- Type de rampe : Mobile
+Prestation(s)               Matériel                                          Poids / Unité                        Reporting
+                           ELISE 30 Lfermée
+Collecte de Papier en Corbeille                                    /6                       kg
+corbeille fermée
+5501112-19764136
+ Collecter les corbeilles 30L : Bien noter le nombre de corbeilles collectées
+          Destruction de Papier en corbeille fermée
+          5501112-19764150                                                                                   cor
+           Bien noter le nombre de corbeilles collectées
+Vente / Renouvellement                                                                          un
+de Corbeille fermée
+ELISE 30 L x 1
+5501112-20582056
+ Bien noter le nombre de corbeilles déposées
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   42/75
+                          MAURIENNELABAZUR
+                          EUROFINS         SAINT JEAN
+  4/10/26, 8:48 AM
+
+
+                                    - N°24669
+                          Place Fodère                                                                                         5517128
+                          73300 Saint-Jean-de-Maurienne
+                          Date de passage : 23/04/2026                                Heure de passage :
+                          Jeudi • 07h00 - 12h00 / 14h00 - 18h00
+Tournée              Créneau         Boucle         Rang                 Remarque et Visa Client
+G4                   Matin           1              1
+Contact
+Christophe BLOT
+ChristopheBlot@eurofins-biologie.com
+06 82 97 88 94
+- Type de rampe : Mobile
+Prestation(s)           Matériel                                                    Poids / Unité                  Reporting
+Collecte de Papier     Bac 360L                                     /1                              kg
+confidentiel
+5517128-19811616
+ Collecter le bac 360L
+          Destruction de Papier confidentiel
+          5517128-19811636                                                                                   bac
+           DANS UN BAC 360 Certificat de destruction
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   43/75
+  4/10/26, 8:48 AM
+
+                         FT ST JEAN DE MAURIENNE - N°8808
+                         310 rue Jean Moulin
+                         73300 SAINT JEAN DE MAURIENNE                                                                        5345117
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 08h00 - 12h18
+Tournée              Créneau       Boucle           Rang                 Remarque et Visa Client
+G4                   Matin         1                1
+Contact
+CHRISTELLE MOLIN
+christelle.molin@pole-emploi.fr
+04 72 73 68 84
+- Type de rampe : Mobile                                                 - Commentaire : LOT 7 [7235] METTRE SIGNATURE + TAMPON
+                                                                         CLIENT SUR ODM
+Prestation(s)               Matériel                                                Poids / Unité                Reporting
+Collecte de Carton        Vrac                                      /1                              kg
+5345117-20852111
+ Cartons à plat à collecter
+Collecte de Papier      Bac 360L                                    /1                              kg
+5345117-19213356
+Collecte de Bouteilles Sac  110L 50µ
+                        translucides                                /5                              kg
+plastique PET
+5345117-19213373
+Collecte de Gobelets Sac    110L 50µ
+                        translucides                                /5                              kg
+carton
+5345117-19213399
+Collecte de Canettes Sac    110L 50µ
+                        translucides                                /5                              kg
+5345117-19213446
+Collecte de Verre       Sac 110L 50µ
+                        translucides                                /5                              kg
+5345117-19213460
+Collecte de Capsules et Sac 110L 50µ
+                        translucides                                /1                              kg
+dosettes café
+5345117-19213475
+ Sacs dans le bac MULTI
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   44/75
+  4/10/26, 8:48 AM
+
+                         GEOTEC VOGLANS - N°78915
+                         545 Rue de la Prairie
+                         73420 VOGLANS                                                                                         5136212
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 08h00 - 17h00
+Tournée              Créneau       Boucle            Rang                Remarque et Visa Client
+G2                   Matin         1                 1
+Contact
+Corinne BRUNOD
+agence.paysdesavoie@geotec.fr
+04 79 26 94 90
+- Site avec interphone : 2 ENTREES - AU RDC                              - Commentaire : CONTRAT CADRE GEOTEC
+- Type de rampe : Mobile
+Prestation(s)               Matériel                                                Poids / Unité                  Reporting
+Collecte de DIB            Bac 240L                                 /1                              kg
+5136212-18434899
+         Traitement filière de valorisation de DIB
+         5136212-18434900                                                                                    bac
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   45/75
+                          GME ENROBES LA CHAVANNE -
+  4/10/26, 8:48 AM
+
+
+                          N°71871
+                          385 route de La Peyrouse                                                                           4773830
+                          73800 LA CHAVANNE
+                          Date de passage : 23/04/2026                               Heure de passage :
+                          Jeudi • 06h00 - 15h00
+Tournée              Créneau        Boucle          Rang               Remarque et Visa Client
+G2                   Matin          1               1
+Contact
+Sacha TARDIEU
+stardieu@guintoli.fr
+0660969978
+- Type de rampe : Mobile                                               - Commentaire : BDC OBLIGATOIRE
+Prestation(s)              Matériel                                            Poids / Unité                Reporting
+Collecte de Papier Bac 120L                                       /1                           kg
+4773830-16932494
+Collecte de Bouteilles Sac    50L
+                          transparent                             /2                           kg
+plastique PET
+4773830-16932495
+Collecte de Canettes Sac      50L
+                          transparent                             /2                           kg
+4773830-16932496
+Collecte de Verre         Bac 120L                                /1                           kg
+4773830-16932497                                                                                             bac1
+         Traitement filière de valorisation de Verre
+         4773830-16932498
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   46/75
+  4/10/26, 8:48 AM
+
+                         HYDROQUEST - N°24717
+                         16 Chemin de Malacher
+                         38240 Meylan                                                                                        5240607
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 09h00 - 12h00 / 14h00 - 17h00
+Tournée              Créneau          Boucle        Rang                 Remarque et Visa Client
+G1                   Matin            1             1
+Contact
+Marion RAFIN
+marion.rafin@hydroquest.net
+06 76 35 68 91
+- Site avec interphone : BAT B - INOVALLIA - 1ER ETAGE                   - Commentaire : Portable : 06 76 35 68 91 * Client en
+- Type de rampe : Mobile                                                 prélèvement automatique
+Prestation(s)                   Matériel                                            Poids / Unité                Reporting
+Collecte de Papier             Sac 110L 50µ
+                               translucides                         /5                              kg
+5240607-18818797
+Collecte de Carton             Vrac                                 /1                              kg
+5240607-18818809
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   47/75
+  4/10/26, 8:48 AM
+
+                         INOVALLEE [2925] - N°56584
+                         29 chemin du vieux chêne
+                         38240 MEYLAN                                                                                          5889947
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 09h00 - 17h00
+Tournée              Créneau       Boucle           Rang                 Remarque et Visa Client
+G1                   Matin         1                1
+Contact
+MARIE GAGNIEUX
+accueil@inovallee.com
+04 76 90 41 57
+- Type de rampe : Mobile
+Prestation(s)               Matériel                                                Poids / Unité                  Reporting
+Collecte de Papier         Sac 110L 50µ
+                           translucides                             /5                              kg
+5889947-21139114
+Collecte de Carton         Vrac                                     /1                              kg
+5889947-21139115
+Collecte de Gobelets Sac       110L 50µ
+                           translucides                             /5                              kg
+carton
+5889947-21139116
+Collecte de Bouteilles Sac     110L 50µ
+                           translucides                             /5                              kg
+plastique PET
+5889947-21139117
+Collecte de Canettes Sac       110L 50µ
+                           translucides                             /5                              kg
+5889947-21139118
+Collecte de Verre          Sac 110L 50µ
+                           translucides                             /5                              kg
+5889947-21139119
+         Traitement filière de valorisation de Verre
+         5889947-21139120                                                                                    sac
+
+
+
+
+                                                                            (           )
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   48/75
+                          KLA-TENCOR   FRANCE SARL (KLA +)
+  4/10/26, 8:48 AM
+
+
+                          [8140] - N°78446
+                          387 Avenue Jean Kuntzmann                                                                          5028057
+                          38330 Montbonnot-Saint-Martin
+                          Date de passage : 23/04/2026                                Heure de passage :
+                          Jeudi • 08h30 - 17h00
+Tournée              Créneau        Boucle          Rang                 Remarque et Visa Client
+G1                   Matin          1               1
+Contact
+Hélène MAUBERT
+helene.maubert@kla.com
+06 83 07 85 60
+- Type de rampe : Mobile
+Prestation(s)            Matériel                                                   Poids / Unité                Reporting
+Collecte de Bio déchets Bac 120L fermé
+                        marron
+5028057-17987763        Biodéchet                                   /1                              kg
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   49/75
+  4/10/26, 8:48 AM
+
+                         LAM RESEARCH - N°59367
+                         22 Chemin du Vieux Chêne
+                         38240 Meylan                                                                                         5722074
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 08h30 - 18h00
+Tournée              Créneau       Boucle           Rang                 Remarque et Visa Client
+G1                   Matin         1                1
+Contact
+Carole TAUPIN
+carole.taupin@lamresearch.com
+04.76.76.49.10
+- Type de rampe : Mobile
+Prestation(s)         Matériel                                                      Poids / Unité                Reporting
+Collecte de Papier   Sac 110L 50µ
+                     translucides                                   /5                              kg
+5722074-20455382
+ COLLECTE SUR LA BASE DE 3 SACS 110L
+Collecte de Bouteilles         Sac 110L 50µ
+                               translucides                         /5                              kg
+plastique PET
+5722074-20455391
+Collecte de Canettes           Sac 110L 50µ
+                               translucides                         /5                              kg
+5722074-20455398
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   50/75
+  4/10/26, 8:48 AM
+
+                         LCL ALBERTVILLE (2132) - N°10969
+                         47 rue de la République
+                         73200 ALBERTVILLE                                                                                    5339731
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 08h00 - 18h00
+Tournée              Créneau       Boucle           Rang                 Remarque et Visa Client
+G5                   Matin         1                1
+Contact
+--
+contact@mail.com
+-
+- Type de rampe : Mobile                                                 - Commentaire : Portable :
+Prestation(s)           Matériel                                                    Poids / Unité                Reporting
+Collecte de Papier     Sac 110L 35µ
+                       translucides                                 /5                              kg
+5339731-19194672
+Collecte de Carton     Vrac                                         /1                              kg
+5339731-19194684
+Collecte de Emballages Sac 110L                                     /5                              kg
+recyclables en mélange translucides 35µ
+5339731-19194695
+Collecte de DIB        Sac 110L 35µ
+                       translucides                                 /5                              kg
+5339731-19194707
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   51/75
+  4/10/26, 8:48 AM
+
+                         LCL MEYLAN (2644) - N°8700
+                         23 Avenue du Grésivaudan
+                         38240 Meylan                                                                                         5392641
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 08h00 - 18h00
+Tournée              Créneau       Boucle           Rang                 Remarque et Visa Client
+G1                   Matin         1                1
+Contact
+--
+alain.pech@lcl.fr
+-
+- Type de rampe : Mobile                                                 - Commentaire : Portable :
+Prestation(s)           Matériel                                                    Poids / Unité                Reporting
+Collecte de Papier     Sac 110L 35µ
+                       translucides                                 /5                              kg
+5392641-19387099
+Collecte de Carton     Sac 110L 35µ
+                       translucides                                 /5                              kg
+5392641-19387116
+Collecte de Emballages Sac 110L                                     /5                              kg
+recyclables en mélange translucides 35µ
+5392641-19387137
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   52/75
+  4/10/26, 8:48 AM
+
+                         LEXAN AVOCATS - N°24753
+                         55 rue Blaise Pascal
+                         38330 MONTBONNOT SAINT MARTIN                                                                        5256126
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 09h00 - 12h00 / 13h30 - 17h00
+Tournée              Créneau          Boucle        Rang                 Remarque et Visa Client
+G2                   Matin            1             1
+Contact
+Christelle SANSONETTI
+secretariat@lexan-avocats.fr
+04 76 61 98 00
+- Site avec interphone : oui, rdc                                        - Commentaire : Portable :
+- Type de rampe : Mobile
+Prestation(s)                   Matériel                                            Poids / Unité                Reporting
+Collecte de Papier             Bac 360L fermé                       /1                              kg
+5256126-18870114
+Collecte de Carton             Vrac                                 /1                              kg
+5256126-18870139
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   53/75
+  4/10/26, 8:48 AM
+
+                         LIP Albertville-LIPIBT-083 - N°9672
+                         1 place Grenette
+                         73200 ALBERTVILLE                                                                                   5035726
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 08h00 - 12h00 / 14h00 - 18h00
+Tournée              Créneau       Boucle           Rang                 Remarque et Visa Client
+G5                   Matin         1                1
+Contact
+LilIan THOMAS (Valideur, contact opérationnel)
+lilian.thomas@groupelip.com
+-
+- Type de rampe : Mobile
+Prestation(s)             Matériel                                                  Poids / Unité                Reporting
+Collecte de Papier       Sac 110L 50µ
+                         translucides                               /1                              kg
+5035726-18021016
+ Collecte à la corbeille
+Collecte de Gobelets Sac     110L 50µ
+                         translucides                               /1                              kg
+carton
+5035726-18021017
+ Collecte à la corbeille
+Collecte de Multi
+déchets
+5035726-18021015
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   54/75
+  4/10/26, 8:48 AM
+
+                         MAAF LE PONT DE CLAIX - N°48104
+                         22 Cours Saint - André
+                         38800 Le Pont-de-Claix                                                                              4647332
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 09h00 - 12h00 / 13h30 - 17h30
+Tournée              Créneau       Boucle           Rang                 Remarque et Visa Client
+G3                   Matin         1                1
+Contact
+Cyrill ASTIER
+castier@gsf.fr
+04 50 95 02 07
+- Type de rampe : Mobile
+Prestation(s)                   Matériel                                            Poids / Unité                Reporting
+Collecte de Papier             Sac 110L 50µ
+                               translucides                         /1                              kg
+4647332-20728189
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   55/75
+  4/10/26, 8:48 AM
+
+Prestation(s)               Matériel                                               Poids / Unité                 Reporting
+ Collecte à la corbeille
+Collecte de Canettes Sac     110L 50µ
+                         translucides                               /1                             kg
+4647332-20728190
+ Collecte à la corbeille
+Collecte de Bouteilles Sac   110L 50µ
+                         translucides                               /1                             kg
+plastique PET
+4647332-20728191
+ Collecte à la corbeille
+Collecte de Verre          Sac 110L 50µ
+                           translucides                             /1                             kg
+4647332-20728298
+         Traitement filière de valorisation de Verre
+         4647332-20728299
+Collecte de Carton         Vrac                                     /10                            kg
+4647332-16451995
+ 10 cartons max
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   56/75
+                          MAAF SAINT JEAN DE MAURIENNE -
+  4/10/26, 8:48 AM
+
+
+                          N°48098
+                          153 Place Fodère                                                                                   4773938
+                          73300 Saint-Jean-de-Maurienne
+                          Date de passage : 23/04/2026                                Heure de passage :
+                          Jeudi • 09h00 - 12h00 / 13h00 - 18h00
+Tournée              Créneau        Boucle          Rang                 Remarque et Visa Client
+G4                   Matin          1               1
+Contact
+Marvin ANGER
+manger@gsf.fr
+04 76 75 84 83
+- Type de rampe : Mobile                                                 - Commentaire : Au 11/06/2025 : Changement d'adresse à partir
+                                                                         du 13/06/2025. Ancienne adresse (26, Avenue Henry FALCOZ -
+                                                                         73300 SAINT JEAN DE MAURIENNE). Nouvelle adresse (153
+                                                                         PLACE FODERE 73300 SAINT JEAN DE MAURIENNE).
+Prestation(s)             Matériel                                                  Poids / Unité                Reporting
+Collecte de Papier       Sac 110L 50µ
+                         translucides                               /1                              kg
+4773938-20851720
+ Collecte à la corbeille
+Collecte de Canettes Sac     110L 50µ
+                         translucides                               /1                              kg
+4773938-20851721
+ Collecte à la corbeille
+Collecte de Bouteilles Sac   110L 50µ
+                         translucides                               /1                              kg
+plastique PET
+4773938-20851722
+ Collecte à la corbeille
+Collecte de Verre          Sac 110L 50µ
+                           translucides                             /1                              kg
+4773938-20851948
+         Traitement filière de valorisation de Verre
+         4773938-20851949
+Collecte de Carton         Vrac                                     /10                             kg
+4773938-16933081
+ 10 cartons max
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   57/75
+  4/10/26, 8:48 AM
+
+                         MACIF MEYLAN [6128] - N°50099
+                         13 Chemin des Pres
+                         38240 Meylan                                                                                        5978895
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 09h00 - 12h00 / 13h30 - 18h00
+Tournée              Créneau          Boucle        Rang                 Remarque et Visa Client
+G1                   Matin            1             1
+Contact
+Patrick MAITRE
+pmaitre@macif.fr
+06 20 80 81 80
+- Type de rampe : Mobile                                                 - Commentaire : BDC 2024 : PO095666 * BDC 2025: PO126245
+                                                                         * Mr DUBREUILH contact sur site uniquement, ne pas contacter
+                                                                         pour de l'administratif
+Prestation(s)                   Matériel                                            Poids / Unité                Reporting
+Collecte de Papier             Sac 110L 50µ
+                               translucides                         /5                              kg
+5978895-21521022
+Collecte de Carton             Vrac                                 /1                              kg
+5978895-21521023
+Collecte de Gobelets           Sac 110L 50µ
+                               translucides                         /5                              kg
+carton
+5978895-21521024
+Collecte de Canettes           Sac 110L 50µ
+                               translucides                         /5                              kg
+5978895-21521025
+Collecte de Bouteilles         Sac 110L 50µ
+                               translucides                         /5                              kg
+plastique PET
+5978895-21521026
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   58/75
+ 4/10/26, 8:48 AM
+
+                        MAIRIE DE PONT DE CLAIX - N°71679
+                        8 Place du 8 mai 1945
+                        38800 LE PONT DE CLAIX                                                                              5892703
+                        Date de passage : 23/04/2026                                 Heure de passage :
+                        Jeudi • 08h00 - 12h00 / 14h00 - 16h00
+Tournée             Créneau         Boucle         Rang                 Remarque et Visa Client
+G3                  Matin           1              1
+Contact
+Adeline LOBO
+adeline.lobo@ville-pontdeclaix.fr
+04 76 29 80 00
+- Type de rampe : Mobile
+Prestation(s)          Matériel                                                    Poids / Unité                Reporting
+Collecte de Papier    Bac 360L fermé                               /2                              kg
+5892703-21150924
+Collecte de Carton    Vrac                                         /1                              kg
+5892703-21150925
+ DANS LES BACS 120L ET 360L
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   59/75
+                          MAISON  DE L'HABITANT PONT DE
+  4/10/26, 8:48 AM
+
+
+                          CLAIX - N°24767
+                          Les Iles de Mars                                                                                     5892811
+                          38800 Le Pont-de-Claix
+                          Date de passage : 23/04/2026                                Heure de passage :
+                          Jeudi • 08h00 - 12h18 / 13h00 - 16h00
+Tournée              Créneau        Boucle           Rang                Remarque et Visa Client
+G3                   Matin          1                1
+Contact
+PIERRE EYMERI
+pierre.eymeri@ville-pontdeclaix.fr
+.
+- Type de rampe : Mobile                                                 - Commentaire : demander ouverture local Portable :
+Prestation(s)                 Matériel                                              Poids / Unité                Reporting
+Collecte de Papier           Bac 120L                               /1                              kg
+5892811-21151116             Bac 240L fermé                         /1                              kg
+Collecte de Carton           Vrac                                   /1                              kg
+5892811-21151117
+ DANS BAC 120L
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   60/75
+                          MAISON
+                          DE CLAIXDES ASSOCIATIONS LE PONT
+  4/10/26, 8:48 AM
+
+
+                                   - N°24768
+                          29 Avenue du Maquis de l'Oisans                                                                     5892727
+                          38800 Le Pont-de-Claix
+                          Date de passage : 23/04/2026                                Heure de passage :
+                          Jeudi • 08h00 - 12h18 / 13h00 - 16h00
+Tournée              Créneau        Boucle           Rang                Remarque et Visa Client
+G3                   Matin          1                1
+Contact
+Pierre EYMERI
+pierre.eymeri@ville-pontdeclaix.fr
+-
+- Type de rampe : Mobile                                                 - Commentaire : Portable :
+Prestation(s)                 Matériel                                              Poids / Unité                Reporting
+Collecte de Papier           Bac 240L fermé                         /1                              kg
+5892727-21150972
+Collecte de Carton           Vrac                                   /1                              kg
+5892727-21150973
+ DANS BAC 240L
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   61/75
+                         MATERNITE  CENTRE HOSPITALIER
+ 4/10/26, 8:48 AM
+
+
+                         ALBERTVILLE MOUTIERS
+                         GUIGOZ - N°78705     CHAM
+                         253 rue Pierre de Coubertin                                                                         5901106
+                         73200 ALBERTVILLE                                           Heure de passage :
+                         Date de passage : 23/04/2026
+                         Jeudi • 09h00 - 12h00 / 14h00 - 17h00
+Tournée             Créneau        Boucle          Rang                 Remarque et Visa Client
+G5                  Matin          1               1
+Contact
+Madame Dominique BOUR
+d.bour@cham-savoie.fr
+04 79 89 64 28
+- Type de rampe : Mobile                                                - Commentaire : Le Client est GUIGOZ Le site est Maternité
+                                                                        centre Hospitalier Albertville Moutiers 1er étage
+Prestation(s)          Matériel                                                    Poids / Unité                Reporting
+Collecte de Flacons & Sac 110L                                     /2                              kg
+nourettes plastique translucides 50µ
+5901106-21184480
+ LES SACS SONT FOURNIS PAR ELISE
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   62/75
+  4/10/26, 8:48 AM
+
+                         METROLOGIC SAS - N°24778
+                         26 avenue Jean Kuntzmann
+                         38330 MONTBONNOT SAINT MARTIN                                                                         5891412
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 08h00 - 17h00
+Tournée              Créneau       Boucle           Rang                 Remarque et Visa Client
+G2                   Matin         1                1
+Contact
+Arnaud Souesme
+Arnaud.souesme@metrologic.group
+476043043
+- Type de rampe : Mobile                                                 - Commentaire : Portable :
+Prestation(s)              Matériel                                                 Poids / Unité                  Reporting
+Collecte de Bouteilles Sac    110L 50µ
+                          translucides                              /5                              kg
+plastique PET
+5891412-21145501
+ Collecter bouteilles PET en sacs dans bac 770L
+Collecte de Canettes Sac     110L 50µ
+                         translucides                               /5                              kg
+5891412-21145502
+ Collecter canettes en sacs dans bac 770L
+Collecte de Capsules et Sac  110L 35µ
+                         translucides                               /5                              kg
+dosettes café
+5891412-21145503
+Collecte de Carton       Vrac                                       /5                              kg
+5891412-21145504
+Collecte de Papier       Bac 240L                                   /1                              kg
+5891412-21145505
+ Collecter bac 240L papiers
+Collecte de Verre         Sac 110L 50µ
+                          translucides                              /1                              kg
+5891412-21145506
+ Collecter verre en sacs dans bac 770L
+          Traitement filière de valorisation de Verre
+          5891412-21145507                                                                                   sac
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   63/75
+  4/10/26, 8:48 AM
+
+                         NANOXPLORE MEYLAN - N°72600
+                         1 Chemin du Pré Carré
+                         38240 Meylan                                                                                         5519907
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 09h00 - 12h00 / 14h00 - 17h00
+Tournée              Créneau       Boucle           Rang                 Remarque et Visa Client
+G1                   Matin         1                1
+Contact
+--
+mail@mail.com
+0755595581
+- Type de rampe : Mobile                                                 - Commentaire : NVELLE INSTALLATION AU 01/04/2025
+Prestation(s)              Matériel                                                 Poids / Unité                Reporting
+Collecte de Bio déchets Bioseau 20 L                                /1                              kg
+en bioseau
+5519907-19820697
+ Collecter un bioseau par passage
+Collecte de Papier        Sac 110L 50µ
+                          translucides                              /1                              kg
+5519907-19820716
+ Collecter papier en sac dans 1/2 lune 70L
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   64/75
+  4/10/26, 8:48 AM
+
+                         NGE LA CHAVANNE [4098] - N°66096
+                         385 route de La Peyrouse
+                         73800 LA CHAVANNE                                                                                   5974636
+                         Date de passage : 23/04/2026                                 Heure de passage :
+                         Jeudi • 08h30 - 12h00 / 14h00 - 17h00
+Tournée              Créneau       Boucle           Rang                 Remarque et Visa Client
+G2                   Matin         1                1
+Contact
+Sacha TARDIEU
+stardieu@guintoli.fr
+06 60 96 99 78
+- Type de rampe : Mobile                                                 - Commentaire : BDC OBLIGATOIRE MEME POUR PONCTUEL
+Prestation(s)             Matériel                                                  Poids / Unité                Reporting
+Collecte de Canettes Sac     110L 50µ
+                         translucides                               /1                              kg
+5974636-21498686
+ Collecter canettes en sacs dans bac 770L
+Collecte de Bouteilles Sac    110L 50µ
+                          translucides                              /1                              kg
+plastique PET
+5974636-21498687
+ Collecter bouteilles PET en sacs dans bac 770L
+Collecte de Papier       Bac 360L                                   /1                              kg
+5974636-21498688
+ Collecter papier dans bac 360L
+Collecte de Gobelets Sac      110L 50µ
+                         translucides                               /1                              kg
+carton
+5974636-21498689
+ Collecter gobelets carton en sacs dans bac 770L
+Collecte de Carton       Bac 770L                                   /1                              kg
+5974636-21498690
+ Collecter carton dans bac 770L
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   65/75
+                          NORMAL            OPTI
+                                 GRENOBLE- N°62518
+  4/10/26, 8:48 AM
+
+
+                          ENVIRONNEMENT
+                          5 Rue de la République                                                                              5418672
+                          38000 Grenoble
+                          Date de passage : 23/04/2026                                Heure de passage :
+                          Jeudi • 07h30 - 12h00 / 13h00 - 17h30
+Tournée              Créneau         Boucle         Rang                 Remarque et Visa Client
+G1                   Matin           1              1
+Contact
+FABRICE LA MONICA
+fr0250@normal.fr
+0635389608
+- Type de rampe : Mobile
+Prestation(s)                 Matériel                                              Poids / Unité                Reporting
+Collecte de Carton           Bac 770L                               /2                              kg
+5418672-19466006
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   66/75
+                          ORTEC ENVIRONNEMENT
+  4/10/26, 8:48 AM
+
+
+                          MAURIENNE [6606] - N°71598
+                          95 rue du Grand Chatelard                                                                          5500477
+                          73300 La Tour-en-Maurienne
+                          Date de passage : 23/04/2026                                Heure de passage :
+                          Jeudi • 08h00 - 12h00 / 14h00 - 17h00
+Tournée              Créneau        Boucle          Rang                 Remarque et Visa Client
+G4                   Matin          1               1
+Contact
+CHARVET KEVIN
+oe.albertville@ortec.fr
+0624304699
+- Type de rampe : Mobile
+Prestation(s)                 Matériel                                              Poids / Unité                Reporting
+Collecte de Gobelets         Sac 110L 50µ
+                             translucides                           /1                              kg
+carton
+5500477-19762280
+Collecte de Papier           Sac 110L 50µ
+                             translucides                           /1                              kg
+5500477-19762306
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   67/75
+                         OVELIA    CARRE
+                         GROUPELEVINCI    JOSEPHINE
+ 4/10/26, 8:48 AM
+
+
+                                       - N°45591
+                         Rue Joseph Denarié                                                                                 5096075
+                         73190 Challes-les-Eaux
+                         Date de passage : 23/04/2026                               Heure de passage :
+                         Jeudi • 08h30 - 12h30 / 14h00 - 18h00
+Tournée             Créneau        Boucle          Rang               Remarque et Visa Client
+G2                  Matin          1               1
+Contact
+FAUSTINE VOITURIN
+fvoiturin@ovelia.fr
+0610733452
+- Type de rampe : Mobile                                              - Commentaire : Complément d'adresse : n°6 ** LE CLIENT A
+                                                                      SUPPRIME LA COLLECTE DE VERRE DONC NE PLUS
+                                                                      COLLECTER DE VERRE
+Prestation(s)         Matériel                                                Poids / Unité                Reporting
+Collecte de Carton Vrac                                          /5                           kg
+5096075-20788624
+ Dans local extérieur
+Collecte de Bio     Bac 120L                                     /1                           kg
+déchets
+5096075-20787933                                                                                            Sac
+ NE PAS COLLECTER DE VERRE
+Collecte de Cagette Vrac                                         /3                           kg
+Bois
+5096075-18267679
+ 3 OU 4 CAGETTES EN BOIS / LOCAL EXTERIEUR
+Collecte de Palettes Vrac                                        /1                           kg
+5096075-18267680
+ 1 PALETTE BOIS / LOCAL EXTERIEUR
+Collecte de Papier Sac   110L 50µ
+                     translucides                      /2                    kg
+5096075-18267681
+ A LA COREBEILLE AKILUX 2 SACS DE PAPIER 50U LES SACS SONT FOURNIS PAR NOS SOINS
+Collecte de Gobelets Sac  110L 50µ
+                     translucides                    /1                    kg
+carton
+5096075-18267682
+ A LA CORBEILLE AKILUX 1 SAC GOBELET CARTON LES SACS SONT FOURNIS PAR NOS SOINS
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   68/75
+ 4/10/26, 8:48 AM
+
+Prestation(s)         Matériel                                                Poids / Unité                Reporting
+Collecte de Capsules Sac 110L 50µ
+                     translucides                                /1                           kg
+et dosettes café
+5096075-18267683                                                                                            Sac
+ 1 SAC CAPSULES CAFE
+Collecte de Papier Sac  110L 50µ
+                    translucides                                 /1                           kg
+broyé
+5096075-18267684
+ 1 SAC BROYAT DE DOCUMENT
+
+
+
+
+ https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   69/75
+                          PHARMACIE
+                          N°24829 MARTIN BORRET -
+  4/10/26, 8:48 AM
+
+
+
+
+                          84 Route Departementale 1090                                                                        5313190
+                          38190 BERNIN
+                          Date de passage : 23/04/2026                                Heure de passage :
+                          Jeudi • 08h30 - 12h30 / 14h30 - 19h30
+Tournée              Créneau        Boucle          Rang                 Remarque et Visa Client
+G2                   Matin          1               1
+Contact
+Celine Courrier Martin-BORRET
+Ccmb.lapharmaciedebernin@orange.fr
+476080319
+- Type de rampe : Mobile                                                 - Commentaire : prendre cle Portable :
+Prestation(s)                 Matériel                                              Poids / Unité                 Reporting
+Collecte de Carton           Bac 360L                               /1                              kg
+5313190-19091762             Bac 770L                               /1                              kg
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   70/75
+                          POLICE MUNICIPALE PONT DE CLAIX
+  4/10/26, 8:48 AM
+
+
+                          - N°24841
+                          39 Cours Saint - André                                                                             5892847
+                          38800 Le Pont-de-Claix
+                          Date de passage : 23/04/2026                                Heure de passage :
+                          Jeudi • 08h00 - 12h18 / 13h00 - 16h00
+Tournée              Créneau        Boucle           Rang                Remarque et Visa Client
+G3                   Matin          1                1
+Contact
+Pierre EYMERI
+pierre.eymeri@ville-pontdeclaix.fr
+-
+- Type de rampe : Mobile                                                 - Commentaire : aller au poste et demander bac 45,127692,
+                                                                         5,698143 Portable :
+Prestation(s)                 Matériel                                              Poids / Unité                Reporting
+Collecte de Papier           Bac 240L                               /1                              kg
+5892847-21151176
+Collecte de Carton           Vrac                                   /1                              kg
+5892847-21151177
+ DANS BAC 240L
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   71/75
+  4/10/26, 8:48 AM
+
+                         SAMES [1414] - N°24860
+                         13 Chemin de Malacher
+                         38240 MEYLAN                                                                                        5905627
+                         Date de passage : 23/04/2026                                Heure de passage :
+                         Jeudi • 08h00 - 18h00
+Tournée              Créneau       Boucle           Rang               Remarque et Visa Client
+G1                   Matin         1                1
+Contact
+Olivier REY
+Olivier.rey@sames.com
+06 33 52 43 09
+- Type de rampe : Mobile                                               - Commentaire : FAIRE SIGNER OBLIGATOIREMENT LES ODMS
+                                                                       ** Portable : 06 33 52 43 09 ** LE CLIENT VEUT UNE
+                                                                       SIGNATURE D'UN BON DE PASSAGE A CHAQUE COLLECTE **
+Prestation(s)         Matériel                                     Poids / Unité               Reporting
+Collecte de Papier Sac   110L 50µ
+                     translucides                    /5                           kg
+5905627-21202322
+ SACS DANS BAC 770L FAIRE SIGNER l'ODM OBLIGATOIREMENT à l'accueil avant de partir (Accès à droite de la sortie)
+Collecte de Carton Bac 770L                          /1                                        kg
+5905627-21202323
+Collecte de Gobelets Sac 50L
+                     transparent                     /5                                        kg
+carton
+5905627-21202324
+ SACS DANS BAC 770L FAIRE SIGNER OBLIGATOIREMENT LES ODMS
+Collecte de Canettes Sac 110L 50µ
+                     translucides                                 /5                           kg
+5905627-21202325
+ SACS DANS BAC 770L
+Collecte de Bouteilles Sac 110L 50µ
+                       translucides                               /1                           kg
+plastique PET
+5905627-21202326
+Collecte de Capsules Sac   110L 50µ
+                       translucides                               /1                           kg
+et dosettes café
+5905627-21202327
+ SACS DANS BAC 770L
+Collecte de Verre   Sac 110L 50µ
+                    translucides                                  /5                           kg
+5905627-21202328                                                                                             sac
+ SACS DANS BAC 770L
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   72/75
+  4/10/26, 8:48 AM
+
+Prestation(s)              Matériel                                            Poids / Unité                Reporting
+         Traitement filière de valorisation de Verre
+         5905627-21202329
+          SACS DANS BAC 770L
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   73/75
+                          SERVICE
+                          PONT DE TECHNIQUE  ET URBANISME
+  4/10/26, 8:48 AM
+
+
+                                  CLAIX - N°24872
+                          43 Avenue du Maquis de l'Oisans                                                                    5892775
+                          38800 Le Pont-de-Claix
+                          Date de passage : 23/04/2026                                Heure de passage :
+                          Jeudi • 08h00 - 12h18 / 13h00 - 16h00
+Tournée              Créneau        Boucle           Rang                Remarque et Visa Client
+G3                   Matin          1                1
+Contact
+Pierre eymeri
+pierre.eymeri@ville-pontdeclaix.fr
+-
+- Type de rampe : Mobile                                                 - Commentaire : coordonnées GPS 45,119463, 5,701846 2
+                                                                         rouleaux de sacs transparents Portable :
+Prestation(s)                 Matériel                                              Poids / Unité                Reporting
+Collecte de Papier           Bac 360L                               /1                              kg
+5892775-21151044
+Collecte de Carton           Vrac                                   /1                              kg
+5892775-21151045
+ DANS BAC 360L
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   74/75
+  4/10/26, 8:48 AM
+
+                         SINTEGRA [2325] - N°24875
+                         12 Avenue Jean Kuntzmann
+                         38330 Montbonnot-Saint-Martin                                                                       5253730
+                         Date de passage : 23/04/2026                                Heure de passage :
+                         Jeudi • 08h30 - 12h00 / 13h30 - 16h30
+Tournée              Créneau       Boucle           Rang               Remarque et Visa Client
+G1                   Matin         1                1
+Contact
+Patrick ROCHAS
+patrick.rochas@sintegra.fr
+04 76 18 13 13
+- Type de rampe : Mobile                                               - Commentaire : Client en prélèvement automatique - ENVOI
+                                                                       DES FACTURES AUTO
+Prestation(s)              Matériel                                            Poids / Unité                Reporting
+Collecte de Papier Sac        110L 50µ
+                          translucides                            /1                           kg
+5253730-18862490
+Collecte de Carton Bac 770L fermé                                 /1                           kg
+5253730-18862515
+Collecte de Canettes Sac      110L 50µ
+                          translucides                            /1                           kg
+5253730-18862533
+Collecte de Bouteilles Sac    110L 50µ
+                          translucides                            /1                           kg
+plastique PET
+5253730-18862557
+Collecte de Capsules Sac      110L 35µ
+                          translucides                            /1                           kg
+et dosettes café
+5253730-18862575
+Collecte de Verre         Sac 110L 50µ
+                          translucides                            /1                           kg
+5253730-18862602                                                                                             sac
+         Traitement filière de valorisation de Verre
+         5253730-18862627
+
+
+
+
+  https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]…   75/75
+

@@ -2,6 +2,10 @@
 # Ne pas utiliser MatchResult / ExcelOrder / SpecialFlags pour la logique métier.
 
 . (Join-Path $PSScriptRoot 'PlanningExcelTourneeSegments.ps1')
+$_cnsCertWordForMetier = Join-Path $PSScriptRoot 'CnsDestructionCertificateWord.ps1'
+if (Test-Path -LiteralPath $_cnsCertWordForMetier) {
+    . $_cnsCertWordForMetier
+}
 
 function ConvertTo-CnsMetierMatchNormalizedText {
     <#
@@ -245,19 +249,136 @@ function Test-CnsStep5FragSliceRequiresCeaDocument {
     return $isCea
 }
 
+function Initialize-CnsPdfMetierEntityExtractorAccess {
+    if ($script:CnsMetierEntityExtractorLoadAttempted) { return }
+    $script:CnsMetierEntityExtractorLoadAttempted = $true
+    if (Get-Command Get-ClientNameFromLines -ErrorAction SilentlyContinue) { return }
+    $entityScript = Join-Path $PSScriptRoot '..\Extractors\EntityExtractor.ps1'
+    if (-not (Test-Path -LiteralPath $entityScript)) { return }
+    try {
+        . $entityScript
+    }
+    catch {
+        Write-Warning ("[METIER-PDF] Chargement EntityExtractor.ps1 echoue : {0}" -f $_.Exception.Message)
+    }
+}
+
+function Test-CnsGardeClientNameDebugEnabled {
+    return ([string]$env:CN_DEBUG_GARDE).Trim().ToLowerInvariant() -in @('1', 'true', 'yes', 'on')
+}
+
+function Write-CnsGardeClientNameDebug {
+    param([AllowNull()][AllowEmptyString()][string]$Message)
+    if (-not (Test-CnsGardeClientNameDebugEnabled)) { return }
+    if ([string]::IsNullOrWhiteSpace($Message)) { return }
+    Write-Host ("[GARDE-CLIENT] {0}" -f $Message) -ForegroundColor DarkYellow
+}
+
+function Repair-CnsClientDisplayNameForCover {
+    param([AllowNull()][AllowEmptyString()][string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $Text }
+    $t = ([string]$Text).Trim()
+    if (Get-Command Repair-CnsClientNumeroSignText -ErrorAction SilentlyContinue) {
+        $t = Repair-CnsClientNumeroSignText -Text $t
+    }
+    return $t
+}
+
+function Test-CnsPdfClientDisplayNameLooksPolluted {
+    <#
+    .SYNOPSIS
+        Nom client pollué : date et/ou ligne prestation DEEE/piles/cartouches dans le libellé affiché.
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Name)
+    if ([string]::IsNullOrWhiteSpace($Name)) { return $true }
+    $n = ([string]$Name).Trim()
+    if ($n -match '\d{1,2}/\d{1,2}/\d{2,4}') { return $true }
+    if ($n -match '(?i)\b(collecte|deee|piles?|cartouche(s)?|encre)\b') { return $true }
+    return $false
+}
+
+function Resolve-CnsPdfClientDisplayNameFromEntity {
+    param(
+        [Parameter(Mandatory = $true)]
+        $Entity,
+        [switch]$StoredClientNameOnly,
+        [string]$DebugContext = ''
+    )
+    if ($null -eq $Entity) { return $null }
+
+    [string]$ctx = if ([string]::IsNullOrWhiteSpace($DebugContext)) { 'Entity' } else { $DebugContext }
+
+    if (-not $StoredClientNameOnly) {
+        $cnLines = @()
+        if ($Entity.PSObject.Properties['ClientNameLines'] -and $null -ne $Entity.ClientNameLines) {
+            $cnLines = @($Entity.ClientNameLines)
+        }
+        [string]$clientId = ''
+        try { $clientId = [string]$Entity.ClientID } catch { }
+        Write-CnsGardeClientNameDebug -Message ("{0}: ClientNameLines.Count={1} ClientID=[{2}]" -f $ctx, $cnLines.Count, $clientId)
+        if ($cnLines.Count -gt 0) {
+            Write-CnsGardeClientNameDebug -Message ("{0}: ClientNameLines=[{1}]" -f $ctx, (($cnLines | ForEach-Object { [string]$_ }) -join ' | '))
+        }
+
+        if ($cnLines.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($clientId)) {
+            Initialize-CnsPdfMetierEntityExtractorAccess
+            if (Get-Command Get-ClientNameFromLines -ErrorAction SilentlyContinue) {
+                $rebuilt = Get-ClientNameFromLines -Lines $cnLines -ClientId $clientId
+                Write-CnsGardeClientNameDebug -Message ("{0}: Get-ClientNameFromLines -> [{1}]" -f $ctx, $(if ($rebuilt) { $rebuilt } else { '<vide>' }))
+                if (-not [string]::IsNullOrWhiteSpace($rebuilt)) {
+                    Write-CnsGardeClientNameDebug -Message ("{0}: decision=reconstruction" -f $ctx)
+                    return (Repair-CnsClientDisplayNameForCover -Text $rebuilt)
+                }
+            }
+            else {
+                Write-CnsGardeClientNameDebug -Message ("{0}: Get-ClientNameFromLines indisponible" -f $ctx)
+            }
+        }
+    }
+
+    try {
+        $cn = [string]$Entity.ClientName
+        if (-not [string]::IsNullOrWhiteSpace($cn)) {
+            Write-CnsGardeClientNameDebug -Message ("{0}: decision=repli ClientName stocke [{1}]" -f $ctx, $cn.Trim())
+            return (Repair-CnsClientDisplayNameForCover -Text $cn)
+        }
+    }
+    catch { }
+
+    Write-CnsGardeClientNameDebug -Message ("{0}: decision=aucun nom" -f $ctx)
+    return $null
+}
+
 function Get-CnsPdfPageClientDisplayName {
     param(
         [AllowNull()] $PageEntity,
         [AllowNull()] $WorkOrderEntity
     )
-    foreach ($src in @($WorkOrderEntity, $PageEntity)) {
-        if ($null -eq $src) { continue }
-        try {
-            $cn = [string]$src.ClientName
-            if (-not [string]::IsNullOrWhiteSpace($cn)) { return $cn.Trim() }
-        }
-        catch { }
+
+    [string]$peResolved = $null
+    if ($null -ne $PageEntity) {
+        $peResolved = Resolve-CnsPdfClientDisplayNameFromEntity -Entity $PageEntity -DebugContext 'PageEntity'
     }
+
+    if (-not [string]::IsNullOrWhiteSpace($peResolved) -and -not (Test-CnsPdfClientDisplayNameLooksPolluted -Name $peResolved)) {
+        Write-CnsGardeClientNameDebug -Message ("final=PageEntity [{0}]" -f $peResolved)
+        return $peResolved
+    }
+
+    if ($null -ne $WorkOrderEntity) {
+        $woResolved = Resolve-CnsPdfClientDisplayNameFromEntity -Entity $WorkOrderEntity -StoredClientNameOnly -DebugContext 'WorkOrderEntity'
+        if (-not [string]::IsNullOrWhiteSpace($woResolved)) {
+            Write-CnsGardeClientNameDebug -Message ("final=WorkOrderEntity [{0}] (PageEntity pollué ou absent)" -f $woResolved)
+            return $woResolved
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($peResolved)) {
+        Write-CnsGardeClientNameDebug -Message ("final=PageEntity repli [{0}]" -f $peResolved)
+        return $peResolved
+    }
+
+    Write-CnsGardeClientNameDebug -Message 'final=Non specifie'
     return 'Non specifie'
 }
 
@@ -545,7 +666,7 @@ function Get-CnsTourneeMetierMemoLinesForBlock {
         foreach ($tr in @($analysis.TrackDechetEntries)) {
             if ($null -eq $tr) { continue }
             [string]$det = [string]$tr.Detail
-            [string]$cl = [string]$tr.Client
+            [string]$cl = Repair-CnsClientDisplayNameForCover -Text ([string]$tr.Client)
             if ([string]::IsNullOrWhiteSpace($det)) { continue }
             if ([string]::IsNullOrWhiteSpace($cl)) { $cl = 'Non specifie' }
             $key = ('{0}|{1}' -f $det, $cl)

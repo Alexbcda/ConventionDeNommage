@@ -52,6 +52,27 @@ function script:Get-FirstNonEmptyString {
     return $null
 }
 
+function script:Get-MergedClientNameFromPages {
+    <#
+    .SYNOPSIS
+        Concatene les ClientName non vides de toutes les pages (ordre PageNumber), une seule ligne separee par espaces.
+    #>
+    param([PageEntity[]]$PagesSorted)
+    $nameParts = [System.Collections.Generic.List[string]]::new()
+    $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($p in @($PagesSorted)) {
+        if ($null -eq $p) { continue }
+        $cn = ([string]$p.ClientName).Trim()
+        if ([string]::IsNullOrWhiteSpace($cn)) { continue }
+        if ($seen.Add($cn)) {
+            [void]$nameParts.Add($cn)
+        }
+    }
+    if ($nameParts.Count -lt 1) { return $null }
+    $merged = ($nameParts.ToArray() -join ' ')
+    return [regex]::Replace($merged, '\s+', ' ').Trim()
+}
+
 # --- TRUTH : préfixe ODM depuis PageEntity (déjà matérialisé, aucune autre source) ---
 function script:Get-OdmWorkOrderPrefixFromPage {
     param([PageEntity]$Page)
@@ -390,7 +411,7 @@ function script:Build-WorkOrderEntityFromGroup {
     }
 
     $entity.ClientID = Get-FirstNonEmptyString @($sorted | ForEach-Object { $_.ClientID })
-    $entity.ClientName = Get-FirstNonEmptyString @($sorted | ForEach-Object { $_.ClientName })
+    $entity.ClientName = script:Get-MergedClientNameFromPages -PagesSorted $sorted
 
     $entity.Address = Merge-AddressFromPages -PagesSorted $sorted
     $entity.Contact = Merge-ContactFromPages -PagesSorted $sorted

@@ -394,6 +394,188 @@ Describe 'PdfPlanningOptimizer - grouping WorkOrderEntity' {
     }
 }
 
+Describe 'Extraction brute du ClientName (bloc PDF)' {
+
+    BeforeAll {
+        $entityPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Extractors\EntityExtractor.ps1' | Resolve-Path
+        . $entityPath
+    }
+
+    It 'CHAM - ancre + ligne au-dessus (exemple certificat)' {
+        $lines = @(
+            '4/10/26, 8:48 AM',
+            'https://api.example.com/foo',
+            'CHAM CENTRE HOSPITALIER',
+            'ALBERTVILLE MOUTIERS - N°24550',
+            '253 rue Pierre de Coubertin'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '24550'
+        $result | Should Be 'CHAM CENTRE HOSPITALIER ALBERTVILLE MOUTIERS - N°24550'
+    }
+
+    It 'CHAM p26 - remontée au-dessus de la date (layout ideal)' {
+        $lines = @(
+            'CHAM CENTRE HOSPITALIER',
+            '4/10/26, 8:48 AM',
+            'ALBERTVILLE MOUTIERS - N°24550',
+            '253 rue Pierre de Coubertin 5890092',
+            '73200 ALBERTVILLE'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '24550'
+        $result | Should Be 'CHAM CENTRE HOSPITALIER ALBERTVILLE MOUTIERS - N°24550'
+    }
+
+    It 'CHAM p26 - lignes entieres consecutives au-dessus de l''ancre' {
+        $lines = @(
+            'CHAM CENTREMOUTIERS',
+            'HOSPITALIER ALBERTVILLE - N°24550',
+            '253 rue Pierre de Coubertin 5890092',
+            '73200 ALBERTVILLE'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '24550'
+        $result | Should Be 'CHAM CENTREMOUTIERS HOSPITALIER ALBERTVILLE - N°24550'
+    }
+
+    It 'CHAM p26 - date intercalee traversee (layout pdftotext reel)' {
+        $lines = @(
+            'CHAM CENTREMOUTIERS',
+            'HOSPITALIER',
+            '4/10/26, 8:48 AM',
+            'ALBERTVILLE - N°24550'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '24550'
+        $result | Should Be 'CHAM CENTREMOUTIERS HOSPITALIER ALBERTVILLE - N°24550'
+    }
+
+    It 'EUROFINS p43 - date intercalee traversee (layout pdftotext reel)' {
+        $lines = @(
+            'EUROFINS',
+            'MAURIENNELABAZUR SAINT JEAN',
+            '4/10/26, 8:48 AM',
+            '- N°24669'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '24669'
+        $result | Should Be 'EUROFINS MAURIENNELABAZUR SAINT JEAN - N°24669'
+    }
+
+    It 'EUROFINS p43 - lignes entieres consecutives' {
+        $lines = @(
+            'MAURIENNELABAZUR SAINT JEAN',
+            '- N°24669',
+            'Place Fodère 5517128',
+            '73300 Saint-Jean-de-Maurienne'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '24669'
+        $result | Should Be 'MAURIENNELABAZUR SAINT JEAN - N°24669'
+    }
+
+    It 'CHAM EHPAD - ancre + ligne au-dessus' {
+        $lines = @(
+            'CHAM EHPAD CLAUDE LEGER',
+            'ALBERTVILLE - N°64401',
+            '457 Chemin des trois-poiriers 5330151',
+            '73200 Albertville'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '64401'
+        $result | Should Be 'CHAM EHPAD CLAUDE LEGER ALBERTVILLE - N°64401'
+    }
+
+    It 'EUROFINS p43 - bbox ideal (deux lignes nom ordre visuel)' {
+        $lines = @(
+            'EUROFINS LABAZUR SAINT JEAN',
+            'MAURIENNE - N°24669',
+            'Place Fodère 5517128',
+            '73300 Saint-Jean-de-Maurienne'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '24669'
+        $result | Should Be 'EUROFINS LABAZUR SAINT JEAN MAURIENNE - N°24669'
+    }
+
+    It 'ClientName : ancre N° avec prefix date/heure (meme ligne)' {
+        $lines = @(
+            '4/10/26, 8:48 AM APLIM CHAMBERY - N°24415'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '24415'
+        $result | Should Be 'APLIM CHAMBERY - N°24415'
+    }
+
+    It 'ClientName : stop remontée sur prestation (collecte...)' {
+        $lines = @(
+            'Collecte cartouches encre',
+            '4/10/26, 8:48 AM',
+            'APLIM CHAMBERY - N°24415'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '24415'
+        $result | Should Be 'APLIM CHAMBERY - N°24415'
+    }
+
+    It 'Point collecte (p7) - deux lignes seulement' {
+        $lines = @(
+            'ANDERLAINE HERMILLON SR CONSEIL',
+            '- N°24902',
+            'D 906',
+            '73300 LA TOUR EN MAURIENNE'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '24902'
+        $result | Should Be 'ANDERLAINE HERMILLON SR CONSEIL - N°24902'
+    }
+
+    It 'BANQUE p12 - ligne au-dessus incluse (01800 dans le libelle)' {
+        $lines = @(
+            'BANQUE DE SAVOIE 01800 SAINT',
+            'JEAN DE MAURIENNE - N°68042',
+            'Place Fodère',
+            '73300 Saint-Jean-de-Maurienne'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '68042'
+        $result | Should Be 'BANQUE DE SAVOIE 01800 SAINT JEAN DE MAURIENNE - N°68042'
+    }
+
+    It 'CREDIT AGRICOLE p32 - ancre seule (N° sur la premiere ligne)' {
+        $lines = @(
+            'CREDIT AGRICOLE- N°81347',
+            'SUD EST',
+            '4/10/26, 8:48 AM',
+            'MORESTEL_676',
+            '29 Place de l''Hotel de Ville'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '81347'
+        $result | Should Be 'CREDIT AGRICOLE- N°81347'
+    }
+
+    It 'ENTREPOT p40 - deux lignes nom consecutives au-dessus de l''ancre' {
+        $lines = @(
+            'ENTREPOT DU BRICOLAGE SAINT',
+            'JEAN DE',
+            'N°24642 MAURIENNE [2682] -',
+            '240 Rue de Combe Paillarde'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '24642'
+        $result | Should Be 'ENTREPOT DU BRICOLAGE SAINT JEAN DE N°24642 MAURIENNE [2682] -'
+    }
+
+    It 'ENTREPOT p40 - date intercalee traversee' {
+        $lines = @(
+            'ENTREPOT DU BRICOLAGE SAINT',
+            '4/10/26, 8:48 AM',
+            'JEAN DE',
+            'N°24642 MAURIENNE [2682] -'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '24642'
+        $result | Should Be 'ENTREPOT DU BRICOLAGE SAINT JEAN DE N°24642 MAURIENNE [2682] -'
+    }
+
+    It 'CADS p21 - ancre seule (N° sur la meme ligne)' {
+        $lines = @(
+            'CADS LA ROCHETTE (820) [1908] N°24506',
+            'Rue schweighouse sur moder',
+            '73110 Valgelon-La Rochette'
+        )
+        $result = Get-ClientNameFromLines -Lines $lines -ClientId '24506'
+        $result | Should Be 'CADS LA ROCHETTE (820) [1908] N°24506'
+    }
+}
+
 Describe 'PdfPlanningOptimizer - E2E PDF vers export CSV' {
 
     BeforeAll {
@@ -854,6 +1036,60 @@ Describe 'PdfPlanningOptimizer - tournee cover (prestations speciales ODM)' {
         ($a.TrackDechetEntries[0].Detail) | Should Be 'Collecte DEEE'
     }
 
+    It 'Get-CnsPdfPageClientDisplayName : page bbox avant WorkOrder fusionne' {
+        $entityExtractorPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Extractors\EntityExtractor.ps1' | Resolve-Path
+        . ([string]$entityExtractorPath)
+        $wo = [pscustomobject]@{
+            ClientID   = '24415'
+            ClientName = '4/10/26, 8:48 AM APLIM CHAMBERY - N?24415'
+            Services   = @(@{ Type = 'Collecte cartouches encre'; ODM = '1234567-1' })
+        }
+        $pe = [pscustomobject]@{
+            ClientID        = '24415'
+            ClientName      = '4/10/26, 8:48 AM APLIM CHAMBERY - N?24415'
+            ClientNameLines = @(
+                'Collecte cartouches encre - 4/10/26, 8:48 AM',
+                'APLIM CHAMBERY - N°24415'
+            )
+            Services = @(@{ Type = 'Collecte cartouches encre'; ODM = '1234567-1' })
+        }
+        (Get-CnsPdfPageClientDisplayName -PageEntity $pe -WorkOrderEntity $wo) | Should Be 'APLIM CHAMBERY - N°24415'
+        $a = Get-CnsPdfPageMetierAnalysis -PageEntity $pe -WorkOrderEntity $wo
+        ($a.TrackDechetEntries[0].Client) | Should Be 'APLIM CHAMBERY - N°24415'
+    }
+
+    It 'Get-CnsPdfPageClientDisplayName : WorkOrder prioritaire si PageEntity pollué sans rebuild' {
+        $wo = [pscustomobject]@{
+            ClientID   = '24415'
+            ClientName = 'APLIM CHAMBERY - N°24415'
+            Services   = @(@{ Type = 'Collecte cartouches encre'; ODM = '1234567-1' })
+        }
+        $pe = [pscustomobject]@{
+            ClientID   = '24415'
+            ClientName = '4/10/26, 8:48 AM APLIM CHAMBERY - N?24415'
+            Services   = @(@{ Type = 'Collecte cartouches encre'; ODM = '1234567-1' })
+        }
+        (Get-CnsPdfPageClientDisplayName -PageEntity $pe -WorkOrderEntity $wo) | Should Be 'APLIM CHAMBERY - N°24415'
+    }
+
+    It 'Split-PdfMonolithicClientNameLayoutLines : scinde prestation + date + nom' {
+        $pdfExtractorPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Extractors\PdfExtractor.ps1' | Resolve-Path
+        . ([string]$pdfExtractorPath)
+        $entityExtractorPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Extractors\EntityExtractor.ps1' | Resolve-Path
+        . ([string]$entityExtractorPath)
+        $mono = 'Collecte cartouches encre - 4/10/26, 8:48 AM APLIM CHAMBERY - N°24415'
+        $split = @(Split-PdfMonolithicClientNameLayoutLines -LayoutLines @($mono))
+        $split.Count | Should Be 2
+        $split[0] | Should Be 'Collecte cartouches encre'
+        $split[1] | Should Be 'APLIM CHAMBERY - N°24415'
+        (Get-ClientNameFromLines -Lines $split -ClientId '24415') | Should Be 'APLIM CHAMBERY - N°24415'
+    }
+
+    It 'ConvertTo-CnsPsHelveticaParenBody : N° en WinAnsi \260' {
+        $body = ConvertTo-CnsPsHelveticaParenBody -Text 'APLIM CHAMBERY - N°24415'
+        $body | Should Match 'N\\26024415'
+    }
+
     It 'Get-CnsPdfPageMetierAnalysis : destruction cert + memo client' {
         $wo = [pscustomobject]@{
             ClientName = 'EUROFINS LABAZUR'
@@ -932,7 +1168,7 @@ Describe 'PdfPlanningOptimizer - tournee cover (prestations speciales ODM)' {
         $foLine = [pscustomobject]@{ FinalOrder = 1; Source = 'ExcelOrder'; ExcelSourceOrder = 3 }
         $foToLine = @{ 1 = $foLine }
         $memos = @(Get-CnsTourneeMetierMemoLinesForBlock -MainFrom1 1 -MainTo1 1 -SortedGsPairs $pairs -FinalOrderToLine $foToLine -WorkOrders @($wo) -PdfEntities @())
-        ($memos -join '|') | Should Match 'Track dechet'
+        ($memos -join '|') | Should Match 'Collecte de piles'
         ($memos -join '|') | Should Match 'MAIRIE GRENOBLE'
     }
 
@@ -1003,6 +1239,32 @@ Describe 'PdfPlanningOptimizer - certificat destruction Word' {
         (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value 'À compléter') | Should Be ''
         (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value '-') | Should Be ''
         (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value 'Jean Martin') | Should Be 'Jean Martin'
+    }
+
+    It 'Repair-CnsClientNumeroSignText : N? -> N° avant chiffres client' {
+        (Repair-CnsClientNumeroSignText -Text 'EUROFINS LABAZUR BRIGNOUD - N?24656') | Should Be 'EUROFINS LABAZUR BRIGNOUD - N°24656'
+        (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value 'APLIM CHAMBERY - N?24415') | Should Be 'APLIM CHAMBERY - N°24415'
+    }
+
+    It 'Invoke-CnsDocxRepairCertificateTitleCenteringInXmlFile : no-op (annulation centrage)' {
+        $tpl = Get-CnsDestructionCertificateTemplatePath
+        if ($null -eq $tpl) {
+            Set-ItResult -Inconclusive -Because 'Template CertificatDeDestruction.docx absent du depot'
+        }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $workDocx = Join-Path $env:TEMP ("cn_cert_title_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
+        Copy-Item -LiteralPath $tpl -Destination $workDocx -Force
+        $workDir = Join-Path $env:TEMP ('cn_docx_title_' + [Guid]::NewGuid().ToString('N'))
+        $null = New-Item -ItemType Directory -Path $workDir -Force
+        try {
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($workDocx, $workDir)
+            $docXml = Join-Path $workDir 'word\document.xml'
+            (Invoke-CnsDocxRepairCertificateTitleCenteringInXmlFile -XmlPath $docXml) | Should Be $false
+        }
+        finally {
+            if (Test-Path -LiteralPath $workDocx) { Remove-Item -LiteralPath $workDocx -Force -ErrorAction SilentlyContinue }
+            if (Test-Path -LiteralPath $workDir) { Remove-Item -LiteralPath $workDir -Recurse -Force -ErrorAction SilentlyContinue }
+        }
     }
 
     It 'Get-CnsDestructionCertificatePlaceholders : champs client et collecteur' {

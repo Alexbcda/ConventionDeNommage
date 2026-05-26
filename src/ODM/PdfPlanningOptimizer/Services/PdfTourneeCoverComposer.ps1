@@ -56,10 +56,13 @@ function ConvertTo-CnsPsHelveticaParenBody {
     <#
     .SYNOPSIS
         Corps d'une chaine PostScript entre parentheses pour Helvetica (WinAnsi/Latin-1 safe : ASCII + deaccentuation).
-        Echappe \, (, ).
+        Echappe \, (, ). Le signe ° (U+00B0) est emis en \260 (WinAnsi).
     #>
     param([AllowNull()][AllowEmptyString()][string]$Text)
     $t = Sanitize-CnsCoverTextForGhostscript -Text $Text
+    if (Get-Command Repair-CnsClientNumeroSignText -ErrorAction SilentlyContinue) {
+        $t = Repair-CnsClientNumeroSignText -Text $t
+    }
     if ([string]::IsNullOrEmpty($t)) { return '' }
     $d = $t.Normalize([System.Text.NormalizationForm]::FormD)
     $sb = [System.Text.StringBuilder]::new()
@@ -71,6 +74,10 @@ function ConvertTo-CnsPsHelveticaParenBody {
         if ($o -lt 32) { continue }
         if ($o -eq 0x2019 -or $o -eq 0x2018) {
             [void]$sb.Append("'")
+            continue
+        }
+        if ($o -eq 0x00B0 -or $o -eq 0x00BA) {
+            [void]$sb.Append('\260')
             continue
         }
         if ($o -ge 32 -and $o -le 126) {
@@ -294,8 +301,12 @@ function Build-CnsMismatchCoverPostScriptFromElements {
             [int]$YMin
         )
         if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+        $textForPs = [string]$Text
+        if (Get-Command Repair-CnsClientNumeroSignText -ErrorAction SilentlyContinue) {
+            $textForPs = Repair-CnsClientNumeroSignText -Text $textForPs
+        }
         $drew = $false
-        $wrapped = @(Split-CnsCoverTextToMaxWidth -Text $Text -MaxLen 85)
+        $wrapped = @(Split-CnsCoverTextToMaxWidth -Text $textForPs -MaxLen 85)
         foreach ($wl in @($wrapped)) {
             if ($YRef.Value -lt $YMin) { return $drew }
             $lit = ConvertTo-CnsPsHelveticaParenBody -Text $wl
@@ -318,8 +329,12 @@ function Build-CnsMismatchCoverPostScriptFromElements {
             [int]$PageW
         )
         if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+        $textForPs = [string]$Text
+        if (Get-Command Repair-CnsClientNumeroSignText -ErrorAction SilentlyContinue) {
+            $textForPs = Repair-CnsClientNumeroSignText -Text $textForPs
+        }
         $drew = $false
-        $wrapped = @(Split-CnsCoverTextToMaxWidth -Text $Text -MaxLen 72)
+        $wrapped = @(Split-CnsCoverTextToMaxWidth -Text $textForPs -MaxLen 72)
         foreach ($wl in @($wrapped)) {
             if ($YRef.Value -lt $YMin) { return $drew }
             $lit = ConvertTo-CnsPsHelveticaParenBody -Text $wl

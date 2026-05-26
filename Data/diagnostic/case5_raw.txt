@@ -1,0 +1,40 @@
+4/10/26, 8:48 AM
+https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]=… 5/75
+ANDERLAINEALBERTVILLESR
+CONSEIL-N°24896
+85Ruerenécassin
+73200Albertville
+Datedepassage:23/04/2026
+Jeudi•08h30-12h00/13h30-17h00
+5251365
+Heuredepassage:
+Tournée
+G5
+Créneau
+Matin
+Boucle
+1
+Rang
+1
+Contact
+LUCIAMARIANO
+albertville@srconseil.fr
+04.79.31.11.40
+RemarqueetVisaClient
+-Typederampe:Mobile -Commentaire:Portable:
+Prestation(s) Matériel Poids/Unité Reporting
+CollectedeCapsuleset
+dosettescafé
+5251365-18852949
+Sac110L
+translucides35µ /1 kg
+CollectedeGobelets
+carton
+5251365-18852971
+Sac50L
+transparent /1 kg
+CollectedePapier
+5251365-18852991
+Sac110L
+translucides50µ /1 kg
+

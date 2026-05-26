@@ -593,6 +593,179 @@ function script:Get-PdftotextIntraRunCacheKey {
     return ($normPath + "`t" + "$PageNumber" + "`t" + $argsKey)
 }
 
+function script:Parse-PdftotextBboxHtmlWords {
+    param([string]$Html)
+    $words = [System.Collections.Generic.List[object]]::new()
+    if ([string]::IsNullOrWhiteSpace($Html)) { return $words.ToArray() }
+    $rx = [regex]'<word\s+xMin="([^"]+)"\s+yMin="([^"]+)"\s+xMax="([^"]+)"\s+yMax="([^"]+)">([^<]*)</word>'
+    foreach ($m in $rx.Matches($Html)) {
+        $t = [string]$m.Groups[5].Value
+        if ([string]::IsNullOrWhiteSpace($t)) { continue }
+        [void]$words.Add([pscustomobject]@{
+            XMin = [double]$m.Groups[1].Value
+            YMin = [double]$m.Groups[2].Value
+            Text = $t
+        })
+    }
+    return $words.ToArray()
+}
+
+function script:Build-LinesFromPdfBboxWords {
+    <#
+    Regroupe les mots par Y (arrondi 5 pt), trie X croissant, concatene avec espace.
+    #>
+    param(
+        [object[]]$Words,
+        [double]$YTolerance = 5.0
+    )
+    if (-not $Words -or $Words.Count -eq 0) { return @() }
+    $groups = @{}
+    foreach ($w in @($Words)) {
+        if ($null -eq $w) { continue }
+        $yKey = [Math]::Round([double]$w.YMin / $YTolerance) * $YTolerance
+        if (-not $groups.ContainsKey($yKey)) {
+            $groups[$yKey] = [System.Collections.Generic.List[object]]::new()
+        }
+        [void]$groups[$yKey].Add($w)
+    }
+    $lines = [System.Collections.Generic.List[string]]::new()
+    foreach ($yKey in @($groups.Keys | Sort-Object)) {
+        $rowWords = @($groups[$yKey] | Sort-Object { [double]$_.XMin })
+        $parts = [System.Collections.Generic.List[string]]::new()
+        foreach ($rw in $rowWords) {
+            $t = Get-TrimmedOrNull ([string]$rw.Text)
+            if (-not [string]::IsNullOrWhiteSpace($t)) { [void]$parts.Add($t) }
+        }
+        if ($parts.Count -gt 0) {
+            [void]$lines.Add(($parts.ToArray() -join ' '))
+        }
+    }
+    return @([string[]]@($lines.ToArray()))
+}
+
+function script:Get-TrimmedOrNull {
+    param([string]$Value)
+    if ($null -eq $Value) { return $null }
+    $t = $Value.Trim()
+    if ($t.Length -eq 0) { return $null }
+    return $t
+}
+
+function script:Get-PdfPageBboxHtmlWithPdftotext {
+    param(
+        [string]$PdfPath,
+        [string]$PdftotextExe,
+        [int]$PageNumber,
+        [string]$LogContext = ''
+    )
+    $ctx = if ([string]::IsNullOrWhiteSpace($LogContext)) { 'pdftotext-bbox' } else { $LogContext }
+    if ([string]::IsNullOrWhiteSpace($PdftotextExe) -or -not (Test-Path -LiteralPath $PdftotextExe -PathType Leaf)) {
+        return $null
+    }
+    $tempOut = [System.IO.Path]::GetTempFileName()
+    try {
+        $arguments = @(
+            '-f', "$PageNumber",
+            '-l', "$PageNumber",
+            '-bbox',
+            '-enc', 'UTF-8',
+            '-q',
+            $PdfPath,
+            $tempOut
+        )
+        $null = & $PdftotextExe $arguments 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $tempOut)) { return $null }
+        $bytes = [System.IO.File]::ReadAllBytes($tempOut)
+        if ($null -eq $bytes -or $bytes.Length -eq 0) { return $null }
+        return [System.Text.Encoding]::UTF8.GetString($bytes)
+    }
+    finally {
+        if (Test-Path -LiteralPath $tempOut) {
+            Remove-Item -LiteralPath $tempOut -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Get-PdfPageClientNameLinesFromBbox {
+    <#
+    .SYNOPSIS
+        Lignes logiques reconstruites depuis pdftotext -bbox (ordre Y, mots tries par X).
+        Retourne @() si bbox indisponible (pas de repli layout ici).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PdfPath,
+        [Parameter(Mandatory = $true)]
+        [string]$PdftotextExe,
+        [Parameter(Mandatory = $true)]
+        [int]$PageNumber
+    )
+    $html = Get-PdfPageBboxHtmlWithPdftotext -PdfPath $PdfPath -PdftotextExe $PdftotextExe -PageNumber $PageNumber `
+        -LogContext ('ClientName bbox page=' + $PageNumber)
+    if ([string]::IsNullOrWhiteSpace($html)) { return @() }
+    $words = @(Parse-PdftotextBboxHtmlWords -Html $html)
+    if ($words.Count -lt 1) { return @() }
+    $lines = @(Build-LinesFromPdfBboxWords -Words $words)
+    return @(Convert-PdfLineTextForUiIfAvailable -Lines $lines)
+}
+
+function Split-PdfMonolithicClientNameLayoutLines {
+    <#
+    .SYNOPSIS
+        Scinde une ligne layout fusionnee (prestation + date + nom N°) en lignes logiques pour traversal.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [string[]]$LayoutLines
+    )
+    if (-not $LayoutLines -or $LayoutLines.Count -lt 1) { return @() }
+
+    $prestationPat = '(?i)\b(collecte|deee|piles?|cartouche(s)?|encre)\b'
+    $datePat = '\d{1,2}/\d{1,2}/\d{2,4}(?:\s*,\s*\d{1,2}:\d{2}\s*(?:AM|PM)?)?'
+    $numeroPat = '(?i)N\s*(?:[°\u00B0\u00BA?]|┬░|\uFFFD)?\s*\d{4,12}'
+
+    $out = New-Object System.Collections.Generic.List[string]
+    foreach ($raw in @($LayoutLines)) {
+        if ($null -eq $raw) { continue }
+        $line = ([string]$raw).Trim()
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+
+        $canSplit = ($line -match $prestationPat) -and ($line -match $datePat) -and ($line -match $numeroPat)
+        if (-not $canSplit) {
+            [void]$out.Add($line)
+            continue
+        }
+
+        $dm = [regex]::Match($line, $datePat)
+        if (-not $dm.Success) {
+            [void]$out.Add($line)
+            continue
+        }
+
+        $beforeDate = $line.Substring(0, $dm.Index).Trim()
+        $afterDate = $line.Substring($dm.Index + $dm.Length).Trim()
+        $prestationLine = $beforeDate.TrimEnd(' ', '-', '–', '—', ',', ';')
+        $nameLine = $afterDate.TrimStart(' ', '-', '–', '—', ',', ';').Trim()
+
+        if ([string]::IsNullOrWhiteSpace($prestationLine) -or [string]::IsNullOrWhiteSpace($nameLine)) {
+            [void]$out.Add($line)
+            continue
+        }
+        if ($nameLine -notmatch $numeroPat) {
+            [void]$out.Add($line)
+            continue
+        }
+
+        [void]$out.Add($prestationLine)
+        [void]$out.Add($nameLine)
+    }
+
+    if ($out.Count -lt 1) { return @() }
+    return @($out.ToArray())
+}
+
 function script:Get-PdfPageLinesWithPdftotextArgs {
     param(
         [string]$PdfPath,
@@ -972,10 +1145,11 @@ function Invoke-PdfExtraction {
                 for ($i = 1; $i -le $pageCount; $i++) {
                     $empty = [string[]]@()
                     $pages.Add([pscustomobject]@{
-                        PageNumber    = $i
-                        Lines         = $empty
-                        RawLines      = $empty
-                        FilteredLines = $empty
+                        PageNumber      = $i
+                        Lines           = $empty
+                        RawLines        = $empty
+                        FilteredLines   = $empty
+                        ClientNameLines = @($empty)
                     })
                     if ($null -ne $ProgressCallback) {
                         try { & $ProgressCallback $i $pageCount ("pages extraites : {0}/{1}" -f $i, $pageCount) } catch { }
@@ -1018,11 +1192,16 @@ Debug :
                         if ($null -eq $ln) { '' } else { [string]$ln }
                     }
                 )
+                $clientNameLines = @(Get-PdfPageClientNameLinesFromBbox -PdfPath $resolved -PdftotextExe $pdftotext -PageNumber $i)
+                if ($clientNameLines.Count -lt 1) {
+                    $clientNameLines = @(Split-PdfMonolithicClientNameLayoutLines -LayoutLines $rawCopy)
+                }
                 $pages.Add([pscustomobject]@{
-                    PageNumber    = $i
-                    Lines         = $rawCopy
-                    RawLines      = $rawCopy
-                    FilteredLines = $rawCopy
+                    PageNumber      = $i
+                    Lines           = $rawCopy
+                    RawLines        = $rawCopy
+                    FilteredLines   = $rawCopy
+                    ClientNameLines = @($clientNameLines)
                 })
                 if ($null -ne $ProgressCallback) {
                     try { & $ProgressCallback $i $pageCount ("pages extraites : {0}/{1}" -f $i, $pageCount) } catch { }

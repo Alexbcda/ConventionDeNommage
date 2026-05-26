@@ -326,10 +326,16 @@ function Invoke-CnsDocxSafePlaceholderReplaceInXmlFile {
         }
     }
 
-    if ($fileReplaced -gt 0) {
+    $layoutChanged = $false
+    if ($XmlPath -match '(?i)[\\/]document\.xml$') {
+        $layoutChanged = Invoke-CnsDocxRepairCertificateTitleCenteringInXmlDocument -XmlDoc $xmlDoc
+    }
+
+    if ($fileReplaced -gt 0 -or $layoutChanged) {
         Save-CnsWordMlXmlDocument -XmlDoc $xmlDoc -XmlPath $XmlPath -DeclarationLine $origDecl
     }
 
+    if ($fileReplaced -lt 1 -and $layoutChanged) { return 1 }
     return $fileReplaced
 }
 
@@ -445,6 +451,169 @@ function Set-CnsDocxTemplatePlaceholders {
     }
 }
 
+function Repair-CnsClientNumeroSignText {
+    <#
+    .SYNOPSIS
+        Corrige N? / N (U+FFFD) / mojibake en N° avant affichage certificat ou page de garde.
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Text)
+    if ($null -eq $Text) { return '' }
+    $t = [string]$Text
+    if ($t.Length -lt 1) { return $t }
+    $t = $t.Replace('N┬░', 'N°')
+    $t = [regex]::Replace($t, '(?i)N\s*\?\s*(?=\d)', 'N°')
+    $t = [regex]::Replace($t, 'N\s*\uFFFD\s*(?=\d)', 'N°')
+    return $t
+}
+
+function Get-CnsWordMlParagraphPlainText {
+    param([Parameter(Mandatory = $true)][System.Xml.XmlElement]$Paragraph)
+    $wtNodes = Select-CnsWordMlNodes -ContextNode $Paragraph -NodeKind 'Text'
+    if ($null -eq $wtNodes -or $wtNodes.Count -lt 1) { return '' }
+    $sb = [System.Text.StringBuilder]::new()
+    foreach ($wt in @($wtNodes)) {
+        $txt = $wt.InnerText
+        if ($null -eq $txt) { $txt = '' }
+        [void]$sb.Append($txt)
+    }
+    return $sb.ToString()
+}
+
+function Set-CnsWordMlParagraphJc {
+    param(
+        [Parameter(Mandatory = $true)][System.Xml.XmlElement]$Paragraph,
+        [ValidateSet('center', 'left', 'right', 'both')]
+        [string]$Alignment = 'center'
+    )
+    $doc = $Paragraph.OwnerDocument
+    $ns = $script:CnsWordMlNamespaceUri
+    $pPr = $Paragraph.SelectSingleNode('./*[local-name()="pPr" and namespace-uri()="' + $ns + '"]')
+    if ($null -eq $pPr) {
+        $pPr = $doc.CreateElement('pPr', $ns)
+        if ($Paragraph.FirstChild) {
+            $null = $Paragraph.InsertBefore($pPr, $Paragraph.FirstChild)
+        }
+        else {
+            [void]$Paragraph.AppendChild($pPr)
+        }
+    }
+    $jc = $pPr.SelectSingleNode('./*[local-name()="jc" and namespace-uri()="' + $ns + '"]')
+    if ($null -eq $jc) {
+        $jc = $doc.CreateElement('jc', $ns)
+        [void]$pPr.AppendChild($jc)
+    }
+    $null = $jc.SetAttribute('val', $ns, $Alignment)
+}
+
+function Invoke-CnsDocxRepairCertificateTitleCenteringInXmlDocument {
+    <#
+    .SYNOPSIS
+        Titre « Certificat de destruction » : cellule pleine largeur + paragraphe centré (le template a logo + titre côte à côte).
+    #>
+    param([Parameter(Mandatory = $true)][System.Xml.XmlDocument]$XmlDoc)
+
+    # Annulation : le centrage du titre a provoque un decalage et la disparition du logo.
+    # On no-op volontairement pour revenir a la mise en page d'origine du template.
+    return $false
+
+    $ns = $script:CnsWordMlNamespaceUri
+    $changed = $false
+    $paragraphs = Select-CnsWordMlNodes -ContextNode $XmlDoc -NodeKind 'Paragraph'
+    if ($null -eq $paragraphs -or $paragraphs.Count -lt 1) { return $false }
+
+    foreach ($paragraph in @($paragraphs)) {
+        $plain = Get-CnsWordMlParagraphPlainText -Paragraph $paragraph
+        if ($plain -notmatch '(?i)Certificat\s+de\s+destructio') { continue }
+
+        Set-CnsWordMlParagraphJc -Paragraph $paragraph -Alignment 'center'
+        $changed = $true
+
+        $row = $paragraph.SelectSingleNode('ancestor::*[local-name()="tr" and namespace-uri()="' + $ns + '"][1]')
+        if ($null -eq $row) { continue }
+
+        $cells = @($row.SelectNodes('./*[local-name()="tc" and namespace-uri()="' + $ns + '"]'))
+        if ($cells.Count -lt 2) { continue }
+
+        $titleCell = $paragraph.SelectSingleNode('ancestor::*[local-name()="tc" and namespace-uri()="' + $ns + '"][1]')
+        if ($null -eq $titleCell) { continue }
+
+        if ($cells[0] -ne $titleCell) {
+            $null = $row.RemoveChild($cells[0])
+            $changed = $true
+        }
+
+        $tcPr = $titleCell.SelectSingleNode('./*[local-name()="tcPr" and namespace-uri()="' + $ns + '"]')
+        if ($null -eq $tcPr) {
+            $tcPr = $XmlDoc.CreateElement('tcPr', $ns)
+            if ($titleCell.FirstChild) {
+                $null = $titleCell.InsertBefore($tcPr, $titleCell.FirstChild)
+            }
+            else {
+                [void]$titleCell.AppendChild($tcPr)
+            }
+            $changed = $true
+        }
+
+        $gridSpan = $tcPr.SelectSingleNode('./*[local-name()="gridSpan" and namespace-uri()="' + $ns + '"]')
+        if ($null -eq $gridSpan) {
+            $gridSpan = $XmlDoc.CreateElement('gridSpan', $ns)
+            [void]$tcPr.AppendChild($gridSpan)
+            $changed = $true
+        }
+        if ($gridSpan.GetAttribute('val', $ns) -ne '5') {
+            $null = $gridSpan.SetAttribute('val', $ns, '5')
+            $changed = $true
+        }
+
+        $tcW = $tcPr.SelectSingleNode('./*[local-name()="tcW" and namespace-uri()="' + $ns + '"]')
+        if ($null -eq $tcW) {
+            $tcW = $XmlDoc.CreateElement('tcW', $ns)
+            [void]$tcPr.AppendChild($tcW)
+            $changed = $true
+        }
+        if ($tcW.GetAttribute('type', $ns) -ne 'dxa') {
+            $null = $tcW.SetAttribute('type', $ns, 'dxa')
+            $changed = $true
+        }
+        if ($tcW.GetAttribute('w', $ns) -ne '10939') {
+            $null = $tcW.SetAttribute('w', $ns, '10939')
+            $changed = $true
+        }
+
+        $tbl = $row.SelectSingleNode('ancestor::*[local-name()="tbl" and namespace-uri()="' + $ns + '"][1]')
+        if ($null -ne $tbl) {
+            $tblInd = $tbl.SelectSingleNode('./*[local-name()="tblPr" and namespace-uri()="' + $ns + '"]/*[local-name()="tblInd" and namespace-uri()="' + $ns + '"]')
+            if ($null -ne $tblInd -and $tblInd.GetAttribute('w', $ns) -ne '0') {
+                $null = $tblInd.SetAttribute('w', $ns, '0')
+                $changed = $true
+            }
+        }
+        break
+    }
+
+    return $changed
+}
+
+function Invoke-CnsDocxRepairCertificateTitleCenteringInXmlFile {
+    param([Parameter(Mandatory = $true)][string]$XmlPath)
+    if (-not (Test-Path -LiteralPath $XmlPath)) { return $false }
+
+    $origDecl = Get-CnsWordMlXmlDeclarationLine -XmlPath $XmlPath
+    $readerSettings = New-Object System.Xml.XmlReaderSettings
+    $readerSettings.IgnoreWhitespace = $false
+    $reader = [System.Xml.XmlReader]::Create($XmlPath, $readerSettings)
+    $xmlDoc = New-Object System.Xml.XmlDocument
+    $xmlDoc.PreserveWhitespace = $true
+    $xmlDoc.Load($reader)
+    $reader.Close()
+
+    $changed = Invoke-CnsDocxRepairCertificateTitleCenteringInXmlDocument -XmlDoc $xmlDoc
+    if ($changed) {
+        Save-CnsWordMlXmlDocument -XmlDoc $xmlDoc -XmlPath $XmlPath -DeclarationLine $origDecl
+    }
+    return $changed
+}
+
 function ConvertTo-CnsDestructionCertificatePlaceholderValue {
     <#
     .SYNOPSIS
@@ -452,7 +621,7 @@ function ConvertTo-CnsDestructionCertificatePlaceholderValue {
     #>
     param([AllowNull()][string]$Value)
     if ($null -eq $Value) { return '' }
-    $t = ([string]$Value).Trim()
+    $t = Repair-CnsClientNumeroSignText -Text (([string]$Value).Trim())
     if ([string]::IsNullOrWhiteSpace($t)) { return '' }
     $norm = $t.Normalize([System.Text.NormalizationForm]::FormD)
     $sb = [System.Text.StringBuilder]::new()
