@@ -1,0 +1,53 @@
+4/10/26, 8:48 AM
+https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&
+fi
+lter[date]… 43/75
+EUROFINS LABAZUR SAINT JEAN
+MAURIENNE
+-
+N°24669
+Place Fodère
+73300 Saint-Jean-de-Maurienne
+Date de passage
+:
+23/04/2026
+Jeudi
+•
+07h00
+-
+12h00 / 14h00
+-
+18h00
+5517128
+Heure de passage :
+Tournée
+G4
+Créneau
+Matin
+Boucle
+1
+Rang
+1
+Contact
+Christophe BLOT
+ChristopheBlot@eurofins-biologie.com
+06 82 97 88 94
+Remarque et Visa Client
+-
+Type de rampe
+:
+Mobile
+Prestation(s) Matériel Poids/Unité Reporting
+Collecte de Papier
+confidentiel
+5517128
+-
+19811616
+Bac 360L /1 kg
+Collecter le bac 360L
+Destruction de Papier confidentiel
+5517128
+-
+19811636 bac
+DANS UN BAC 360 Certificat de destruction
+

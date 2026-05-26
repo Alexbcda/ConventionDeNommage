@@ -3987,7 +3987,11 @@ function Start-PlanningRebuild {
     Trace-DeepObjectLeak -Value $pdfEntitiesBag -Name "PdfEntities" -Location "Start-PlanningRebuild.init.pdfEntities"
     $pdfEntitiesList = [System.Collections.Generic.List[object]]::new()
     foreach ($page in @($pdfData.Pages)) {
-        $entity = ConvertTo-PageEntity -PageNumber $page.PageNumber -Lines @($page.Lines)
+        $cnLines = @()
+        if ($null -ne $page -and $page.PSObject.Properties['ClientNameLines'] -and $null -ne $page.ClientNameLines) {
+            $cnLines = @($page.ClientNameLines)
+        }
+        $entity = ConvertTo-PageEntity -PageNumber $page.PageNumber -Lines @($page.Lines) -ClientNameLines $cnLines
         if ($null -ne $entity) {
             $entity | Add-Member -NotePropertyName NormalizedKey -NotePropertyValue (Normalize-ClientKey $entity) -Force
             [void]$pdfEntitiesList.Add($entity)

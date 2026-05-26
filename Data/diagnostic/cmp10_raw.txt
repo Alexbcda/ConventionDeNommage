@@ -1,0 +1,31 @@
+4/10/26, 8:48 AM
+https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]… 10/75
+ARCHIVESPONTDECLAIX-N°24416
+4AvenueduMaquisdel'Oisans
+38800LePont-de-Claix
+Datedepassage:23/04/2026
+Jeudi•08h00-12h18/13h00-16h00
+5900479
+Heuredepassage:
+Tournée
+G3
+Créneau
+Matin
+Boucle
+1
+Rang
+1
+Contact
+PierreEYMERI
+pierre.eymeri@ville-pontdeclaix.fr
+-
+RemarqueetVisaClient
+-Typederampe:Mobile -Commentaire:Portable:
+Prestation(s) Matériel Poids/Unité Reporting
+CollectedePapier
+5900479-21182421
+Bac120Lfermé /1 kg
+CollectedeCarton
+5900479-21182422
+Vrac /1 kg
+

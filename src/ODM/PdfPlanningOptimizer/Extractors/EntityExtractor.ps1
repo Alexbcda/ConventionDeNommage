@@ -596,287 +596,274 @@ function script:Test-IsPlanningScheduleLine {
     return $false
 }
 
-function script:Get-ClientBlock {
+function script:Split-MonolithicClientNameLayoutLines {
     <#
-    Bloc métier unique autour de l'ancre N° : jusqu'à 10 lignes au-dessus,
-    fin = première borne parmi : fenêtre max après ancre, « Date de passage », planning, ou fin du premier bloc adresse (CP + ville).
+    .SYNOPSIS
+        Scinde une ligne layout fusionnee (prestation + date + nom N°) en lignes logiques pour traversal.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [string[]]$Lines
+    )
+    if (-not $Lines -or $Lines.Count -lt 1) { return @() }
+
+    $prestationPat = '(?i)\b(collecte|deee|piles?|cartouche(s)?|encre)\b'
+    $datePat = '\d{1,2}/\d{1,2}/\d{2,4}(?:\s*,\s*\d{1,2}:\d{2}\s*(?:AM|PM)?)?'
+    $numeroPat = '(?i)N\s*(?:[°\u00B0\u00BA?]|┬░|\uFFFD)?\s*\d{4,12}'
+
+    $out = New-Object System.Collections.Generic.List[string]
+    foreach ($raw in @($Lines)) {
+        if ($null -eq $raw) { continue }
+        $line = ([string]$raw).Trim()
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+
+        $canSplit = ($line -match $prestationPat) -and ($line -match $datePat) -and ($line -match $numeroPat)
+        if (-not $canSplit) {
+            [void]$out.Add($line)
+            continue
+        }
+
+        $dm = [regex]::Match($line, $datePat)
+        if (-not $dm.Success) {
+            [void]$out.Add($line)
+            continue
+        }
+
+        $beforeDate = $line.Substring(0, $dm.Index).Trim()
+        $afterDate = $line.Substring($dm.Index + $dm.Length).Trim()
+        $prestationLine = $beforeDate.TrimEnd(' ', '-', '–', '—', ',', ';')
+        $nameLine = $afterDate.TrimStart(' ', '-', '–', '—', ',', ';').Trim()
+
+        if ([string]::IsNullOrWhiteSpace($prestationLine) -or [string]::IsNullOrWhiteSpace($nameLine)) {
+            [void]$out.Add($line)
+            continue
+        }
+        if ($nameLine -notmatch $numeroPat) {
+            [void]$out.Add($line)
+            continue
+        }
+
+        [void]$out.Add($prestationLine)
+        [void]$out.Add($nameLine)
+    }
+
+    if ($out.Count -lt 1) { return @() }
+    return @($out.ToArray())
+}
+
+function script:Test-ClientNameLineSkipWhenScanningUp {
+    <#
+    Date / URL : ne pas inclure dans le nom, continuer la remontée.
+    #>
+    param([string]$Line)
+    if ([string]::IsNullOrWhiteSpace($Line)) { return $false }
+    $l = [string]$Line.Trim()
+    if ($l -match '\d{1,2}/\d{1,2}/\d{2,4}') { return $true }
+    if ($l -match '(?i)https?://') { return $true }
+    return $false
+}
+
+function script:Test-ClientNameLineStopWhenScanningUp {
+    <#
+    Arrêt remontée : ligne vide ou adresse (rue / CP contexte).
+    #>
+    param([string]$Line)
+    if ([string]::IsNullOrWhiteSpace($Line)) { return $true }
+    if (IsAddressLine $Line) { return $true }
+
+    # Page de garde : ne pas faire remonter des lignes de "prestations" (DEEE / piles / cartouches...).
+    if ($Line -match '(?i)\b(collecte|deee|piles?|cartouche(s)?|encre)\b') { return $true }
+    return $false
+}
+
+function script:Strip-ClientAnchorLeadingDateTimeUrl {
+    <#
+    .SYNOPSIS
+        Enlever un prefix date/heure/URL qui se retrouve parfois sur la même ligne que l'ancre N°.
+        Objectif : le "ClientName" doit rester uniquement sur le nom de point de collecte + "N°XXXX".
+    #>
+    param([string]$Line)
+    if ([string]::IsNullOrWhiteSpace($Line)) { return $Line }
+
+    $t = ([string]$Line).Trim()
+    $original = $t
+
+    # Date+heure: ex "4/10/26, 8:48 AM ..." (ou variantes).
+    $t2 = [regex]::Replace($t, '^\s*\d{1,2}/\d{1,2}/\d{2,4}\s*,?\s*\d{1,2}:\d{2}\s*(?:AM|PM)?\s*', '', 'IgnoreCase')
+    $changed = ($t2 -ne $t)
+    $t = $t2
+
+    # Date seule au début.
+    $t2 = [regex]::Replace($t, '^\s*\d{1,2}/\d{1,2}/\d{2,4}\s*,?\s*', '', 'IgnoreCase')
+    if ($t2 -ne $t) { $changed = $true }
+    $t = $t2
+
+    # URL éventuelle.
+    $t2 = [regex]::Replace($t, '(?i)\bhttps?://\S+\b', '')
+    if ($t2 -ne $t) { $changed = $true }
+    $t = $t2
+
+    if (-not $changed) {
+        # Ne pas toucher aux ancres commençant par '-' : certains cas ont une ligne d'ancre "- N°..."
+        return $original
+    }
+
+    # Retirer séparateurs résiduels au début uniquement (ne pas affecter les '-' de fin).
+    $t = $t.TrimStart(' ', '-', '–', '—', ',', ';')
+    return $t.Trim()
+}
+
+function script:Build-ClientNameFromAnchorWithTraversal {
+    <#
+    Lignes nom au-dessus de l'ancre (traverse date/URL, arrêt adresse/vide) + ligne ancre.
     #>
     param(
         [string[]]$Lines,
-        [int]$AnchorIndex
+        [string]$ClientId,
+        [int]$AnchorIndex = -1
     )
-    if (-not $Lines -or $Lines.Count -eq 0 -or $AnchorIndex -lt 0 -or $AnchorIndex -ge $Lines.Count) {
-        return [pscustomobject]@{
-            StartIndex  = -1
-            EndIndex    = -1
-            AnchorIndex = $AnchorIndex
-            BlockLines  = [string[]]@()
+    if (-not $Lines -or [string]::IsNullOrWhiteSpace($ClientId)) { return $null }
+
+    $anchorLineIndex = [int]$AnchorIndex
+    if ($anchorLineIndex -lt 0) {
+        $idScan = '(?i)N\s*' + $script:RxNumeroSignTokenOpt + '\s*' + [regex]::Escape($ClientId) + '(?=\D|$)'
+        for ($i = 0; $i -lt $Lines.Count; $i++) {
+            if ([string]$Lines[$i] -match $idScan) {
+                $anchorLineIndex = $i
+                break
+            }
         }
     }
+    if ($anchorLineIndex -lt 0 -or $anchorLineIndex -ge $Lines.Count) { return $null }
 
-    $start = [Math]::Max(0, $AnchorIndex - 10)
+    $anchorLine = Get-TrimmedOrNull ([string]$Lines[$anchorLineIndex])
+    if ([string]::IsNullOrWhiteSpace($anchorLine)) { return $null }
+    $anchorLine = script:Strip-ClientAnchorLeadingDateTimeUrl -Line $anchorLine
+    if ([string]::IsNullOrWhiteSpace($anchorLine)) { return $null }
 
-    # « Date de passage » : première occurrence à partir de l’ancre (évite en-têtes / bruit au-dessus du bloc courant)
-    $dateIdx = -1
-    for ($d = $AnchorIndex; $d -lt $Lines.Count; $d++) {
-        if ([string]$Lines[$d] -match '(?i)\bDate\s+de\s+passage\b') {
-            $dateIdx = $d
-            break
-        }
+    $nameLines = [System.Collections.Generic.List[string]]::new()
+    for ($i = $anchorLineIndex - 1; $i -ge 0; $i--) {
+        $line = Get-TrimmedOrNull ([string]$Lines[$i])
+        if (Test-ClientNameLineStopWhenScanningUp -Line $line) { break }
+        if (Test-ClientNameLineSkipWhenScanningUp -Line $line) { continue }
+        $nameLines.Insert(0, $line)
     }
 
-    $schedIdx = -1
-    for ($s = $AnchorIndex + 1; $s -lt $Lines.Count; $s++) {
-        if (Test-IsPlanningScheduleLine $Lines[$s]) {
-            $schedIdx = $s
-            break
-        }
+    $clientName = if ($nameLines.Count -gt 0) {
+        (($nameLines.ToArray() -join ' ') + ' ' + $anchorLine)
     }
-
-    $hardCap = [Math]::Min($Lines.Count - 1, $AnchorIndex + 18)
-    $dateCap = if ($dateIdx -ge 0) { [Math]::Min($dateIdx - 1, $hardCap) } else { $hardCap }
-    if ($dateCap -lt $AnchorIndex) { $dateCap = $AnchorIndex }
-
-    $addrEnd = Find-FirstAddressBlockEndLineIndex -Lines $Lines -From ($AnchorIndex + 1) -To $dateCap
-
-    $maxByWindow = [Math]::Min($Lines.Count - 1, $AnchorIndex + 10)
-    $candidates = @($maxByWindow, $hardCap, $dateCap)
-    if ($dateIdx -ge 0) { $candidates += ($dateIdx - 1) }
-    if ($schedIdx -ge 0) { $candidates += ($schedIdx - 1) }
-    if ($addrEnd -ge $AnchorIndex) { $candidates += $addrEnd }
-
-    $end = ($candidates | Where-Object { $_ -ge $AnchorIndex } | Measure-Object -Minimum).Minimum
-    if ($null -eq $end) { $end = $AnchorIndex }
-    if ($end -lt $AnchorIndex) { $end = $AnchorIndex }
-
-    $blockLines = @([string[]]@($Lines[$start..$end]))
-    return [pscustomobject]@{
-        StartIndex  = $start
-        EndIndex    = $end
-        AnchorIndex = $AnchorIndex
-        BlockLines  = $blockLines
+    else {
+        $anchorLine
     }
+    return [regex]::Replace($clientName, '\s+', ' ').Trim()
+}
+
+function script:Build-ClientNameFromAnchorTwoLines {
+    param(
+        [string[]]$Lines,
+        [int]$AnchorIndex,
+        [string]$ClientId = $null
+    )
+    return Build-ClientNameFromAnchorWithTraversal -Lines $Lines -ClientId $ClientId -AnchorIndex $AnchorIndex
 }
 
 function script:Write-PdfClientBlockDebug {
     param(
         [int]$PageNumber,
-        [object]$Block,
         [int]$AnchorIndex,
-        [string[]]$Excluded,
+        [string[]]$Lines,
         [string]$ClientNameFinal
     )
     Write-Host ""
-    Write-Host "[PDF_CLIENT_BLOCK_DEBUG] Page $PageNumber  AncreIndex=$AnchorIndex  Bloc Start=$($Block.StartIndex) End=$($Block.EndIndex)" -ForegroundColor Cyan
-    $relA = $AnchorIndex - $Block.StartIndex
-    if ($relA -ge 0 -and $Block.BlockLines -and $relA -lt @($Block.BlockLines).Count) {
-        Write-Host ("  Ancre (ligne): {0}" -f $Block.BlockLines[$relA]) -ForegroundColor White
-    }
-    Write-Host "  Lignes du bloc:" -ForegroundColor Gray
-    $rel = 0
-    foreach ($ln in @($Block.BlockLines)) {
-        $abs = $Block.StartIndex + $rel
-        Write-Host ("    [{0,3}] {1}" -f $abs, $ln)
-        $rel++
-    }
-    if ($Excluded -and $Excluded.Count -gt 0) {
-        Write-Host "  Exclues (adresse / date / planning / N°):" -ForegroundColor DarkYellow
-        foreach ($e in $Excluded) {
-            Write-Host "    - $e" -ForegroundColor DarkYellow
+    Write-Host "[PDF_CLIENT_BLOCK_DEBUG] Page $PageNumber  AncreIndex=$AnchorIndex" -ForegroundColor Cyan
+    if ($AnchorIndex -ge 0 -and $Lines -and $AnchorIndex -lt $Lines.Count) {
+        Write-Host ("  Ancre (ligne): {0}" -f $Lines[$AnchorIndex]) -ForegroundColor White
+        for ($di = $AnchorIndex - 1; $di -ge 0; $di--) {
+            $probe = Get-TrimmedOrNull ([string]$Lines[$di])
+            if (Test-ClientNameLineStopWhenScanningUp -Line $probe) { break }
+            if (Test-ClientNameLineSkipWhenScanningUp -Line $probe) { continue }
+            Write-Host ("  Ligne nom (remontée): [{0}] {1}" -f $di, $Lines[$di]) -ForegroundColor Gray
         }
     }
     Write-Host ("  ClientName final: {0}" -f ($(if ($ClientNameFinal) { $ClientNameFinal } else { '<vide>' }))) -ForegroundColor Green
     Write-Host ""
 }
 
+function Get-ClientNameFromLines {
+    <#
+    .SYNOPSIS
+        Lignes nom (bbox ou layout) au-dessus de l'ancre + ancre N° ClientId, concaténation brute.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Lines,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ClientId,
+
+        [Parameter(Mandatory = $false)]
+        [int]$AnchorLineIndex = -1
+    )
+
+    if (-not $Lines -or $Lines.Count -eq 0 -or [string]::IsNullOrWhiteSpace($ClientId)) {
+        return $null
+    }
+
+    $anchorLineIndex = [int]$AnchorLineIndex
+    if ($anchorLineIndex -lt 0) {
+        $idScan = '(?i)N\s*' + $script:RxNumeroSignTokenOpt + '\s*' + [regex]::Escape($ClientId) + '(?=\D|$)'
+        for ($i = 0; $i -lt $Lines.Count; $i++) {
+            if ([string]$Lines[$i] -match $idScan) {
+                $anchorLineIndex = $i
+                break
+            }
+        }
+    }
+    if ($anchorLineIndex -lt 0 -or $anchorLineIndex -ge $Lines.Count) {
+        return $null
+    }
+
+    return Build-ClientNameFromAnchorWithTraversal -Lines $Lines -ClientId $ClientId -AnchorIndex $anchorLineIndex
+}
+
 function script:Get-ClientNameFromBlock {
     <#
-    Nom client = lignes du bloc hors adresse, hors date, hors planning, hors ligne N° seule ;
-    ligne d'ancre : texte avant/après N° (collages pdftotext, ET, rue+nom sur même ligne).
+    Nom client = lignes entières au-dessus de l'ancre + ancre (certificat de destruction).
     #>
     param(
         [string[]]$Lines,
-        [object]$Block,
+        [int]$AnchorIndex,
         [string]$ClientId,
         [int]$PageNumber = 0,
         [switch]$DebugClientBlocks
     )
 
-    if (-not $Lines -or $Block.StartIndex -lt 0) { return $null }
-    $anchorIdx = $Block.AnchorIndex
-    $anchor = [string]$Lines[$anchorIdx]
-    $excluded = [System.Collections.Generic.List[string]]::new()
+    if (-not $Lines -or [string]::IsNullOrWhiteSpace($ClientId)) { return $null }
 
-    function script:MetaSkip {
-        param([string]$v)
-        if ([string]::IsNullOrWhiteSpace($v)) { return $true }
-        if ($v -match '^\d{1,2}/\d{1,2}/\d{2,4}') { return $true }
-        if ($v -match '^(?i)\d{1,2}:\d{2}\b') { return $true }
-        return $false
-    }
-
-    function script:StopLine {
-        param([string]$v)
-        if ([string]::IsNullOrWhiteSpace($v)) { return $true }
-        if ($v -match '(?i)\bDate\s+de\s+passage\b') { return $true }
-        if ($v -match '@') { return $true }
-        if ($v -match '^(?i)(Prestation|Contact|Heure|Remarque|Portable)\b') { return $true }
-        return $false
-    }
-
-    function script:IsNOnlyClientLine {
-        param([string]$v)
-        if ([string]::IsNullOrWhiteSpace($v)) { return $false }
-        return [bool]($v -match ('(?i)^\s*-?\s*N\s*' + $script:RxNumeroSignTokenOpt + '\s*\d{4,12}\s*$'))
-    }
-
-    if ([string]::IsNullOrWhiteSpace($ClientId)) { return $null }
-    # Groupe 1 = identifiant (obligatoire pour fidEsc / sous-chaînes tête–queue)
-    $idPat = '(?i)(?:ET\s*)?N\s*' + $script:RxNumeroSignTokenOpt + '\s*(' + [regex]::Escape($ClientId) + ')(?=\D|$)'
-    $idMatch = [regex]::Match($anchor, $idPat)
-    if (-not $idMatch.Success) { return $null }
-
-    $fullMarker = $idMatch
-    $fidEsc = [regex]::Escape($idMatch.Groups[1].Value)
-
-    $headRaw = if ($fullMarker.Index -gt 0) { $anchor.Substring(0, $fullMarker.Index).Trim() } else { '' }
-    $headRaw = $headRaw.Trim().TrimStart('-').Trim()
-    $tailRaw = ''
-    if ($fullMarker.Index + $fullMarker.Length -lt $anchor.Length) {
-        $tailRaw = $anchor.Substring($fullMarker.Index + $fullMarker.Length).Trim().TrimEnd('-').Trim()
-    }
-
-    $baseFromHead = $headRaw
-    $insertEtBetweenBlocks = $false
-    if ($fullMarker.Success -and $fullMarker.Value -match '(?i)^ET') {
-        $insertEtBetweenBlocks = $true
-        $baseFromHead = Get-TrimmedOrNull ($headRaw -replace '(?i)-\s*$', '')
-    }
-    elseif ($headRaw -match '(?i)(.+?)(?:\s*-\s*)?ET(?=N)') {
-        $baseFromHead = Get-TrimmedOrNull $Matches[1].Value
-        $insertEtBetweenBlocks = $true
-    }
-    elseif ($headRaw -match '(?i)(.+?)(?:\s*-\s*)?ET\s*$') {
-        $baseFromHead = Get-TrimmedOrNull $Matches[1].Value
-        $insertEtBetweenBlocks = $true
-    }
-
-    if ($baseFromHead -and (IsAddressLine $baseFromHead)) {
-        $stripped = Extract-TrailingClientNameFromAddressHead -Text $baseFromHead
-        if ($stripped) { $baseFromHead = $stripped }
-        else { $baseFromHead = $null }
-    }
-
-    $partsUp = [System.Collections.Generic.List[string]]::new()
-    for ($i = $anchorIdx - 1; $i -ge $Block.StartIndex; $i--) {
-        $l = Get-TrimmedOrNull $Lines[$i]
-        if (-not $l) { break }
-        if (MetaSkip $l) {
-            [void]$excluded.Add("[meta] $l")
-            continue
-        }
-        if (StopLine $l) { break }
-        if (Test-IsPlanningScheduleLine $l) { break }
-        if (IsAddressLine $l) {
-            [void]$excluded.Add("[adresse] $l")
-            continue
-        }
-        if (IsNOnlyClientLine $l) {
-            [void]$excluded.Add("[n° seul] $l")
-            continue
-        }
-        $partsUp.Insert(0, $l)
-    }
-
-    $partsDown = [System.Collections.Generic.List[string]]::new()
-    for ($j = $anchorIdx + 1; $j -le $Block.EndIndex; $j++) {
-        $l2 = Get-TrimmedOrNull $Lines[$j]
-        if (-not $l2) { break }
-        if ($l2 -match '(?i)\bDate\s+de\s+passage\b') { break }
-        if (MetaSkip $l2) {
-            [void]$excluded.Add("[meta] $l2")
-            continue
-        }
-        if (StopLine $l2) { break }
-        if (Test-IsPlanningScheduleLine $l2) { break }
-        if (IsAddressLine $l2) {
-            [void]$excluded.Add("[adresse] $l2")
-            continue
-        }
-        if (IsNOnlyClientLine $l2) {
-            [void]$excluded.Add("[n° seul] $l2")
-            continue
-        }
-        $nextAddr = $false
-        if (($j + 1) -le $Block.EndIndex) {
-            $nxLn = Get-TrimmedOrNull $Lines[$j + 1]
-            if ($nxLn -and (IsAddressLine $nxLn)) { $nextAddr = $true }
-        }
-        if ($nextAddr -and $l2 -notmatch '\d' -and $l2 -match '^(?i)[A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇ][A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇ\s\-]{1,40}$') {
-            [void]$excluded.Add("[ville-seule] $l2")
-            continue
-        }
-        $partsDown.Add($l2)
-    }
-
-    $chunks = [System.Collections.Generic.List[string]]::new()
-    if ($partsUp.Count -gt 0) { [void]$chunks.Add(($partsUp -join ' ')) }
-    if ($insertEtBetweenBlocks -and $partsUp.Count -gt 0 -and $partsDown.Count -gt 0) { [void]$chunks.Add('ET') }
-    if ($partsDown.Count -gt 0) { [void]$chunks.Add(($partsDown -join ' ')) }
-    if ($baseFromHead) { [void]$chunks.Add($baseFromHead) }
-    if ($tailRaw) {
-        $tailUse = $tailRaw
-        if (IsAddressLine $tailUse) {
-            $ts = Extract-TrailingClientNameFromAddressHead -Text $tailUse
-            if ($ts) { $tailUse = $ts }
-            else { $tailUse = $null }
-        }
-        if ($tailUse) { [void]$chunks.Add($tailUse) }
-    }
-
-    $name = $null
-    if ($chunks.Count -gt 0) {
-        $name = ($chunks -join ' ')
-        $name = $name -replace '\s*-\s*', ' '
-        $name = [regex]::Replace($name, '\s+', ' ').Trim().TrimEnd('-').Trim()
-    }
-
-    if ([string]::IsNullOrWhiteSpace($name)) {
-        $cid = if ($idMatch.Groups[1].Success -and $idMatch.Groups[1].Value) { $idMatch.Groups[1].Value } else { $ClientId }
-        $partsFb = [System.Collections.Generic.List[string]]::new()
-        for ($k = $Block.StartIndex; $k -le $Block.EndIndex; $k++) {
-            if ($k -eq $anchorIdx) {
-                $an = [string]$Lines[$anchorIdx]
-                $clean = [regex]::Replace($an, ('(?i)(?:ET\s*)?N\s*' + $script:RxNumeroSignTokenOpt + '\s*') + [regex]::Escape($cid), ' ')
-                $clean = Get-TrimmedOrNull ([regex]::Replace($clean, '\s+', ' '))
-                if ($clean -and -not (IsAddressLine $clean)) { [void]$partsFb.Add($clean) }
-                continue
-            }
-            $ln = Get-TrimmedOrNull $Lines[$k]
-            if (-not $ln) { continue }
-            if (MetaSkip $ln) { continue }
-            if (Test-IsPlanningScheduleLine $ln) { continue }
-            if ($ln -match '(?i)\bDate\s+de\s+passage\b') { continue }
-            if (IsAddressLine $ln) { continue }
-            [void]$partsFb.Add($ln)
-        }
-        if ($partsFb.Count -gt 0) {
-            $name = [regex]::Replace(($partsFb -join ' '), '\s+', ' ').Trim()
+    $anchorIdx = [int]$AnchorIndex
+    if ($anchorIdx -lt 0) {
+        $idScanDbg = '(?i)N\s*' + $script:RxNumeroSignTokenOpt + '\s*' + [regex]::Escape($ClientId) + '(?=\D|$)'
+        for ($ai = 0; $ai -lt $Lines.Count; $ai++) {
+            if ([string]$Lines[$ai] -match $idScanDbg) { $anchorIdx = $ai; break }
         }
     }
+
+    $name = Build-ClientNameFromAnchorWithTraversal -Lines $Lines -ClientId $ClientId -AnchorIndex $anchorIdx
 
     if ($DebugClientBlocks -or (Test-PdfClientBlockDebugEnabled) -or ($env:PDF_ENTITY_DEBUG_CLIENT_BLOCKS -and $env:PDF_ENTITY_DEBUG_CLIENT_BLOCKS.Trim() -inotmatch '^(0|false|no|off)$')) {
-        Write-PdfClientBlockDebug -PageNumber $PageNumber -Block $Block -AnchorIndex $anchorIdx -Excluded @($excluded.ToArray()) -ClientNameFinal $name
+        Write-PdfClientBlockDebug -PageNumber $PageNumber -AnchorIndex $anchorIdx -Lines $Lines -ClientNameFinal $name
     }
 
     if ([string]::IsNullOrWhiteSpace($name)) { return $null }
     return $name
 }
 
-function script:Get-AddressFromBlock {
+function script:Get-AddressFromAnchor {
     param(
         [string[]]$Lines,
-        [object]$Block
+        [int]$AnchorIndex
     )
     $result = @{
         Street      = $null
@@ -884,7 +871,7 @@ function script:Get-AddressFromBlock {
         City        = $null
         FullAddress = $null
     }
-    if (-not $Lines -or $Block.StartIndex -lt 0) { return $result }
+    if (-not $Lines -or $AnchorIndex -lt 0 -or $AnchorIndex -ge $Lines.Count) { return $result }
 
     function script:NormStreet {
         param([string]$Value)
@@ -897,13 +884,12 @@ function script:Get-AddressFromBlock {
         return $s
     }
 
-    $anchor = $Block.AnchorIndex
     $street = $null
     $postal = $null
     $city = $null
     $prevStreetLike = $null
 
-    for ($idx = $anchor + 1; $idx -le $Block.EndIndex; $idx++) {
+    for ($idx = $AnchorIndex + 1; $idx -lt $Lines.Count; $idx++) {
         $line = Get-TrimmedOrNull $Lines[$idx]
         if (-not $line) { continue }
         if ($line -match '(?i)\bDate\s+de\s+passage\b') { break }
@@ -916,7 +902,7 @@ function script:Get-AddressFromBlock {
                 $city = [regex]::Replace($after, '\s+', ' ').Trim()
                 $city = [regex]::Replace($city, '\s+\d{7}\s*$', '').Trim()
             }
-            elseif (($idx + 1) -le $Block.EndIndex) {
+            elseif (($idx + 1) -lt $Lines.Count) {
                 $next = Get-TrimmedOrNull $Lines[$idx + 1]
                 if ($next -and $next -notmatch '(?i)^date\s+de\s+passage\b') {
                     $city = [regex]::Replace($next, '\s+', ' ').Trim()
@@ -1390,6 +1376,10 @@ function ConvertTo-PageEntity {
         [AllowEmptyString()]
         [string[]]$Lines,
 
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [string[]]$ClientNameLines = $null,
+
         [switch]$DebugClientBlocks
     )
 
@@ -1441,11 +1431,28 @@ function ConvertTo-PageEntity {
         }
     }
 
-    $clientBlock = Get-ClientBlock -Lines $normalized -AnchorIndex $clientAnchorIndex
-    $entity.ClientName = Get-ClientNameFromBlock -Lines $normalized -Block $clientBlock -ClientId $clientId -PageNumber $PageNumber -DebugClientBlocks:$DebugClientBlocks
+    $nameSourceLines = $normalized
+    if ($ClientNameLines -and @($ClientNameLines).Count -gt 0) {
+        $cnSanitized = @(Normalize-PdfNoiseText -Lines @($ClientNameLines))
+        $cnNormalized = @(Get-NormalizedNonEmptyLines -Lines $cnSanitized)
+        if ($cnNormalized.Count -gt 0) {
+            $nameSourceLines = $cnNormalized
+        }
+    }
+    $nameSourceLines = @(Split-MonolithicClientNameLayoutLines -Lines @($nameSourceLines))
 
-    $addr = if ($clientBlock.StartIndex -ge 0) {
-        Get-AddressFromBlock -Lines $normalized -Block $clientBlock
+    $entity.ClientName = Get-ClientNameFromBlock -Lines $nameSourceLines -AnchorIndex -1 -ClientId $clientId -PageNumber $PageNumber -DebugClientBlocks:$DebugClientBlocks
+    if (-not [string]::IsNullOrWhiteSpace($entity.ClientName)) {
+        $entity.ClientName = [regex]::Replace([string]$entity.ClientName, '(?i)N\s*\?\s*(?=\d)', 'N°')
+        $entity.ClientName = [regex]::Replace([string]$entity.ClientName, 'N\s*\uFFFD\s*(?=\d)', 'N°')
+        $entity.ClientName = ([string]$entity.ClientName).Replace('N┬░', 'N°')
+    }
+    if ($nameSourceLines.Count -gt 0) {
+        $entity | Add-Member -NotePropertyName ClientNameLines -NotePropertyValue @($nameSourceLines) -Force
+    }
+
+    $addr = if ($clientAnchorIndex -ge 0) {
+        Get-AddressFromAnchor -Lines $normalized -AnchorIndex $clientAnchorIndex
     }
     else {
         @{ Street = $null; PostalCode = $null; City = $null; FullAddress = $null }

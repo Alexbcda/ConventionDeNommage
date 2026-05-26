@@ -1,0 +1,34 @@
+4/10/26, 8:48 AM
+https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]… 43/75
+EUROFINSLABAZURSAINTJEAN
+MAURIENNE-N°24669
+PlaceFodère
+73300Saint-Jean-de-Maurienne
+Datedepassage:23/04/2026
+Jeudi•07h00-12h00/14h00-18h00
+5517128
+Heuredepassage:
+Tournée
+G4
+Créneau
+Matin
+Boucle
+1
+Rang
+1
+Contact
+ChristopheBLOT
+ChristopheBlot@eurofins-biologie.com
+0682978894
+RemarqueetVisaClient
+-Typederampe:Mobile
+Prestation(s) Matériel Poids/Unité Reporting
+CollectedePapier
+confidentiel
+5517128-19811616
+Bac360L /1 kg
+Collecterlebac360L
+DestructiondePapierconfidentiel
+5517128-19811636 bac
+DANSUNBAC360Certificatdedestruction
+

@@ -1,0 +1,41 @@
+4/10/26, 8:48 AM
+https://api-production.elise.com.fr/v1/work_orders.html?access_token=Ye7nB79A07DiMOi7SZwooIZMtdYBQaR-XsPAETLCRgo&filter[date]… 42/75
+EUROFINSLABAZURBRIGNOUD-
+N°24656
+34boulevarddelaLibération
+38190BRIGNOUD
+Datedepassage:23/04/2026
+Jeudi•07h00-12h00
+5501112
+Heuredepassage:
+Tournée
+G2
+Créneau
+Matin
+Boucle
+1
+Rang
+1
+Contact
+ChristopheBLOT
+ChristopheBlot@eurofins-biologie.com
+0682978894
+RemarqueetVisaClient
+-Typederampe:Mobile
+Prestation(s) Matériel Poids/Unité Reporting
+CollectedePapieren
+corbeillefermée
+5501112-19764136
+Corbeillefermée
+ELISE30L /6 kg
+Collecterlescorbeilles30L:Biennoterlenombredecorbeillescollectées
+DestructiondePapierencorbeillefermée
+5501112-19764150 cor
+Biennoterlenombredecorbeillescollectées
+Vente/Renouvellement
+deCorbeillefermée
+ELISE30Lx1
+5501112-20582056
+un
+Biennoterlenombredecorbeillesdéposées
+
