@@ -1464,6 +1464,198 @@ function Get-CnsTourneeBlockPrestationDetectionLabel {
     return ($parts -join ', ')
 }
 
+function Test-CnsOdmDuplicationTargetClient {
+    param(
+        [AllowNull()] $WorkOrderEntity,
+        [AllowNull()] $PageEntity
+    )
+    $targetIds = New-Object System.Collections.Generic.List[string]
+    [void]$targetIds.Add('25263')
+    if (-not [string]::IsNullOrWhiteSpace($env:CN_ODM_DUPLICATE_CLIENT_IDS)) {
+        foreach ($part in @($env:CN_ODM_DUPLICATE_CLIENT_IDS -split '[,;]')) {
+            $t = $part.Trim()
+            if (-not [string]::IsNullOrWhiteSpace($t)) { [void]$targetIds.Add($t) }
+        }
+    }
+    [string]$cid = ''
+    if ($null -ne $WorkOrderEntity) {
+        try { $cid = ([string]$WorkOrderEntity.ClientID).Trim() } catch { $cid = '' }
+    }
+    if ([string]::IsNullOrWhiteSpace($cid) -and $null -ne $PageEntity) {
+        try { $cid = ([string]$PageEntity.ClientID).Trim() } catch { $cid = '' }
+    }
+    foreach ($id in @($targetIds)) {
+        if (-not [string]::IsNullOrWhiteSpace($cid) -and $cid -eq $id) { return $true }
+    }
+    [string]$cname = ''
+    if ($null -ne $WorkOrderEntity) {
+        try { $cname = [string]$WorkOrderEntity.ClientName } catch { $cname = '' }
+    }
+    if ([string]::IsNullOrWhiteSpace($cname) -and $null -ne $PageEntity) {
+        try { $cname = [string]$PageEntity.ClientName } catch { $cname = '' }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($cname) -and $cname -match '(?i)LABORATOIRES\s+AGUETTANT') {
+        return $true
+    }
+    return $false
+}
+
+function Get-CnsOdmDuplicationRunKey {
+    param(
+        [AllowNull()] $WorkOrderEntity,
+        [AllowNull()] $PageEntity
+    )
+    if ($null -ne $WorkOrderEntity) {
+        if (Get-Command Get-CnsDestructionCertificateWorkOrderKey -ErrorAction SilentlyContinue) {
+            $wk = Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $WorkOrderEntity
+            if (-not [string]::IsNullOrWhiteSpace($wk)) { return ('WO:' + $wk.Trim()) }
+        }
+        [string]$cid = ''
+        try { $cid = ([string]$WorkOrderEntity.ClientID).Trim() } catch { $cid = '' }
+        if (-not [string]::IsNullOrWhiteSpace($cid)) { return ('CID:' + $cid) }
+    }
+    if ($null -ne $PageEntity) {
+        [string]$cid2 = ''
+        try { $cid2 = ([string]$PageEntity.ClientID).Trim() } catch { $cid2 = '' }
+        if (-not [string]::IsNullOrWhiteSpace($cid2)) { return ('CID:' + $cid2) }
+        try { return ('PE:' + [int]$PageEntity.PageNumber) } catch { return 'PE:0' }
+    }
+    return $null
+}
+
+function Invoke-CnsFlushOdmDuplicationRun {
+    <#
+    .SYNOPSIS
+        Insere les copies ODM du tampon puis les certificats/CEA différés (apres toutes les pages originales du run).
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.List[string]]$Frag,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.List[string]]$SlicePaths,
+        [AllowNull()]
+        [hashtable]$PendingCert,
+        [AllowNull()]
+        [System.Collections.Generic.List[object]]$PendingCea,
+        [Parameter(Mandatory = $true)]
+        [string]$RunKeyLabel,
+        [Parameter(Mandatory = $true)]
+        [string]$TmpDir,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.HashSet[string]]$CertInjectedForWo,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.HashSet[int]]$CeaInjectedForPage,
+        [AllowNull()][scriptblock]$ProgressCallback,
+        [Parameter(Mandatory = $true)]
+        [string]$TChildCore,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$FinalOrderToLine,
+        [Parameter(Mandatory = $true)]
+        [array]$Segments,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$OrderToSeg,
+        [Parameter(Mandatory = $true)]
+        [datetime]$VisitDate
+    )
+
+    if ($SlicePaths.Count -lt 1) { return }
+
+    $dupCount = 0
+    foreach ($origPath in @($SlicePaths)) {
+        if ([string]::IsNullOrWhiteSpace($origPath) -or -not (Test-Path -LiteralPath $origPath)) { continue }
+        $dupPath = Join-Path ([System.IO.Path]::GetDirectoryName($origPath)) (
+            ([System.IO.Path]::GetFileNameWithoutExtension($origPath) + '_dup.pdf')
+        )
+        Copy-Item -LiteralPath $origPath -Destination $dupPath -Force
+        [void]$Frag.Add($dupPath)
+        $dupCount++
+    }
+    if ($dupCount -gt 0) {
+        Write-Host ("[DUPLICATION-ODM] {0} page(s) copiee(s) pour {1} (apres originaux, avant certificat/CEA)." -f $dupCount, $RunKeyLabel) -ForegroundColor Green
+    }
+
+    if ($null -ne $PendingCert) {
+        $woPage = $PendingCert.WorkOrderEntity
+        $gsPair = $PendingCert.GsPair
+        $fi = [int]$PendingCert.BlockIndex
+        $sliceIx = [int]$PendingCert.SliceIndex
+        $pn = [int]$PendingCert.ReorderPage
+        $woCacheKey = [string]$PendingCert.WorkOrderCacheKey
+        if (-not [string]::IsNullOrWhiteSpace($woCacheKey) -and $certInjectedForWo.Add($woCacheKey)) {
+            if (Get-Command New-CnsDestructionCertificatePdfFromWordTemplate -ErrorAction SilentlyContinue) {
+                $segMeta = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $gsPair -FinalOrderToLine $FinalOrderToLine -Segments $Segments -ExcelOrderIndexToSegmentIndex $OrderToSeg -VisitDate $VisitDate
+                $phTable = @{}
+                foreach ($entry in (Get-CnsDestructionCertificatePlaceholders -WorkOrderEntity $woPage -SegmentMeta $segMeta -VisitDate $VisitDate).GetEnumerator()) {
+                    $phTable[[string]$entry.Key] = [string]$entry.Value
+                }
+                $certOut = Join-Path $TmpDir ('cert_dest_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
+                $certPdf = New-CnsDestructionCertificatePdfFromWordTemplate -OutPdfPath $certOut -Placeholders $phTable
+                if (-not [string]::IsNullOrWhiteSpace($certPdf) -and (Test-Path -LiteralPath $certPdf)) {
+                    if (Get-Command Write-CnsDestructionCertificatePdfMergeAudit -ErrorAction SilentlyContinue) {
+                        Write-CnsDestructionCertificatePdfMergeAudit -Phase 'GENERATED' -PdfPath $certPdf
+                    }
+                    [void]$Frag.Add($certPdf)
+                    Add-TourneeCompositionGeneratedDocCount
+                    Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
+                        -Detail ("{0}Generation certificat destruction... [OK]" -f ($TChildCore + '│   └── '))
+                    Write-Host ("[DESTRUCTION-CERT] Certificat injecte apres duplication ODM (WO={0}, reorder #{1}, fichier={2})." -f $woCacheKey, $pn, (Split-Path -Leaf $certPdf)) -ForegroundColor Green
+                }
+                else {
+                    [void]$CertInjectedForWo.Remove($woCacheKey)
+                    Write-Warning ("[DESTRUCTION-CERT] Generation certificat echouee pour WO={0} — page ODM conservee." -f $woCacheKey)
+                }
+            }
+            else {
+                [void]$CertInjectedForWo.Remove($woCacheKey)
+                Write-Warning '[DESTRUCTION-CERT] Module Word certificat non charge — injection ignoree.'
+            }
+        }
+    }
+
+    foreach ($ceaItem in @($PendingCea)) {
+        if ($null -eq $ceaItem) { continue }
+        [int]$rawPnPage = [int]$ceaItem.RawPageNum
+        if ($rawPnPage -lt 1) { continue }
+        if (-not $CeaInjectedForPage.Add($rawPnPage)) { continue }
+        $fi = [int]$ceaItem.BlockIndex
+        $sliceIx = [int]$ceaItem.SliceIndex
+        $pn = [int]$ceaItem.ReorderPage
+        $slicePath = [string]$ceaItem.SlicePath
+        $woPage = $ceaItem.WorkOrderEntity
+        $pePage = $ceaItem.PageEntity
+        $gsPair = $ceaItem.GsPair
+        $ceaOut = Join-Path $TmpDir ('cea_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
+        $ceaPdf = $null
+        if (Get-Command New-CnsCeaPointsDeCollectesPdfFromWordTemplate -ErrorAction SilentlyContinue) {
+            $segMetaCea = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $gsPair -FinalOrderToLine $FinalOrderToLine -Segments $Segments -ExcelOrderIndexToSegmentIndex $OrderToSeg -VisitDate $VisitDate
+            $phCea = @{}
+            foreach ($entry in (Get-CnsCeaPointsDeCollectePlaceholders -WorkOrderEntity $woPage -PageEntity $pePage -SegmentMeta $segMetaCea -VisitDate $VisitDate -FragSlicePdfPath $slicePath).GetEnumerator()) {
+                $phCea[[string]$entry.Key] = [string]$entry.Value
+            }
+            $ceaPdf = New-CnsCeaPointsDeCollectesPdfFromWordTemplate -OutPdfPath $ceaOut -Placeholders $phCea
+        }
+        else {
+            Write-Warning '[CEA-POINTS] Module Word CEA non charge — fallback PDF statique legacy.'
+            $ceaPdf = Copy-CnsMetierTemplatePdfToWorkDir -TemplateFileName 'CeaPointsDeCollectes.pdf' -WorkDir $TmpDir -DestLeafName ('cea_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($ceaPdf) -and (Test-Path -LiteralPath $ceaPdf)) {
+            Write-Host ("[CEA-POINTS] PDF injecte apres duplication ODM : {0}" -f (Split-Path -Leaf $ceaPdf)) -ForegroundColor Green
+            [void]$Frag.Add($ceaPdf)
+            Add-TourneeCompositionGeneratedDocCount
+            Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
+                -Detail ("{0}Generation document CEA... [OK]" -f ($TChildCore + '│   └── '))
+            Write-Host ("[STEP5-METIER] Document CEA injecte apres duplication ODM (reorder #{0}, RawPage={1}, fichier={2})." -f $pn, $rawPnPage, (Split-Path -Leaf $ceaPdf)) -ForegroundColor Green
+        }
+        else {
+            [void]$CeaInjectedForPage.Remove($rawPnPage)
+            Write-Warning ("[CEA-POINTS] Generation CEA echouee pour RawPage={0} — page non injectee." -f $rawPnPage)
+        }
+    }
+
+    $SlicePaths.Clear()
+    if ($null -ne $PendingCea) { $PendingCea.Clear() }
+}
+
 function Invoke-PlanningTourneePdfCoverComposition {
     <#
     .SYNOPSIS
@@ -1788,6 +1980,10 @@ function Invoke-PlanningTourneePdfCoverComposition {
 
             $sliceIx = 0
             $odmIdx = 0
+            $dupRunKey = $null
+            $dupSliceBuffer = [System.Collections.Generic.List[string]]::new()
+            $dupPendingCert = $null
+            $dupPendingCea = [System.Collections.Generic.List[object]]::new()
             for ($pn = [int]$blk.MainFrom1; $pn -le [int]$blk.MainTo1; $pn++) {
                 $sliceIx++
                 $odmIdx++
@@ -1808,6 +2004,29 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     if ($rawPnPage -gt 0) {
                         $pePage = Get-CnsPageEntityByPhysicalPage -PageNumberOneBased $rawPnPage -PdfEntities @($PdfEntities)
                     }
+
+                    $runKey = Get-CnsOdmDuplicationRunKey -WorkOrderEntity $woPage -PageEntity $pePage
+                    $isDupTarget = Test-CnsOdmDuplicationTargetClient -WorkOrderEntity $woPage -PageEntity $pePage
+                    if ($dupSliceBuffer.Count -gt 0 -and (
+                            -not $isDupTarget -or
+                            [string]::IsNullOrWhiteSpace($runKey) -or
+                            ($null -ne $dupRunKey -and $runKey -ne $dupRunKey)
+                        )) {
+                        Invoke-CnsFlushOdmDuplicationRun -Frag $frag -SlicePaths $dupSliceBuffer `
+                            -PendingCert $dupPendingCert -PendingCea $dupPendingCea `
+                            -RunKeyLabel $dupRunKey -TmpDir $tmpDir `
+                            -CertInjectedForWo $certInjectedForWo -CeaInjectedForPage $ceaInjectedForPage `
+                            -ProgressCallback $ProgressCallback -TChildCore $tChildCore `
+                            -FinalOrderToLine $foToLine -Segments @($segments) -OrderToSeg $orderToSeg -VisitDate $VisitDate
+                        $dupRunKey = $null
+                        $dupPendingCert = $null
+                    }
+
+                    if ($isDupTarget) {
+                        if ([string]::IsNullOrWhiteSpace($dupRunKey)) { $dupRunKey = $runKey }
+                        [void]$dupSliceBuffer.Add($slicePath)
+                    }
+
                     $metierPage = Get-CnsPdfPageMetierAnalysis -PageEntity $pePage -WorkOrderEntity $woPage
                     $requiresCeaPage = Test-CnsStep5FragSliceRequiresCeaDocument -FragSlicePdfPath $slicePath
                     $odmLabel = Get-CnsOdmPagePrestationDetectionLabel -PageEntity $pePage -WorkOrderEntity $woPage -RequiresCea:$requiresCeaPage
@@ -1825,12 +2044,39 @@ function Invoke-PlanningTourneePdfCoverComposition {
                         $willCea = $true
                     }
 
-                    $analyseIsLast = ($odmIdx -eq $odmTotal) -and -not $willCert -and -not $willCea -and -not $hasSegBilan
+                    if ($isDupTarget) {
+                        if ($willCert -and $null -eq $dupPendingCert) {
+                            $dupPendingCert = @{
+                                WorkOrderEntity   = $woPage
+                                GsPair            = $gsPair
+                                BlockIndex        = $fi
+                                SliceIndex        = $sliceIx
+                                ReorderPage       = $pn
+                                WorkOrderCacheKey = (Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage)
+                            }
+                            $willCert = $false
+                        }
+                        if ($willCea) {
+                            [void]$dupPendingCea.Add([pscustomobject]@{
+                                    WorkOrderEntity = $woPage
+                                    PageEntity      = $pePage
+                                    GsPair          = $gsPair
+                                    BlockIndex      = $fi
+                                    SliceIndex      = $sliceIx
+                                    ReorderPage     = $pn
+                                    RawPageNum      = $rawPnPage
+                                    SlicePath       = $slicePath
+                                })
+                            $willCea = $false
+                        }
+                    }
+
+                    $analyseIsLast = ($odmIdx -eq $odmTotal) -and -not $willCert -and -not $willCea -and -not $hasSegBilan -and (-not $isDupTarget -or $dupPendingCert -eq $null) -and ($dupPendingCea.Count -eq 0)
                     $analyseBranch = if ($analyseIsLast) { '└── ' } else { '├── ' }
                     Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
                         -Detail ("{0}Analyse ODM {1}/{2} : {3}" -f ($tChildCore + $analyseBranch), $odmIdx, $odmTotal, $odmLabel)
 
-                    if ($metierPage.RequiresDestructionCertificate -and $null -ne $woPage) {
+                    if (-not $isDupTarget -and $metierPage.RequiresDestructionCertificate -and $null -ne $woPage) {
                         $woCacheKey = Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage
                         if (-not [string]::IsNullOrWhiteSpace($woCacheKey) -and $certInjectedForWo.Add($woCacheKey)) {
                             if (Get-Command New-CnsDestructionCertificatePdfFromWordTemplate -ErrorAction SilentlyContinue) {
@@ -1863,7 +2109,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                         }
                     }
 
-                    if ($requiresCeaPage -and $rawPnPage -gt 0 -and $ceaInjectedForPage.Add($rawPnPage)) {
+                    if (-not $isDupTarget -and $requiresCeaPage -and $rawPnPage -gt 0 -and $ceaInjectedForPage.Add($rawPnPage)) {
                         $ceaOut = Join-Path $tmpDir ('cea_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
                         $ceaPdf = $null
                         if (Get-Command New-CnsCeaPointsDeCollectesPdfFromWordTemplate -ErrorAction SilentlyContinue) {
@@ -1892,6 +2138,17 @@ function Invoke-PlanningTourneePdfCoverComposition {
                         }
                     }
                 }
+            }
+
+            if ($dupSliceBuffer.Count -gt 0) {
+                Invoke-CnsFlushOdmDuplicationRun -Frag $frag -SlicePaths $dupSliceBuffer `
+                    -PendingCert $dupPendingCert -PendingCea $dupPendingCea `
+                    -RunKeyLabel $(if ([string]::IsNullOrWhiteSpace($dupRunKey)) { 'client cible' } else { $dupRunKey }) `
+                    -TmpDir $tmpDir -CertInjectedForWo $certInjectedForWo -CeaInjectedForPage $ceaInjectedForPage `
+                    -ProgressCallback $ProgressCallback -TChildCore $tChildCore `
+                    -FinalOrderToLine $foToLine -Segments @($segments) -OrderToSeg $orderToSeg -VisitDate $VisitDate
+                $dupRunKey = $null
+                $dupPendingCert = $null
             }
 
             if ([string]$blk.GroupKey -match '^SEG(\d+)$') {
