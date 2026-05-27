@@ -1,4 +1,4 @@
-# CEA Points de collecte : template DOCX -> PDF (LibreOffice headless, sans Microsoft Word).
+# CEA Points de collecte : template DOCX -> PDF (LibreOffice headless ou Microsoft Word COM en secours).
 # Reutilise le moteur w:t safe et la conversion LibreOffice du certificat destruction.
 
 . (Join-Path $PSScriptRoot 'CnsDestructionCertificateWord.ps1')
@@ -167,7 +167,7 @@ function Get-CnsCeaPointsDeCollectePlaceholders {
 function New-CnsCeaPointsDeCollectesPdfFromWordTemplate {
     <#
     .SYNOPSIS
-        Remplit CeaPointsDeCollectes.docx et exporte un PDF via LibreOffice. Retourne le chemin PDF ou $null.
+        Remplit CeaPointsDeCollectes.docx et exporte un PDF (LibreOffice ou Word). Retourne le chemin PDF ou $null.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -181,11 +181,6 @@ function New-CnsCeaPointsDeCollectesPdfFromWordTemplate {
     }
     if ([string]::IsNullOrWhiteSpace($TemplatePath) -or -not (Test-Path -LiteralPath $TemplatePath -PathType Leaf)) {
         Write-Warning '[CEA-POINTS] Template DOCX introuvable (templates\CeaPointsDeCollectes.docx ou CN_CEA_POINTS_TEMPLATE).'
-        return $null
-    }
-
-    if (-not (Get-CnsLibreOfficeSofficePath)) {
-        Write-Warning '[CEA-POINTS] LibreOffice introuvable (soffice.exe).'
         return $null
     }
 
@@ -224,9 +219,9 @@ function New-CnsCeaPointsDeCollectesPdfFromWordTemplate {
     }
 
     if (-not (Test-Path -LiteralPath $outAbs)) {
-        Write-Warning '[CEA-POINTS] PDF non produit apres conversion LibreOffice.'
+        Write-Warning '[CEA-POINTS] PDF non produit apres conversion DOCX vers PDF.'
         return $null
     }
-    Write-Host ("[CEA-POINTS] PDF genere dynamiquement (LibreOffice) : {0}" -f (Split-Path -Leaf $outAbs)) -ForegroundColor Green
+    Write-Host ("[CEA-POINTS] PDF genere dynamiquement : {0}" -f (Split-Path -Leaf $outAbs)) -ForegroundColor Green
     return $outAbs
 }
