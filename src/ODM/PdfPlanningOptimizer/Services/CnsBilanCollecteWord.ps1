@@ -1,4 +1,4 @@
-# Bilan de collecte : template DOCX -> PDF (LibreOffice headless, sans Microsoft Word).
+# Bilan de collecte : template DOCX -> PDF (LibreOffice headless ou Microsoft Word COM en secours).
 # Reutilise le moteur w:t safe et la conversion LibreOffice du certificat destruction.
 
 . (Join-Path $PSScriptRoot 'CnsDestructionCertificateWord.ps1')
@@ -63,7 +63,7 @@ function Get-CnsBilanCollectePlaceholders {
 function New-CnsBilanCollectePdfFromWordTemplate {
     <#
     .SYNOPSIS
-        Remplit BilanDeCollecte.docx et exporte un PDF via LibreOffice. Retourne le chemin PDF ou $null.
+        Remplit BilanDeCollecte.docx et exporte un PDF (LibreOffice ou Word). Retourne le chemin PDF ou $null.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -77,11 +77,6 @@ function New-CnsBilanCollectePdfFromWordTemplate {
     }
     if ([string]::IsNullOrWhiteSpace($TemplatePath) -or -not (Test-Path -LiteralPath $TemplatePath -PathType Leaf)) {
         Write-Warning '[BILAN-COLLECTE] Template DOCX introuvable (templates\BilanDeCollecte.docx ou CN_BILAN_COLLECTE_TEMPLATE).'
-        return $null
-    }
-
-    if (-not (Get-CnsLibreOfficeSofficePath)) {
-        Write-Warning '[BILAN-COLLECTE] LibreOffice introuvable (soffice.exe).'
         return $null
     }
 
@@ -99,7 +94,7 @@ function New-CnsBilanCollectePdfFromWordTemplate {
         if (-not (Set-CnsDocxTemplatePlaceholders -DocxPath $workDocx -Placeholders $Placeholders)) {
             return $null
         }
-        if (-not (Convert-DocxToPdfUsingLibreOffice -DocxPath $workDocx -PdfPath $outAbs)) {
+        if (-not (Convert-DocxToPdf -DocxPath $workDocx -PdfPath $outAbs)) {
             return $null
         }
     }
@@ -119,7 +114,7 @@ function New-CnsBilanCollectePdfFromWordTemplate {
     }
 
     if (-not (Test-Path -LiteralPath $outAbs)) {
-        Write-Warning '[BILAN-COLLECTE] PDF non produit apres conversion LibreOffice.'
+        Write-Warning '[BILAN-COLLECTE] PDF non produit apres conversion DOCX vers PDF.'
         return $null
     }
     return $outAbs
