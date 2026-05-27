@@ -1117,6 +1117,26 @@ function script:Get-WorkOrderSortKeyMinPage {
     return (Get-SafeMin -Values $WorkOrder.Pages -Name "wo.Pages.Get-SafeMin")
 }
 
+function script:Sort-PlanningMatchResultRows {
+    param($InputObject)
+    $list = @($InputObject)
+    if ($list.Count -eq 0) { return @() }
+    return @(
+        $list | Sort-Object `
+            @{ Expression = { (Get-SortSafeKeyInt $_.ExcelOrder) } }, `
+            @{ Expression = {
+                $pm = 0
+                if ($null -ne $_.PSObject.Properties['PageMin'] -and $null -ne $_.PageMin) {
+                    $pm = $_.PageMin
+                }
+                elseif ($null -ne $_.WorkOrder) {
+                    $pm = script:Get-WorkOrderSortKeyMinPage -WorkOrder $_.WorkOrder
+                }
+                (Get-SortSafeKeyInt $pm)
+            } }
+    )
+}
+
 function script:Test-PlanningExcelFixedHeaderMatchesDate {
     param(
         [string]$HeaderCell,
@@ -2911,34 +2931,62 @@ function Match-WorkOrderToExcelOrderSmart {
             -SubRatio (0.55 + 0.07 * ($slotIdx / [Math]::Max(1, $slotTotal)))
 
         $excelIdNorm = Normalize-ClientIdForJoin $slot.ClientId
-        $matchedWo = $null
+        $exactMatchedAny = $false
 
         if (-not [string]::IsNullOrWhiteSpace($excelIdNorm) -and $workOrdersByClientId.ContainsKey($excelIdNorm)) {
-            foreach ($cand in @($workOrdersByClientId[$excelIdNorm].ToArray())) {
-                $woKey = script:Get-PlanningGraphStableWorkOrderRef -WorkOrder $cand
-                if ($usedWoKeys.Contains($woKey)) { continue }
-                $matchedWo = $cand
-                break
+            $candidates = @(
+                $workOrdersByClientId[$excelIdNorm].ToArray() |
+                    Where-Object {
+                        $null -ne $_ -and -not $usedWoKeys.Contains((script:Get-PlanningGraphStableWorkOrderRef -WorkOrder $_))
+                    }
+            )
+            if ($candidates.Count -gt 0) {
+                $candidates = @(
+                    $candidates | Sort-Object { script:Get-WorkOrderSortKeyMinPage -WorkOrder $_ }
+                )
+                $maxPerSlot = 50
+                if (-not [string]::IsNullOrWhiteSpace($env:CN_MAX_MATCHES_PER_EXCEL_SLOT)) {
+                    try {
+                        $parsedMax = [int]$env:CN_MAX_MATCHES_PER_EXCEL_SLOT
+                        if ($parsedMax -gt 0) { $maxPerSlot = $parsedMax }
+                    }
+                    catch { }
+                }
+                $isMultiSlot = ($candidates.Count -gt 1)
+                $slotMatchCount = 0
+                foreach ($cand in @($candidates)) {
+                    if ($slotMatchCount -ge $maxPerSlot) {
+                        Write-Warning ("[MATCH] CN_MAX_MATCHES_PER_EXCEL_SLOT={0} atteint pour ExcelClientID={1}" -f $maxPerSlot, $excelIdNorm)
+                        break
+                    }
+                    $woKey = script:Get-PlanningGraphStableWorkOrderRef -WorkOrder $cand
+                    if ($usedWoKeys.Contains($woKey)) { continue }
+                    [void]$usedWoKeys.Add($woKey)
+                    $script:PlanningMatchExactCount++
+                    $slotMatchCount++
+                    $exactMatchedAny = $true
+                    $pdfIdNorm = Normalize-ClientIdForJoin $cand.ClientID
+                    $pageMin = script:Get-WorkOrderSortKeyMinPage -WorkOrder $cand
+                    $matchReason = if ($isMultiSlot) { 'CLIENTID_EXACT_MULTI' } else { 'CLIENTID_EXACT' }
+                    $matchTypeLabel = if ($isMultiSlot) { 'ID_MULTI' } else { 'ID' }
+                    Write-Host ("[MATCH] TYPE={0} SCORE=100 ExcelClientID={1} PdfClientID={2}" -f $matchTypeLabel, $excelIdNorm, $pdfIdNorm)
+                    Write-Host ("[MATCH-RESULT] Type={0} ExcelClientID={1} PDFClientID={2}" -f $matchTypeLabel, $excelIdNorm, $pdfIdNorm)
+                    [void]$matches.Add([pscustomobject]@{
+                        ExcelOrder  = $slot.OrderIndex
+                        ExcelLabel  = $slot.Label
+                        MatchScore  = 100
+                        Similarity  = 100
+                        MatchReason = $matchReason
+                        WorkOrder   = $cand
+                        Entity      = $null
+                        PageMin     = $pageMin
+                    })
+                }
             }
         }
 
-        if ($null -ne $matchedWo) {
-            $script:PlanningMatchExactCount++
-            $pdfIdNorm = Normalize-ClientIdForJoin $matchedWo.ClientID
-            $woKey = script:Get-PlanningGraphStableWorkOrderRef -WorkOrder $matchedWo
-            [void]$usedWoKeys.Add($woKey)
-            Write-Host ("[MATCH] TYPE=ID SCORE=100 ExcelClientID={0} PdfClientID={1}" -f $excelIdNorm, $pdfIdNorm)
-            Write-Host ("[MATCH-RESULT] Type=ID ExcelClientID={0} PDFClientID={1}" -f $excelIdNorm, $pdfIdNorm)
+        if ($exactMatchedAny) {
             $script:ClientIdMatcherStatus = 'PASS'
-            [void]$matches.Add([pscustomobject]@{
-                ExcelOrder  = $slot.OrderIndex
-                ExcelLabel  = $slot.Label
-                MatchScore  = 100
-                Similarity  = 100
-                MatchReason = 'CLIENTID_EXACT'
-                WorkOrder   = $matchedWo
-                Entity      = $null
-            })
         }
         else {
             $orderIdxPending = 0
@@ -3186,12 +3234,12 @@ function Match-WorkOrderToExcelOrderSmart {
         -Detail ("({0} non-matches)" -f @($missing).Count) -SubRatio 0.95
 
     return [pscustomobject]@{
-        Matches = Sort-Safe -InputObject @(
+        Matches = script:Sort-PlanningMatchResultRows -InputObject @(
             @($matches.ToArray()) | ForEach-Object {
                 [void](Trace-ObjectArrayLeak -Value $_.ExcelOrder -Name "ExcelOrder" -Location "BeforeSort:MatchWorkOrderToExcelOrderSmart.Matches")
                 $_
             }
-        ) -Property ExcelOrder
+        )
         Missing = @($missing.ToArray())
         Duplicates = @()
         Strategy = 'CLIENTID_FIRST_CONTEXT'
@@ -3822,7 +3870,7 @@ function Build-ReorderedPlanning {
             $_
         }
     )
-    $sortedMatchRows = @( Sort-Safe -InputObject $matchesForReorder -Property 'ExcelOrder' -KeyType Int )
+    $sortedMatchRows = @( script:Sort-PlanningMatchResultRows -InputObject $matchesForReorder )
 
     foreach ($m in $sortedMatchRows) {
         Trace-DeepObjectLeak -Value $m -Name "dto" -Location "Build-ReorderedPlanning.foreachMatch"
