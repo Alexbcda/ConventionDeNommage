@@ -1,4 +1,4 @@
-# Certificat de destruction : template DOCX -> PDF (LibreOffice headless, sans Microsoft Word).
+# Certificat de destruction : template DOCX -> PDF (LibreOffice headless ou Microsoft Word COM en secours).
 
 function Get-CnsDestructionCertificateTemplatePath {
     $candidates = New-Object System.Collections.Generic.List[string]
@@ -99,6 +99,250 @@ function Convert-DocxToPdfUsingLibreOffice {
     }
 
     return (Test-Path -LiteralPath $pdfAbs)
+}
+
+$script:CnsMicrosoftWordAvailableCache = $null
+
+function Get-CnsMicrosoftWordExecutablePath {
+  <#
+  .SYNOPSIS
+      Chemin vers WINWORD.EXE : CN_WORD_APP, puis registre App Paths.
+  #>
+    if (-not [string]::IsNullOrWhiteSpace($env:CN_WORD_APP)) {
+        $p = $env:CN_WORD_APP.Trim().Trim('"')
+        if (Test-Path -LiteralPath $p -PathType Leaf) {
+            return ([System.IO.Path]::GetFullPath($p))
+        }
+    }
+    foreach ($regPath in @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\WINWORD.EXE',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\WINWORD.EXE'
+        )) {
+        try {
+            $item = Get-ItemProperty -LiteralPath $regPath -ErrorAction Stop
+            $exe = [string]$item.'(default)'
+            if (-not [string]::IsNullOrWhiteSpace($exe)) {
+                $exe = $exe.Trim().Trim('"')
+                if (Test-Path -LiteralPath $exe -PathType Leaf) {
+                    return ([System.IO.Path]::GetFullPath($exe))
+                }
+            }
+        }
+        catch { }
+    }
+    return $null
+}
+
+function Test-CnsMicrosoftWordAvailable {
+  <#
+  .SYNOPSIS
+      Indique si Microsoft Word est utilisable (executable ou probe COM leger, resultat cache).
+  #>
+    if ($null -ne $script:CnsMicrosoftWordAvailableCache) {
+        return [bool]$script:CnsMicrosoftWordAvailableCache
+    }
+    if ($null -ne (Get-CnsMicrosoftWordExecutablePath)) {
+        $script:CnsMicrosoftWordAvailableCache = $true
+        return $true
+    }
+    $word = $null
+    try {
+        $word = New-Object -ComObject Word.Application -ErrorAction Stop
+        $script:CnsMicrosoftWordAvailableCache = ($null -ne $word)
+    }
+    catch {
+        $script:CnsMicrosoftWordAvailableCache = $false
+    }
+    finally {
+        if ($null -ne $word) {
+            try { $word.DisplayAlerts = 0 } catch { }
+            try { $word.Quit() } catch { }
+            try { [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) } catch { }
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+        }
+    }
+    return [bool]$script:CnsMicrosoftWordAvailableCache
+}
+
+function script:Release-CnsWordComObject {
+    param([object]$ComObject)
+    if ($null -eq $ComObject) { return }
+    try { [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($ComObject) } catch { }
+}
+
+function Get-CnsDocxToPdfConverterMode {
+    $raw = [string]$env:CN_PDF_CONVERTER
+    if ([string]::IsNullOrWhiteSpace($raw)) { return 'AUTO' }
+    $m = $raw.Trim().ToUpperInvariant()
+    switch ($m) {
+        'AUTO' { return 'AUTO' }
+        'LIBREOFFICE' { return 'LIBREOFFICE' }
+        'WORD' { return 'WORD' }
+        'NONE' { return 'NONE' }
+        default {
+            Write-Warning ("[DOCX-PDF] CN_PDF_CONVERTER valeur inconnue « {0} » — mode AUTO applique." -f $raw.Trim())
+            return 'AUTO'
+        }
+    }
+}
+
+function Resolve-CnsDocxToPdfEngine {
+    param([Parameter(Mandatory = $true)][string]$Mode)
+    if ($Mode -eq 'NONE') {
+        Write-Warning '[DOCX-PDF] Conversion desactivee (CN_PDF_CONVERTER=NONE).'
+        return $null
+    }
+    $loOk = -not [string]::IsNullOrWhiteSpace((Get-CnsLibreOfficeSofficePath))
+    $wordOk = Test-CnsMicrosoftWordAvailable
+    switch ($Mode) {
+        'LIBREOFFICE' {
+            if ($loOk) { return 'LibreOffice' }
+            Write-Warning '[DOCX-PDF] CN_PDF_CONVERTER=LIBREOFFICE mais soffice.exe introuvable. Definissez CN_LIBREOFFICE_SOFFICE ou installez LibreOffice.'
+            return $null
+        }
+        'WORD' {
+            if ($wordOk) { return 'Word' }
+            Write-Warning '[DOCX-PDF] CN_PDF_CONVERTER=WORD mais Microsoft Word est indisponible. Installez Office ou definissez CN_WORD_APP.'
+            return $null
+        }
+        default {
+            if ($loOk) { return 'LibreOffice' }
+            if ($wordOk) { return 'Word' }
+            Write-Warning @'
+[DOCX-PDF] Aucun convertisseur DOCX vers PDF disponible. Installez LibreOffice (recommande) ou Microsoft Word, ou definissez CN_LIBREOFFICE_SOFFICE / CN_WORD_APP. Variable CN_PDF_CONVERTER : AUTO, LIBREOFFICE, WORD, NONE.
+'@
+            return $null
+        }
+    }
+}
+
+function script:Write-CnsDocxToPdfLog {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [string]$Level = 'INFO',
+        $Data = $null
+    )
+    if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+        Write-Log ("[DOCX-PDF] " + $Message) $Level $Data
+        return
+    }
+    $color = switch ($Level) {
+        'WARN' { 'Yellow' }
+        'ERROR' { 'Red' }
+        default { 'DarkGray' }
+    }
+    Write-Host ("[DOCX-PDF] {0}" -f $Message) -ForegroundColor $color
+}
+
+function Convert-DocxToPdfUsingWord {
+  <#
+  .SYNOPSIS
+      Convertit un DOCX en PDF via Microsoft Word COM (ExportAsFixedFormat, wdFormatPDF = 17).
+  #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DocxPath,
+        [Parameter(Mandatory = $true)]
+        [string]$PdfPath
+    )
+    if (-not (Test-CnsMicrosoftWordAvailable)) {
+        Write-Warning '[DOCX-PDF] Microsoft Word indisponible pour la conversion.'
+        return $false
+    }
+    if (-not (Test-Path -LiteralPath $DocxPath -PathType Leaf)) {
+        Write-Warning ("[DOCX-PDF] DOCX source introuvable : {0}" -f $DocxPath)
+        return $false
+    }
+
+    $docxAbs = [System.IO.Path]::GetFullPath($DocxPath)
+    $pdfAbs = [System.IO.Path]::GetFullPath($PdfPath)
+    $outDir = [System.IO.Path]::GetDirectoryName($pdfAbs)
+    if (-not (Test-Path -LiteralPath $outDir)) {
+        $null = New-Item -ItemType Directory -Path $outDir -Force -ErrorAction Stop
+    }
+
+    $word = $null
+    $doc = $null
+    $wdFormatPDF = 17
+    try {
+        $word = New-Object -ComObject Word.Application -ErrorAction Stop
+        $word.Visible = $false
+        $word.DisplayAlerts = 0
+        $doc = $word.Documents.Open($docxAbs, $false, $true)
+        if ($null -eq $doc) {
+            Write-Warning '[DOCX-PDF] Word n''a pas ouvert le document source.'
+            return $false
+        }
+        $doc.ExportAsFixedFormat($pdfAbs, $wdFormatPDF)
+    }
+    catch {
+        Write-Warning ("[DOCX-PDF] Conversion Word echouee : {0}" -f $_.Exception.Message)
+        return $false
+    }
+    finally {
+        if ($null -ne $doc) {
+            try { $doc.Close($false) } catch { }
+            script:Release-CnsWordComObject -ComObject $doc
+            $doc = $null
+        }
+        if ($null -ne $word) {
+            try { $word.Quit() } catch { }
+            script:Release-CnsWordComObject -ComObject $word
+            $word = $null
+        }
+        [System.GC]::Collect()
+        [System.GC]::WaitForPendingFinalizers()
+    }
+
+    if (-not (Test-Path -LiteralPath $pdfAbs)) {
+        Write-Warning '[DOCX-PDF] PDF non produit apres conversion Word.'
+        return $false
+    }
+    return $true
+}
+
+function Convert-DocxToPdf {
+  <#
+  .SYNOPSIS
+      Convertit DOCX en PDF via le moteur choisi (CN_PDF_CONVERTER : AUTO, LIBREOFFICE, WORD, NONE).
+  #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DocxPath,
+        [Parameter(Mandatory = $true)]
+        [string]$PdfPath
+    )
+    $mode = Get-CnsDocxToPdfConverterMode
+    $engine = Resolve-CnsDocxToPdfEngine -Mode $mode
+    if ([string]::IsNullOrWhiteSpace($engine)) {
+        return $false
+    }
+
+    script:Write-CnsDocxToPdfLog -Message ("Moteur selectionne : {0} (mode={1})" -f $engine, $mode) -Level 'INFO' -Data @{
+        Engine = $engine
+        Mode   = $mode
+        Docx   = $DocxPath
+        Pdf    = $PdfPath
+    }
+
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $ok = $false
+    if ($engine -eq 'LibreOffice') {
+        $ok = Convert-DocxToPdfUsingLibreOffice -DocxPath $DocxPath -PdfPath $PdfPath
+    }
+    else {
+        $ok = Convert-DocxToPdfUsingWord -DocxPath $DocxPath -PdfPath $PdfPath
+    }
+    $sw.Stop()
+
+    if ($ok) {
+        script:Write-CnsDocxToPdfLog -Message ("Conversion reussie via {0} en {1} ms" -f $engine, $sw.ElapsedMilliseconds) -Level 'INFO'
+    }
+    else {
+        script:Write-CnsDocxToPdfLog -Message ("Conversion echouee via {0} apres {1} ms (pas de bascule vers un autre moteur)" -f $engine, $sw.ElapsedMilliseconds) -Level 'WARN'
+    }
+    return $ok
 }
 
 $script:CnsWordMlNamespaceUri = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
@@ -846,7 +1090,7 @@ function Get-CnsDestructionCertificatePlaceholders {
 function New-CnsDestructionCertificatePdfFromWordTemplate {
     <#
     .SYNOPSIS
-        Remplit le template DOCX (placeholders) et exporte un PDF via LibreOffice. Retourne le chemin PDF ou $null.
+        Remplit le template DOCX (placeholders) et exporte un PDF (LibreOffice ou Word). Retourne le chemin PDF ou $null.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -860,11 +1104,6 @@ function New-CnsDestructionCertificatePdfFromWordTemplate {
     }
     if ([string]::IsNullOrWhiteSpace($TemplatePath) -or -not (Test-Path -LiteralPath $TemplatePath -PathType Leaf)) {
         Write-Warning '[DESTRUCTION-CERT] Template DOCX introuvable (templates\CertificatDeDestruction.docx ou CN_DESTRUCTION_CERT_TEMPLATE).'
-        return $null
-    }
-
-    if (-not (Get-CnsLibreOfficeSofficePath)) {
-        Write-Warning '[DESTRUCTION-CERT] LibreOffice introuvable'
         return $null
     }
 
@@ -882,7 +1121,7 @@ function New-CnsDestructionCertificatePdfFromWordTemplate {
         if (-not (Set-CnsDocxTemplatePlaceholders -DocxPath $workDocx -Placeholders $Placeholders)) {
             return $null
         }
-        if (-not (Convert-DocxToPdfUsingLibreOffice -DocxPath $workDocx -PdfPath $outAbs)) {
+        if (-not (Convert-DocxToPdf -DocxPath $workDocx -PdfPath $outAbs)) {
             return $null
         }
     }
@@ -902,7 +1141,7 @@ function New-CnsDestructionCertificatePdfFromWordTemplate {
     }
 
     if (-not (Test-Path -LiteralPath $outAbs)) {
-        Write-Warning '[DESTRUCTION-CERT] PDF non produit apres conversion LibreOffice.'
+        Write-Warning '[DESTRUCTION-CERT] PDF non produit apres conversion DOCX vers PDF.'
         return $null
     }
     return $outAbs
