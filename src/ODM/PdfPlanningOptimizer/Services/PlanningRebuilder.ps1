@@ -1117,7 +1117,112 @@ function script:Get-WorkOrderSortKeyMinPage {
     return (Get-SafeMin -Values $WorkOrder.Pages -Name "wo.Pages.Get-SafeMin")
 }
 
-function Find-ExcelColumnFromDate {
+function script:Test-PlanningExcelFixedHeaderMatchesDate {
+    param(
+        [string]$HeaderCell,
+        [datetime]$VisitDate
+    )
+    if ([string]::IsNullOrWhiteSpace($HeaderCell)) { return $false }
+    $d = $VisitDate.Day
+    $m = $VisitDate.Month
+    $patterns = @(
+        ('{0:00}/{1:00}' -f $d, $m),
+        ('{0}/{1:00}' -f $d, $m),
+        ('{0:00}/{1}' -f $d, $m),
+        ('{0}/{1}' -f $d, $m)
+    )
+    foreach ($p in $patterns) {
+        if ($HeaderCell -match [regex]::Escape($p)) { return $true }
+    }
+    return $false
+}
+
+function script:Get-PlanningExcelSheetForIsoWeek {
+    param(
+        [object]$ExcelData,
+        [int]$Week
+    )
+    if ($null -eq $ExcelData -or $null -eq $ExcelData.Sheets) { return $null }
+    $candidates = @(
+        ('S{0:D2} (à faire)' -f $Week),
+        ("S$Week (à faire)"),
+        ('S{0:D2}' -f $Week),
+        ("S$Week")
+    )
+    foreach ($name in $candidates) {
+        $sheet = @($ExcelData.Sheets | Where-Object { $_.Name -eq $name } | Select-Object -First 1)[0]
+        if ($null -ne $sheet) { return $sheet }
+    }
+    return $null
+}
+
+function script:Write-PlanningExcelNonStandardColumnWarning {
+    param(
+        [datetime]$VisitDate,
+        [string]$SheetName,
+        [int]$ColumnIndex
+    )
+    $fixedColumns = @(2, 25, 48, 71, 94)
+    if ($ColumnIndex -notin $fixedColumns) {
+        Write-Warning "[EXCEL] Date $VisitDate trouvée dans $SheetName, colonne $ColumnIndex (non standard). Vérifier la colonne fixe correspondante."
+    }
+}
+
+function Find-ExcelColumnFromDateFixed {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$ExcelData,
+        [Parameter(Mandatory = $true)]
+        [datetime]$VisitDate,
+        [string]$ExcelPath = $null
+    )
+
+    $week = Get-Iso8601WeekOfYear -Date $VisitDate
+    $sheet = Get-PlanningExcelSheetForIsoWeek -ExcelData $ExcelData -Week $week
+    if (-not $sheet) { return $null }
+
+    $dayColMap = @{
+        'Monday'    = 2
+        'Tuesday'   = 25
+        'Wednesday' = 48
+        'Thursday'  = 71
+        'Friday'    = 94
+    }
+    $dayOfWeek = $VisitDate.DayOfWeek
+    if (-not $dayColMap.ContainsKey([string]$dayOfWeek)) { return $null }
+    $column = $dayColMap[[string]$dayOfWeek]
+
+    $headerRowIndex = 4
+    $rowCount = (ConvertTo-SafeInt -Value (Normalize-Scalar -Value $sheet.RowCount -Name "Fixed.sheet.RowCount") -Name "Fixed.sheet.RowCount")
+    if ($rowCount -le $headerRowIndex) { return $null }
+
+    $colCount = (ConvertTo-SafeInt -Value (Normalize-Scalar -Value $sheet.ColCount -Name "Fixed.sheet.ColCount") -Name "Fixed.sheet.ColCount")
+    if ($column -gt $colCount) { return $null }
+
+    $colZero = $column - 1
+    if ($null -eq $sheet.Grid -or $null -eq $sheet.Grid[$headerRowIndex]) { return $null }
+    if ($colZero -ge @($sheet.Grid[$headerRowIndex]).Count) { return $null }
+
+    $headerCell = [string]$sheet.Grid[$headerRowIndex][$colZero]
+    if ([string]::IsNullOrWhiteSpace($headerCell)) { return $null }
+    if (-not (Test-PlanningExcelFixedHeaderMatchesDate -HeaderCell $headerCell -VisitDate $VisitDate)) { return $null }
+
+    $dayName = Get-FrenchDayName -Date $VisitDate
+    $dateShort = $VisitDate.ToString('dd/MM')
+
+    return [pscustomobject]@{
+        SheetName   = $sheet.Name
+        ColumnIndex = $column
+        HeaderRow   = 5
+        HeaderText  = $headerCell
+        TargetDay   = $dayName
+        TargetDate  = $dateShort
+        Source      = 'Fixed'
+    }
+}
+
+function Find-ExcelColumnFromDateLegacy {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -1183,7 +1288,9 @@ function Find-ExcelColumnFromDate {
             Step       = "SqliteColumnLookup"
             DurationMs = $ms1
         }
-        script:Write-PlanningArithOpProbe -Location 'Find-ExcelColumnFromDate:HIT:sqlite-row' -Op 'dto-field-check' -Left $rowOut.column_index -Right $rowOut.header_row
+        script:Write-PlanningArithOpProbe -Location 'Find-ExcelColumnFromDateLegacy:HIT:sqlite-row' -Op 'dto-field-check' -Left $rowOut.column_index -Right $rowOut.header_row
+        $colIdx = (ConvertTo-SafeInt -Value (Normalize-Scalar -Value $rowOut.column_index -Name "legacy.column_index") -Name "legacy.column_index")
+        Write-PlanningExcelNonStandardColumnWarning -VisitDate $VisitDate -SheetName $rowOut.sheet -ColumnIndex $colIdx
         $out = [pscustomobject]@{
             SheetName   = $rowOut.sheet
             ColumnIndex = $rowOut.column_index
@@ -1191,6 +1298,7 @@ function Find-ExcelColumnFromDate {
             HeaderText  = $rowOut.header_text
             TargetDay   = $dayName
             TargetDate  = $dateShort
+            Source      = 'Legacy'
         }
         script:Write-PlanningFlowLog -Message "RETURN EXECUTED" -Data @{ from = "SQLite HIT"; step = "SqliteColumnLookup"; column = $out.ColumnIndex }
         return $out
@@ -1248,7 +1356,9 @@ function Find-ExcelColumnFromDate {
         script:Trace-ChirurgicalType -Value $rowOut.header_row -Name 'rowOut.header_row' -Location 'Find-ExcelColumnFromDate:SQLite:postRebuild'
         script:Trace-ChirurgicalType -Value $rowOut.sheet -Name 'rowOut.sheet' -Location 'Find-ExcelColumnFromDate:SQLite:postRebuild'
         script:Trace-ChirurgicalType -Value $rowOut.header_text -Name 'rowOut.header_text' -Location 'Find-ExcelColumnFromDate:SQLite:postRebuild'
-        script:Write-PlanningArithOpProbe -Location 'Find-ExcelColumnFromDate:postRebuild:assign-out' -Op 'dto-field-check' -Left $rowOut.column_index -Right $rowOut.header_row
+        script:Write-PlanningArithOpProbe -Location 'Find-ExcelColumnFromDateLegacy:postRebuild:assign-out' -Op 'dto-field-check' -Left $rowOut.column_index -Right $rowOut.header_row
+        $colIdx2 = (ConvertTo-SafeInt -Value (Normalize-Scalar -Value $rowOut.column_index -Name "legacy.column_index2") -Name "legacy.column_index2")
+        Write-PlanningExcelNonStandardColumnWarning -VisitDate $VisitDate -SheetName $rowOut.sheet -ColumnIndex $colIdx2
         $out2 = [pscustomobject]@{
             SheetName   = $rowOut.sheet
             ColumnIndex = $rowOut.column_index
@@ -1256,6 +1366,7 @@ function Find-ExcelColumnFromDate {
             HeaderText  = $rowOut.header_text
             TargetDay   = $dayName
             TargetDate  = $dateShort
+            Source      = 'Legacy'
         }
         script:Write-PlanningFlowLog -Message "RETURN EXECUTED" -Data @{ from = "MISS puis rebuild + SQLite HIT"; step = "SqliteColumnLookup" }
         return $out2
@@ -1266,7 +1377,27 @@ function Find-ExcelColumnFromDate {
     }
     script:Write-PlanningFlowLog -Message "RETURN NOT EXECUTED (throw)" -Data @{ from = "SQLite; pas de colonne" }
     Write-Warning "Planning calendar index: pas d’en-tête pour la date $targetVisitNorm (semaine $semaine). Colonne non résolue (SQLite sans entrée, pas de second scan Excel)."
-    throw "Find-ExcelColumnFromDate: colonne introuvable pour '$dayName $dateShort'."
+    throw "Find-ExcelColumnFromDateLegacy: colonne introuvable pour '$dayName $dateShort'."
+}
+
+function Find-ExcelColumnFromDate {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$ExcelData,
+        [Parameter(Mandatory = $true)]
+        [datetime]$VisitDate,
+        [string]$ExcelPath = $null
+    )
+
+    $result = Find-ExcelColumnFromDateFixed -ExcelData $ExcelData -VisitDate $VisitDate -ExcelPath $ExcelPath
+    if ($result) {
+        Write-Host "[EXCEL] Date trouvée par colonnes fixes : $($result.SheetName) col. $($result.ColumnIndex)"
+        return $result
+    }
+
+    Write-Host "[EXCEL] Fallback : recherche lente (scan + BDD)"
+    return Find-ExcelColumnFromDateLegacy -ExcelData $ExcelData -VisitDate $VisitDate -ExcelPath $ExcelPath
 }
 
 function script:Get-LevenshteinDistance {
