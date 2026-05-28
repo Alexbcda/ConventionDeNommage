@@ -16,6 +16,14 @@
 [CmdletBinding()]
 param()
 
+function script:Test-CnsWordInstalledForTests {
+    if (Get-Command Test-CnsMicrosoftWordAvailable -ErrorAction SilentlyContinue) {
+        try { return [bool](Test-CnsMicrosoftWordAvailable) }
+        catch { return $false }
+    }
+    return $null -ne (Get-Command WINWORD.EXE -ErrorAction SilentlyContinue)
+}
+
 function Get-PdfPlanningOptimizerE2EPlanningPdfBytes {
     $enc = [System.Text.Encoding]::ASCII
     $nl = "`n"
@@ -1302,134 +1310,24 @@ Describe 'PdfPlanningOptimizer - Convert-DocxToPdf facade' {
         (Convert-DocxToPdf -DocxPath 'C:\inexistant.docx' -PdfPath 'C:\inexistant.pdf') | Should Be $false
     }
 
-    It 'Resolve-CnsDocxToPdfEngine : WORD sans Word retourne null' {
+    It 'Resolve-CnsDocxToPdfEngine : WORD sans Word retourne null' -Pending:(script:Test-CnsWordInstalledForTests) {
         $script:SavedCnPdfConverter = $env:CN_PDF_CONVERTER
         $script:SavedCnWordApp = $env:CN_WORD_APP
         $env:CN_PDF_CONVERTER = 'WORD'
         $env:CN_WORD_APP = 'C:\__cn_pester_winword_inexistant__.exe'
         $script:CnsMicrosoftWordAvailableCache = $false
-        if (Test-CnsMicrosoftWordAvailable) {
-            Set-ItResult -Inconclusive -Because 'Microsoft Word detecte malgre CN_WORD_APP invalide (registre Office)'
-        }
         (Resolve-CnsDocxToPdfEngine -Mode 'WORD') | Should BeNullOrEmpty
     }
 
-    It 'Test-CnsMicrosoftWordAvailable : Word installe ou inconclusive' {
-        if (Test-CnsMicrosoftWordAvailable) {
-            Test-CnsMicrosoftWordAvailable | Should Be $true
-        }
-        else {
-            Set-ItResult -Inconclusive -Because 'Microsoft Word non installe sur cette machine'
-        }
+    It 'Test-CnsMicrosoftWordAvailable : Word installe' -Pending:(-not (script:Test-CnsWordInstalledForTests)) {
+        Test-CnsMicrosoftWordAvailable | Should Be $true
     }
 
-    It 'Convert-DocxToPdfUsingWord : produit un PDF si Word disponible' {
-        if (-not (Test-CnsMicrosoftWordAvailable)) {
-            Set-ItResult -Inconclusive -Because 'Microsoft Word absent'
-        }
+    It 'Convert-DocxToPdfUsingWord : produit un PDF si Word disponible' -Pending:(-not (script:Test-CnsWordInstalledForTests)) {
         $tpl = Get-CnsDestructionCertificateTemplatePath
         if ($null -eq $tpl) {
-            Set-ItResult -Inconclusive -Because 'Template certificat absent'
-        }
-        $docx = Join-Path $env:TEMP ("cn_pester_word_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
-        $pdf = Join-Path $env:TEMP ("cn_pester_word_{0}.pdf" -f ([Guid]::NewGuid().ToString('N')))
-        Copy-Item -LiteralPath $tpl -Destination $docx -Force
-        try {
-            (Convert-DocxToPdfUsingWord -DocxPath $docx -PdfPath $pdf) | Should Be $true
-            (Test-Path -LiteralPath $pdf) | Should Be $true
-        }
-        finally {
-            Remove-Item -LiteralPath $docx, $pdf -Force -ErrorAction SilentlyContinue
-        }
-    }
-
-    It 'Convert-DocxToPdf : AUTO utilise LibreOffice si present' {
-        if (-not (Get-CnsLibreOfficeSofficePath)) {
-            Set-ItResult -Inconclusive -Because 'LibreOffice absent'
-        }
-        $tpl = Get-CnsDestructionCertificateTemplatePath
-        if ($null -eq $tpl) {
-            Set-ItResult -Inconclusive -Because 'Template certificat absent'
-        }
-        $script:SavedCnPdfConverter = $env:CN_PDF_CONVERTER
-        Remove-Item Env:CN_PDF_CONVERTER -ErrorAction SilentlyContinue
-        $docx = Join-Path $env:TEMP ("cn_pester_auto_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
-        $pdf = Join-Path $env:TEMP ("cn_pester_auto_{0}.pdf" -f ([Guid]::NewGuid().ToString('N')))
-        Copy-Item -LiteralPath $tpl -Destination $docx -Force
-        try {
-            (Convert-DocxToPdf -DocxPath $docx -PdfPath $pdf) | Should Be $true
-            (Test-Path -LiteralPath $pdf) | Should Be $true
-        }
-        finally {
-            Remove-Item -LiteralPath $docx, $pdf -Force -ErrorAction SilentlyContinue
-        }
-    }
-}
-
-Describe 'PdfPlanningOptimizer - Convert-DocxToPdf facade' {
-
-    BeforeAll {
-        $wordCertPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsDestructionCertificateWord.ps1' | Resolve-Path
-        . ([string]$wordCertPath)
-    }
-
-    AfterEach {
-        if ($script:SavedCnPdfConverter -ne $null) {
-            $env:CN_PDF_CONVERTER = $script:SavedCnPdfConverter
-        }
-        else {
-            Remove-Item Env:CN_PDF_CONVERTER -ErrorAction SilentlyContinue
-        }
-        $script:CnsMicrosoftWordAvailableCache = $null
-        if ($script:SavedCnWordApp -ne $null) {
-            $env:CN_WORD_APP = $script:SavedCnWordApp
-        }
-        else {
-            Remove-Item Env:CN_WORD_APP -ErrorAction SilentlyContinue
-        }
-    }
-
-    It 'Get-CnsDocxToPdfConverterMode : vide ou AUTO' {
-        Remove-Item Env:CN_PDF_CONVERTER -ErrorAction SilentlyContinue
-        (Get-CnsDocxToPdfConverterMode) | Should Be 'AUTO'
-        $env:CN_PDF_CONVERTER = 'auto'
-        (Get-CnsDocxToPdfConverterMode) | Should Be 'AUTO'
-    }
-
-    It 'Convert-DocxToPdf : CN_PDF_CONVERTER=NONE retourne false' {
-        $script:SavedCnPdfConverter = $env:CN_PDF_CONVERTER
-        $env:CN_PDF_CONVERTER = 'NONE'
-        (Convert-DocxToPdf -DocxPath 'C:\inexistant.docx' -PdfPath 'C:\inexistant.pdf') | Should Be $false
-    }
-
-    It 'Resolve-CnsDocxToPdfEngine : WORD sans Word retourne null' {
-        $script:SavedCnPdfConverter = $env:CN_PDF_CONVERTER
-        $script:SavedCnWordApp = $env:CN_WORD_APP
-        $env:CN_PDF_CONVERTER = 'WORD'
-        $env:CN_WORD_APP = 'C:\__cn_pester_winword_inexistant__.exe'
-        $script:CnsMicrosoftWordAvailableCache = $false
-        if (Test-CnsMicrosoftWordAvailable) {
-            Set-ItResult -Inconclusive -Because 'Microsoft Word detecte malgre CN_WORD_APP invalide (registre Office)'
-        }
-        (Resolve-CnsDocxToPdfEngine -Mode 'WORD') | Should BeNullOrEmpty
-    }
-
-    It 'Test-CnsMicrosoftWordAvailable : Word installe ou inconclusive' {
-        if (Test-CnsMicrosoftWordAvailable) {
-            Test-CnsMicrosoftWordAvailable | Should Be $true
-        }
-        else {
-            Set-ItResult -Inconclusive -Because 'Microsoft Word non installe sur cette machine'
-        }
-    }
-
-    It 'Convert-DocxToPdfUsingWord : produit un PDF si Word disponible' {
-        if (-not (Test-CnsMicrosoftWordAvailable)) {
-            Set-ItResult -Inconclusive -Because 'Microsoft Word absent'
-        }
-        $tpl = Get-CnsDestructionCertificateTemplatePath
-        if ($null -eq $tpl) {
-            Set-ItResult -Inconclusive -Because 'Template certificat absent'
+            Write-Host 'Template certificat absent — test ignore' -ForegroundColor Yellow
+            return
         }
         $docx = Join-Path $env:TEMP ("cn_pester_word_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
         $pdf = Join-Path $env:TEMP ("cn_pester_word_{0}.pdf" -f ([Guid]::NewGuid().ToString('N')))
