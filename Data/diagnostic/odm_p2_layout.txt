@@ -1,7 +1,0 @@
-ODM non matche dans les tournees du date de la tournee depuis le PDF importe
-
-
-Nombre total d’ODM (groupes extraits du PDF) : 68
-
-Nombre d’ODM sans correspondance : 12
-
