@@ -17,8 +17,13 @@
 [CmdletBinding()]
 param()
 
-$script:SharePointModulePath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\SharePointDownload.ps1' | Resolve-Path
-. ([string]$script:SharePointModulePath)
+$script:SharePointModulePath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\SharePointDownload.ps1'
+if (Test-Path -LiteralPath $script:SharePointModulePath) {
+    . ([string](Resolve-Path -LiteralPath $script:SharePointModulePath))
+}
+else {
+    Write-Host 'SharePointDownload.ps1 absent du depot — tests SharePoint desactives.' -ForegroundColor Yellow
+}
 
 $script:DefaultSharePointSiteUrl = $(if (-not [string]::IsNullOrWhiteSpace($env:CN_SHAREPOINT_SITE_URL)) {
         $env:CN_SHAREPOINT_SITE_URL.Trim()
@@ -34,7 +39,8 @@ $script:DefaultSharePointPlanningFile = $(if (-not [string]::IsNullOrWhiteSpace(
         'Planning GRENOBLE 2026.xlsm'
     })
 
-$script:SharePointTestsEnabled = ($env:TEST_SHAREPOINT -in @('1', 'true', 'TRUE', 'yes', 'YES'))
+$script:SharePointTestsEnabled = (Test-Path -LiteralPath $script:SharePointModulePath) -and
+    ($env:TEST_SHAREPOINT -in @('1', 'true', 'TRUE', 'yes', 'YES'))
 
 Describe 'SharePoint Integration' {
 
