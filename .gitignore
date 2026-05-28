@@ -18,3 +18,14 @@ Test-*.ps1
 # Dossiers système
 .DS_Store
 Thumbs.db
+
+# Diagnostics PDF / dumps debug
+Data/diagnostic/
+
+# Exports manuels
+export_projet.txt
+CODE_PS_*.txt
+Projet_Export.txt
+structure.txt
+ordre_de_missions.txt
+planning_*.txt

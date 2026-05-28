@@ -947,6 +947,41 @@ WHERE id_vehicule = @id
     }
 }
 
+function Get-VehiculeByNumeroParc {
+    <#
+    .SYNOPSIS
+        Véhicule actif par numéro de parc (colonne Excel tournée / planning).
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$NumeroParc)
+    if ([string]::IsNullOrWhiteSpace($NumeroParc)) { return $null }
+    $parc = ([string]$NumeroParc).Trim()
+
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+SELECT id_vehicule, numero_parc, immatriculation, numero_chassis, marque, modele,
+       date_mise_circulation, date_controle, date_entree, date_sortie,
+       date_fin_controle_technique, capacite, conducteur_id, actif
+FROM Vehicule
+WHERE numero_parc = @parc AND actif = 1
+LIMIT 1
+"@
+        $cmd.Parameters.AddWithValue("@parc", $parc) | Out-Null
+        $reader = $cmd.ExecuteReader()
+        try {
+            if (-not $reader.Read()) { return $null }
+            return (New-VehiculeRowObject -Reader $reader)
+        }
+        finally {
+            if ($reader) { $reader.Close() }
+        }
+    }
+    finally {
+        Close-Connection $conn
+    }
+}
+
 function Test-VehiculeRecordExistsByColumn {
     <#
     .SYNOPSIS
