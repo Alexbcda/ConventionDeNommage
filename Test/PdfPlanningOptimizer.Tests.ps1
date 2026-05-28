@@ -582,32 +582,10 @@ Describe 'PdfPlanningOptimizer - E2E PDF vers export CSV' {
         $script:E2EOptRoot = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer' | Resolve-Path
         $script:E2EFixtureCsv = Join-Path $PSScriptRoot 'Fixtures\PdfPlanningOptimizer\e2e_planning.csv' | Resolve-Path
 
+        # Pipeline alternatif (ExcelWorkOrderMatch / GlobalMatchResolution / FinalAssignmentExport) retiré du depot.
         $script:SkipPdfE2E = $true
         $script:E2EOriginalPath = $null
-
-        $pdftotextResolved = Get-PdfPlanningOptimizerE2EPdfTotextPath
-        $probePath = Join-Path $TestDrive 'e2e_pdftotext_probe.pdf'
-        [System.IO.File]::WriteAllBytes($probePath, (Get-PdfPlanningOptimizerE2EPlanningPdfBytes))
-
-        if ($null -eq $pdftotextResolved) {
-            Write-Warning 'PDF extractor unavailable'
-        }
-        elseif (-not (Test-PdfPlanningOptimizerE2EPdfTotextProbe -PdftotextExe $pdftotextResolved -PdfPath $probePath)) {
-            Write-Warning 'PDF extractor unavailable'
-        }
-        else {
-            $script:E2EOriginalPath = $env:PATH
-            $binDir = Split-Path -Path $pdftotextResolved -Parent
-            $env:PATH = $binDir + [System.IO.Path]::PathSeparator + $env:PATH
-            $script:SkipPdfE2E = $false
-        }
-
-        . (Join-Path $script:E2EOptRoot 'Extractors\PdfExtractor.ps1')
-        . (Join-Path $script:E2EOptRoot 'Extractors\EntityExtractor.ps1')
-        . (Join-Path $script:E2EOptRoot 'Services\PageEntityAggregator.ps1')
-        . (Join-Path $script:E2EOptRoot 'Matching\ExcelWorkOrderMatch.ps1')
-        . (Join-Path $script:E2EOptRoot 'Matching\GlobalMatchResolution.ps1')
-        . (Join-Path $script:E2EOptRoot 'Export\FinalAssignmentExport.ps1')
+        Write-Warning 'E2E export CSV skipped: alternate matching modules removed from repository.'
     }
 
     AfterAll {
