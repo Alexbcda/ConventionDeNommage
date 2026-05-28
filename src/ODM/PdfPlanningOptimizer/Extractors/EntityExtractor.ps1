@@ -1408,7 +1408,6 @@ function ConvertTo-PageEntity {
     $sanitizedLines = @(Normalize-PdfNoiseText -Lines $processableLines)
     $normalized = @(Get-NormalizedNonEmptyLines -Lines $sanitizedLines)
     $text = if ($normalized.Count -gt 0) { $normalized -join "`n" } else { '' }
-    Write-Host ("[TRACE-PDF-RAW] Page={0} Text=""{1}""" -f $PageNumber, $text)
 
     if ($normalized.Count -eq 0) {
         if (Test-EntityExtractorDebugEnabled) {
@@ -1420,7 +1419,6 @@ function ConvertTo-PageEntity {
     $keyFields = Resolve-PageClientKeyFields -Lines $normalized -JoinedText $text
     $clientId = $keyFields.ClientId
     $entity.ClientID = $clientId
-    Write-Host ("[TRACE-PDF-ID] Page={0} ExtractedClientID=""{1}""" -f $PageNumber, $clientId)
     $clientAnchorIndex = $keyFields.AnchorIndex
     if ($clientAnchorIndex -lt 0 -and [string]::IsNullOrWhiteSpace($clientId)) {
         for ($ai = 0; $ai -lt $normalized.Count; $ai++) {

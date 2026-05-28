@@ -5,6 +5,17 @@
 . (Join-Path $PSScriptRoot 'PlanningExcelTourneeSegments.ps1')
 . (Join-Path $PSScriptRoot 'CnsPdfMetierPrestation.ps1')
 . (Join-Path $PSScriptRoot 'CnsPdfStructureMerge.ps1')
+
+function script:Write-CnsTourneeLog {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [string]$Level = 'INFO'
+    )
+    if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+        Write-Log $Message $Level
+    }
+}
+
 $_cnsDestructionWord = Join-Path $PSScriptRoot 'CnsDestructionCertificateWord.ps1'
 if (Test-Path -LiteralPath $_cnsDestructionWord) {
     . $_cnsDestructionWord
@@ -1695,7 +1706,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
     )
 
     if ($env:CN_SKIP_TOURNEE_COVERS -in @('1', 'true')) {
-        Write-Host '[TOURNEE] Composition couvertures desactivee (CN_SKIP_TOURNEE_COVERS).' -ForegroundColor DarkGray
+        script:Write-CnsTourneeLog -Message '[TOURNEE] Composition couvertures desactivee (CN_SKIP_TOURNEE_COVERS).' -Level 'INFO'
         return $true
     }
 
@@ -1823,7 +1834,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
 
         $globalCov = Join-Path $tmpDir 'cover_global.pdf'
 
-        Write-Host '[TOURNEE] Creation page de garde globale (premiere page du PDF final).' -ForegroundColor Cyan
+        script:Write-CnsTourneeLog -Message '[TOURNEE] Creation page de garde globale (premiere page du PDF final).' -Level 'INFO'
         $coverElements = @()
         $coverAllMatched = $false
         $coverS1 = -1
@@ -2200,7 +2211,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
         Copy-Item -LiteralPath $outFinal -Destination $mainAbs -Force
         $nCoverSheets = 1 + @($blocks).Count
         $tourneeMsg = "[TOURNEE] PDF final compose : {0} garde(s) + {1} page(s) corps reorder (Ghostscript reorder inchange)." -f $nCoverSheets, $mainPageCount
-        Write-Host $tourneeMsg -ForegroundColor Green
+        script:Write-CnsTourneeLog -Message $tourneeMsg -Level 'INFO'
         if (Get-Command Write-PlanningRebuildUiLog -ErrorAction SilentlyContinue) {
             Write-PlanningRebuildUiLog $tourneeMsg
         }

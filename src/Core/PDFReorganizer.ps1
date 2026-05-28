@@ -5,6 +5,16 @@ if (Test-Path -LiteralPath $_scalarGuard) { . $_scalarGuard }
 $_sortSafe = Join-Path $PSScriptRoot '..\Common\SortSafe.ps1'
 if (Test-Path -LiteralPath $_sortSafe) { . $_sortSafe }
 
+function script:Write-PdfReorgLog {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [string]$Level = 'INFO'
+    )
+    if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+        Write-Log $Message $Level
+    }
+}
+
 function Test-PlausibleGeneratedPdf {
     <#
     .SYNOPSIS
@@ -239,16 +249,16 @@ function Reorganiser-PDF {
         [scriptblock]$ProgressCallback = $null
     )
     
-    Write-Host "`n[PDF] === DEBUT REORGANISATION ===" -ForegroundColor Cyan
-    Write-Host "[PDF] Source : $(Split-Path $SourcePDF -Leaf)" -ForegroundColor Gray
-    Write-Host "[PDF] Destination : $(Split-Path $OutputPDF -Leaf)" -ForegroundColor Gray
+    script:Write-PdfReorgLog -Message "`n[PDF] === DEBUT REORGANISATION ===" -Level 'INFO'
+    script:Write-PdfReorgLog -Message "[PDF] Source : $(Split-Path $SourcePDF -Leaf)" -Level 'INFO'
+    script:Write-PdfReorgLog -Message "[PDF] Destination : $(Split-Path $OutputPDF -Leaf)" -Level 'INFO'
     
     $useOrderedSequence = @($OrderedPhysicalPages).Count -gt 0
     if ($useOrderedSequence) {
-        Write-Host ("[PDF] Ordre explicite (OrderedPhysicalPages) : {0} occurrence(s)" -f @($OrderedPhysicalPages).Count) -ForegroundColor Gray
+        script:Write-PdfReorgLog -Message ("[PDF] Ordre explicite (OrderedPhysicalPages) : {0} occurrence(s)" -f @($OrderedPhysicalPages).Count) -Level 'INFO'
     }
     else {
-        Write-Host "[PDF] Pages configurées (mapping clé par page) : $($Mapping.Count)" -ForegroundColor Gray
+        script:Write-PdfReorgLog -Message "[PDF] Pages configurées (mapping clé par page) : $($Mapping.Count)" -Level 'INFO'
     }
     
     # Ordre des pages : séquence explicite (doublons autorisés) OU tri depuis le mapping (une entrée par numéro de page)
@@ -280,16 +290,16 @@ function Reorganiser-PDF {
     }
     $pageRange = $pageNumbers -join ','
 
-    Write-Host ("[GS-PREP] pageList.Count={0}" -f $pageNumbers.Count) -ForegroundColor Cyan
+    script:Write-PdfReorgLog -Message ("[GS-PREP] pageList.Count={0}" -f $pageNumbers.Count) -Level 'INFO'
     if ($pageNumbers.Count -le 200) {
-        Write-Host ("[GS-PREP] pageList.Full={0}" -f $pageRange) -ForegroundColor DarkCyan
+        script:Write-PdfReorgLog -Message ("[GS-PREP] pageList.Full={0}" -f $pageRange) -Level 'INFO'
     }
     else {
         $headCh = (($pageNumbers[0..199] | ForEach-Object { "$_" }) -join ',')
-        Write-Host ("[GS-PREP] pageList.preview(200premiers)={0},..." -f $headCh) -ForegroundColor DarkCyan
+        script:Write-PdfReorgLog -Message ("[GS-PREP] pageList.preview(200premiers)={0},..." -f $headCh) -Level 'INFO'
     }
 
-    Write-Host "[PDF] Ordre des pages : $pageRange" -ForegroundColor Green
+    script:Write-PdfReorgLog -Message "[PDF] Ordre des pages : $pageRange" -Level 'INFO'
 
     if (-not (Test-Path -LiteralPath $SourcePDF -PathType Leaf)) {
         Write-Warning "PDFReorganizer: source introuvable : $SourcePDF"
@@ -314,7 +324,7 @@ function Reorganiser-PDF {
         # GS 10 SAFER (defaut) : sans --permit-file-read|--permit-file-write, echec frequent
         # "Could not open the file ..." sur sortie (ex. Downloads) ou sur entrees merge / @rsp.
         # Opt. : $env:CN_DEBUG_GHOSTSCRIPT_INPUT = '1' | CN_GS_PREMERGE_DELAY_MS avant merge @rsp | CN_GS_BATCH_SLICES=0 pour desactiver le lotissement.
-        Write-Host "[PDF] Ghostscript (exécution) : $gsPath" -ForegroundColor Green
+        script:Write-PdfReorgLog -Message "[PDF] Ghostscript (exécution) : $gsPath" -Level 'INFO'
         if (-not (Test-Path -LiteralPath $gsPath -PathType Leaf)) {
             Write-Warning "PDFReorganizer: binaire GS résolu introuvable : $gsPath"
             return $false
@@ -324,12 +334,12 @@ function Reorganiser-PDF {
         $outAbs = [System.IO.Path]::GetFullPath($OutputPDF)
 
         if ($pageNumbers.Count -lt 1) {
-            Write-Host "[ERROR] Ghostscript : liste des pages vide (aucune page à écrire)." -ForegroundColor Red
+            script:Write-PdfReorgLog -Message "[ERROR] Ghostscript : liste des pages vide (aucune page à écrire)." -Level 'ERROR'
             return $false
         }
 
         if ($SourcePdfPageCountHint -gt 1 -and $pageNumbers.Count -eq 1) {
-            Write-Host ("[ERROR] Troncature suspecte du pipeline : hint pages source={0} mais sequence GS={1}. Verifier sanitize / mapping Hashtable (cles dupliquées)." -f $SourcePdfPageCountHint, $pageNumbers.Count) -ForegroundColor Red
+            script:Write-PdfReorgLog -Message ("[ERROR] Troncature suspecte du pipeline : hint pages source={0} mais sequence GS={1}. Verifier sanitize / mapping Hashtable (cles dupliquées)." -f $SourcePdfPageCountHint, $pageNumbers.Count) -Level 'ERROR'
             return $false
         }
 
@@ -346,7 +356,7 @@ function Reorganiser-PDF {
         try {
             if ($pageNumbers.Count -eq 1) {
                 $only = [int]$pageNumbers[0]
-                Write-Host "[GS-PREP] single-page shortcut FirstPage=$only" -ForegroundColor DarkCyan
+                script:Write-PdfReorgLog -Message "[GS-PREP] single-page shortcut FirstPage=$only" -Level 'INFO'
                 $permSingle = @(Get-PdfReorganiserGhostscriptPermitArgs -ResolvedSourcePdf $resolvedSource -OutputPdfAbsPath $outAbs)
                 $gsArgsSingle = @(
                     '-dNOPAUSE', '-dBATCH'
@@ -358,7 +368,7 @@ function Reorganiser-PDF {
                 )
                 $cmdChars = 0
                 foreach ($_a in $gsArgsSingle) { $cmdChars += $_a.Length + 1 }
-                Write-Host "[GS-PREP] singlePass approxArgChars=$cmdChars" -ForegroundColor DarkGray
+                script:Write-PdfReorgLog -Message "[GS-PREP] singlePass approxArgChars=$cmdChars" -Level 'INFO'
                 $process = Start-Process -FilePath $gsPath -ArgumentList $gsArgsSingle -NoNewWindow -Wait -PassThru -RedirectStandardError $errFile
                 if ($null -ne $ProgressCallback) {
                     try { & $ProgressCallback 1 1 $only } catch { }
@@ -404,14 +414,14 @@ function Reorganiser-PDF {
                         $prSlice = Start-Process -FilePath $gsPath -ArgumentList $argSlice -NoNewWindow -Wait -PassThru -RedirectStandardError $errFile
                         if ($null -eq $prSlice -or $prSlice.ExitCode -ne 0) {
                             $ec = if ($null -eq $prSlice) { '(null)' } else { "$($prSlice.ExitCode)" }
-                            Write-Host ("[ERROR] Ghostscript extraction echouee lot : First=$fP Last=$lP ExitCode=$ec") -ForegroundColor Red
+                            script:Write-PdfReorgLog -Message ("[ERROR] Ghostscript extraction echouee lot : First=$fP Last=$lP ExitCode=$ec") -Level 'ERROR'
                             if (Test-Path -LiteralPath $errFile) {
-                                Write-Host ([string](Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue)) -ForegroundColor DarkRed
+                                script:Write-PdfReorgLog -Message ([string](Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue)) -Level 'ERROR'
                             }
                             return $false
                         }
                         if (-not (Test-Path -LiteralPath $sliceOut)) {
-                            Write-Host "[ERROR] Fichier lot extrait absent : $sliceOut" -ForegroundColor Red
+                            script:Write-PdfReorgLog -Message "[ERROR] Fichier lot extrait absent : $sliceOut" -Level 'ERROR'
                             return $false
                         }
                         for ($ri = 0; $ri -lt $mRep; $ri++) {
@@ -423,7 +433,7 @@ function Reorganiser-PDF {
                     }
                 }
                 else {
-                    Write-Host '[GS-PREP] CN_GS_BATCH_SLICES=0 : extraction page par page (comportement historique)' -ForegroundColor DarkYellow
+                    script:Write-PdfReorgLog -Message '[GS-PREP] CN_GS_BATCH_SLICES=0 : extraction page par page (comportement historique)' -Level 'WARN'
                     $pi = 0
                     foreach ($pageNum in @($pageNumbers)) {
                         $pnI = [int]$pageNum
@@ -444,14 +454,14 @@ function Reorganiser-PDF {
                         $prSlice = Start-Process -FilePath $gsPath -ArgumentList $argSlice -NoNewWindow -Wait -PassThru -RedirectStandardError $errFile
                         if ($null -eq $prSlice -or $prSlice.ExitCode -ne 0) {
                             $ec = if ($null -eq $prSlice) { '(null)' } else { "$($prSlice.ExitCode)" }
-                            Write-Host "[ERROR] Ghostscript extraction echouee : page=$pnI ExitCode=$ec" -ForegroundColor Red
+                            script:Write-PdfReorgLog -Message "[ERROR] Ghostscript extraction echouee : page=$pnI ExitCode=$ec" -Level 'ERROR'
                             if (Test-Path -LiteralPath $errFile) {
-                                Write-Host ([string](Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue)) -ForegroundColor DarkRed
+                                script:Write-PdfReorgLog -Message ([string](Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue)) -Level 'ERROR'
                             }
                             return $false
                         }
                         if (-not (Test-Path -LiteralPath $sliceOut)) {
-                            Write-Host "[ERROR] Fichier page extrait absent : $sliceOut" -ForegroundColor Red
+                            script:Write-PdfReorgLog -Message "[ERROR] Fichier page extrait absent : $sliceOut" -Level 'ERROR'
                             return $false
                         }
                         [void]$tempSingles.Add($sliceOut)
@@ -473,7 +483,7 @@ function Reorganiser-PDF {
                 }
                 $argLenEst = 0
                 foreach ($part in @($mergeArgs)) { $argLenEst += ($part.Length + 1) }
-                Write-Host ("[GS-PREP] merge pass partCount=$($mergeArgs.Count) approxArgChars=$argLenEst") -ForegroundColor DarkCyan
+                script:Write-PdfReorgLog -Message ("[GS-PREP] merge pass partCount=$($mergeArgs.Count) approxArgChars=$argLenEst") -Level 'INFO'
                 $useRsp = ($argLenEst -gt 28000 -or $tempSingles.Count -gt 50)
                 if ($useRsp) {
                     $rspPath = Join-Path $env:TEMP ("cn_gs_merge_{0}.rsp" -f $runGuid)
@@ -484,7 +494,7 @@ function Reorganiser-PDF {
                         [void]$rspBody.Add(('"' + $tpNorm + '"').Trim())
                     }
                     Write-PdfReorganiserGhostscriptResponseFileUtf8NoBom -RspPath $rspPath -BodyLines @($rspBody.ToArray())
-                    Write-Host "[GS-PREP] merge utilise fichier arguments (liste longue ou >50 fichiers)" -ForegroundColor DarkYellow
+                    script:Write-PdfReorgLog -Message "[GS-PREP] merge utilise fichier arguments (liste longue ou >50 fichiers)" -Level 'WARN'
 
                     $permRsp = @(Get-PdfReorganiserGhostscriptPermitArgs -ResolvedSourcePdf $resolvedSource -OutputPdfAbsPath $outAbs -AdditionalReadCandidates (@($tempSingles.ToArray()) + @($rspPath)))
 
@@ -502,7 +512,7 @@ function Reorganiser-PDF {
                     Write-PdfReorganiserGhostscriptInputDiagnosticsIfEnabled -ResolvedSourcePdf $resolvedSource -OutputPdfAbsPath $outAbs -RspPath $rspPath
 
                     if ($preMs -gt 0) {
-                        Write-Host ("[GS-PREP] Pause pre-merge CN_GS_PREMERGE_DELAY_MS={0}ms (flush FS / fermeture fichier)" -f $preMs) -ForegroundColor DarkGray
+                        script:Write-PdfReorgLog -Message ("[GS-PREP] Pause pre-merge CN_GS_PREMERGE_DELAY_MS={0}ms (flush FS / fermeture fichier)" -f $preMs) -Level 'INFO'
                         Start-Sleep -Milliseconds $preMs
                     }
 
@@ -525,7 +535,7 @@ function Reorganiser-PDF {
                 }
             }
         } catch {
-            Write-Host "[ERROR] Ghostscript pipeline : $_" -ForegroundColor Red
+            script:Write-PdfReorgLog -Message "[ERROR] Ghostscript pipeline : $_" -Level 'ERROR'
             return $false
         } finally {
             foreach ($ts in @($tempSingles)) {
@@ -539,51 +549,51 @@ function Reorganiser-PDF {
             }
         }
 
-        Write-Host "[PDF] Fusion / ecriture Ghostscript terminee (stderr agrégée si erreur)." -ForegroundColor Gray
+        script:Write-PdfReorgLog -Message "[PDF] Fusion / ecriture Ghostscript terminee (stderr agrégée si erreur)." -Level 'INFO'
 
         if ($null -eq $process) {
-            Write-Host "[ERROR] Processus Ghostscript non démarré." -ForegroundColor Red
-            if (-not [string]::IsNullOrWhiteSpace($stderr)) { Write-Host $stderr -ForegroundColor DarkRed }
+            script:Write-PdfReorgLog -Message "[ERROR] Processus Ghostscript non démarré." -Level 'ERROR'
+            if (-not [string]::IsNullOrWhiteSpace($stderr)) { script:Write-PdfReorgLog -Message $stderr -Level 'ERROR' }
             return $false
         }
 
         if ($process.ExitCode -ne 0) {
-            Write-Host "[ERROR] Ghostscript a échoué (code: $($process.ExitCode))" -ForegroundColor Red
+            script:Write-PdfReorgLog -Message "[ERROR] Ghostscript a échoué (code: $($process.ExitCode))" -Level 'ERROR'
             if (-not [string]::IsNullOrWhiteSpace($stderr)) {
-                Write-Host "[ERROR] Sortie d'erreur Ghostscript (stderr) :" -ForegroundColor DarkRed
-                Write-Host $stderr -ForegroundColor DarkRed
-            } else { Write-Host "[ERROR] (stderr vide ; vérifier chemins, droits, argument -sOutputFile.)" -ForegroundColor DarkRed }
+                script:Write-PdfReorgLog -Message "[ERROR] Sortie d'erreur Ghostscript (stderr) :" -Level 'ERROR'
+                script:Write-PdfReorgLog -Message $stderr -Level 'ERROR'
+            } else { script:Write-PdfReorgLog -Message "[ERROR] (stderr vide ; vérifier chemins, droits, argument -sOutputFile.)" -Level 'ERROR' }
             return $false
         }
 
         if (-not (Test-PlausibleGeneratedPdf -Path $outAbs)) {
-            Write-Host "[ERROR] Fichier de sortie absent ou n'est pas un PDF valide (en-tête %PDF- / taille minimale)." -ForegroundColor Red
+            script:Write-PdfReorgLog -Message "[ERROR] Fichier de sortie absent ou n'est pas un PDF valide (en-tête %PDF- / taille minimale)." -Level 'ERROR'
             if (-not [string]::IsNullOrWhiteSpace($stderr)) {
-                Write-Host "[ERROR] Sortie stderr Ghostscript (aide diagnostic) :" -ForegroundColor DarkRed
-                Write-Host $stderr -ForegroundColor DarkRed
+                script:Write-PdfReorgLog -Message "[ERROR] Sortie stderr Ghostscript (aide diagnostic) :" -Level 'ERROR'
+                script:Write-PdfReorgLog -Message $stderr -Level 'ERROR'
             }
             if (Test-Path -LiteralPath $outAbs) {
                 $len = (Get-Item -LiteralPath $outAbs).Length
-                Write-Host ("[ERROR] Fichier trouvé : {0} octet(s)" -f $len) -ForegroundColor DarkRed
+                script:Write-PdfReorgLog -Message ("[ERROR] Fichier trouvé : {0} octet(s)" -f $len) -Level 'ERROR'
             }
             return $false
         }
 
         if (-not [string]::IsNullOrWhiteSpace($stderr) -and $stderr -match '(?i)error|fatal|invalid|cannot|failed') {
-            Write-Host "[WARN] Ghostscript (code 0) mais message suspect sur stderr : voir ci-dessous" -ForegroundColor Yellow
-            Write-Host $stderr -ForegroundColor DarkYellow
+            script:Write-PdfReorgLog -Message "[WARN] Ghostscript (code 0) mais message suspect sur stderr : voir ci-dessous" -Level 'WARN'
+            script:Write-PdfReorgLog -Message $stderr -Level 'WARN'
         }
 
         $sz = (Get-Item -LiteralPath $outAbs).Length
         $pdfOkMsg = "[PDF] OK — sortie vérifiée (en-tête %PDF- + {0} octet(s))" -f $sz
-        Write-Host $pdfOkMsg -ForegroundColor Green
+        script:Write-PdfReorgLog -Message $pdfOkMsg -Level 'INFO'
         if (Get-Command Write-PlanningRebuildUiLog -ErrorAction SilentlyContinue) {
             Write-PlanningRebuildUiLog $pdfOkMsg
         }
         return $true
     } else {
         Write-Warning "Ghostscript (gswin64c) introuvable : pas de génération PDF automatique. Définir GHOSTSCRIPT_EXE vers l'exécutable, ou ajouter gswin64c au PATH, ou installer Ghostscript (ex. https://ghostscript.com/releases/gsdnld.html) — le binaire PDF24 est souvent sous Program Files\PDF24\gs\bin\."
-        Write-Host "[PDF] Ghostscript non détecté (voir avertissement ci-dessus)" -ForegroundColor Yellow
+        script:Write-PdfReorgLog -Message "[PDF] Ghostscript non détecté (voir avertissement ci-dessus)" -Level 'WARN'
 
         # Alternative : Utiliser l'impression Windows
         Add-Type -AssemblyName System.Windows.Forms

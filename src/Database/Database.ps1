@@ -438,7 +438,6 @@ WHERE numero_parc IS NULL OR TRIM(numero_parc) = ''
 
 function Initialize-Database {
     if (-not (Test-Path $script:DllPath)) {
-        Write-Host "❌ DLL manquante" -ForegroundColor Red
         Write-Log "[DB] SQLite DLL missing" "ERROR" @{ dllPath = $script:DllPath }
         return $false
     }
@@ -453,7 +452,6 @@ function Initialize-Database {
         $cmd.CommandText = $schema
         $null = $cmd.ExecuteNonQuery()
         Close-Connection $conn
-        Write-Host "✅ Base créée" -ForegroundColor Green
         Write-Log "[DB] Database created" "INFO" @{ dbPath = $script:DbPath }
     }
 
