@@ -863,21 +863,17 @@ Describe 'PdfPlanningOptimizer - tournee cover (prestations speciales ODM)' {
     }
 }
 
-Describe 'PdfPlanningOptimizer - certificat destruction Word' {
+Describe 'PdfPlanningOptimizer - certificat destruction ODS' {
 
     BeforeAll {
-        $wordCertPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsDestructionCertificateWord.ps1' | Resolve-Path
-        . ([string]$wordCertPath)
+        $odsCertPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsDestructionCertificateODS.ps1' | Resolve-Path
+        . ([string]$odsCertPath)
     }
 
     It 'Get-CnsDestructionCertificateTemplatePath : fichier repo templates' {
         $p = Get-CnsDestructionCertificateTemplatePath
-        if ($null -eq $p) {
-            Set-ItResult -Inconclusive -Because 'Template CertificatDeDestruction.docx absent du depot'
-        }
-        else {
-            (Test-Path -LiteralPath $p) | Should Be $true
-        }
+        (Test-Path -LiteralPath $p) | Should Be $true
+        ([System.IO.Path]::GetExtension($p)).ToLowerInvariant() | Should Be '.ods'
     }
 
     It 'ConvertTo-CnsDestructionCertificatePlaceholderValue : sentinelles -> vide' {
@@ -893,25 +889,27 @@ Describe 'PdfPlanningOptimizer - certificat destruction Word' {
         (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value 'APLIM CHAMBERY - N?24415') | Should Be 'APLIM CHAMBERY - N°24415'
     }
 
-    It 'Invoke-CnsDocxRepairCertificateTitleCenteringInXmlFile : no-op (annulation centrage)' {
-        $tpl = Get-CnsDestructionCertificateTemplatePath
-        if ($null -eq $tpl) {
-            Set-ItResult -Inconclusive -Because 'Template CertificatDeDestruction.docx absent du depot'
+    It 'Add-2WorkingDaysWithFrenchHolidays : exemples validation' {
+        . (Join-Path $PSScriptRoot '..\src\Common\CnsFrenchHolidays.ps1' | Resolve-Path)
+        $d1 = Add-2WorkingDaysWithFrenchHolidays -StartDate ([datetime]'2026-05-29')
+        (Format-CnsFrenchDate -Date $d1) | Should Be '02/06/2026'
+        $d2 = Add-2WorkingDaysWithFrenchHolidays -StartDate ([datetime]'2026-05-07')
+        (Format-CnsFrenchDate -Date $d2) | Should Be '12/05/2026'
+    }
+
+    It 'Get-CnsDestructionCertificatePlaceholders : Date_FinDestruction et trieur' {
+        $wo = [pscustomobject]@{
+            ClientID   = '1'
+            ClientName = 'Client'
+            WorkOrder  = 'WO-1'
+            Services   = @()
+            Address    = @{ Street = ''; PostalCode = ''; City = '' }
         }
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        $workDocx = Join-Path $env:TEMP ("cn_cert_title_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
-        Copy-Item -LiteralPath $tpl -Destination $workDocx -Force
-        $workDir = Join-Path $env:TEMP ('cn_docx_title_' + [Guid]::NewGuid().ToString('N'))
-        $null = New-Item -ItemType Directory -Path $workDir -Force
-        try {
-            [System.IO.Compression.ZipFile]::ExtractToDirectory($workDocx, $workDir)
-            $docXml = Join-Path $workDir 'word\document.xml'
-            (Invoke-CnsDocxRepairCertificateTitleCenteringInXmlFile -XmlPath $docXml) | Should Be $false
-        }
-        finally {
-            if (Test-Path -LiteralPath $workDocx) { Remove-Item -LiteralPath $workDocx -Force -ErrorAction SilentlyContinue }
-            if (Test-Path -LiteralPath $workDir) { Remove-Item -LiteralPath $workDir -Recurse -Force -ErrorAction SilentlyContinue }
-        }
+        $seg = [pscustomobject]@{ Collecteur = 'Jean Martin'; Vehicule = 'AB-123-CD' }
+        $ph = Get-CnsDestructionCertificatePlaceholders -WorkOrderEntity $wo -SegmentMeta $seg -VisitDate ([datetime]'2026-05-29')
+        $ph.Date_FinDestruction | Should Be '02/06/2026'
+        ($ph.Keys -contains 'Trieur_Nom') | Should Be $true
+        ($ph.Keys -contains 'Trieur_Prenom') | Should Be $true
     }
 
     It 'Get-CnsDestructionCertificatePlaceholders : champs client et collecteur' {
@@ -982,57 +980,40 @@ Describe 'PdfPlanningOptimizer - certificat destruction Word' {
         }
     }
 
-    It 'Set-CnsDocxTemplatePlaceholders : remplace balises w:t sans casser structure OOXML' {
+    It 'Set-OdsTemplatePlaceholders : remplace balises CertificatDeDestruction.ods' {
         $tpl = Get-CnsDestructionCertificateTemplatePath
-        if ($null -eq $tpl) {
-            Set-ItResult -Inconclusive -Because 'Template CertificatDeDestruction.docx absent'
-        }
         Add-Type -AssemblyName System.IO.Compression.FileSystem
-        $tplUnzip = Join-Path $env:TEMP ("cn_pester_tpl_{0}" -f ([Guid]::NewGuid().ToString('N')))
-        [System.IO.Compression.ZipFile]::ExtractToDirectory($tpl, $tplUnzip)
-        $tplDocXml = Join-Path $tplUnzip 'word\document.xml'
-        $tplXml = [xml](Get-Content -LiteralPath $tplDocXml -Raw -Encoding UTF8)
-        $ns = New-Object System.Xml.XmlNamespaceManager($tplXml.NameTable)
-        [void]$ns.AddNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main')
-        $drawingsBefore = @($tplXml.SelectNodes('//w:drawing', $ns)).Count
-        $txbxBefore = @($tplXml.SelectNodes('//w:txbxContent', $ns)).Count
-        $hasMedia = Test-Path -LiteralPath (Join-Path $tplUnzip 'word\media\image1.png')
+        $picsBefore = @([System.IO.Compression.ZipFile]::OpenRead($tpl).Entries | Where-Object { $_.FullName -like 'Pictures/*' }).Count
+        [System.IO.Compression.ZipFile]::OpenRead($tpl).Dispose()
 
-        $work = Join-Path $env:TEMP ("cn_pester_cert_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
-        Copy-Item -LiteralPath $tpl -Destination $work -Force
+        $work = Join-Path $env:TEMP ("cn_pester_cert_{0}.ods" -f ([Guid]::NewGuid().ToString('N')))
         $ph = @{
-            Date_Collecte     = '01/02/2026'
-            Client_Nom        = 'ACME TEST'
-            Client_Adresse    = '10 rue Test'
-            Client_CP         = '75002'
-            Client_Ville      = 'Paris'
-            Collecteur_Nom    = 'DUPONT'
-            Collecteur_Prenom = 'Jean'
-            Client_ID         = '99999'
-            ODM_Numero        = 'ODM-TEST'
-            Vehicule_Immat    = 'AB-001-CD'
+            Date_Collecte       = '01/02/2026'
+            Date_FinDestruction = '05/02/2026'
+            Client_Nom          = 'ACME TEST'
+            Client_Adresse      = '10 rue Test'
+            Client_CP           = '75002'
+            Client_Ville        = 'Paris'
+            Collecteur_Nom      = 'DUPONT'
+            Collecteur_Prenom   = 'Jean'
+            Client_ID           = '99999'
+            ODM_Numero          = 'ODM-TEST'
+            Vehicule_Immat      = 'AB-001-CD'
+            Trieur_Nom          = 'MARTIN'
+            Trieur_Prenom       = 'Paul'
         }
-        $ok = Set-CnsDocxTemplatePlaceholders -DocxPath $work -Placeholders $ph
+        $ok = Set-OdsTemplatePlaceholders -OdsPath $tpl -Placeholders $ph -OutputPath $work
         $ok | Should Be $true
 
-        $unzip = Join-Path $env:TEMP ("cn_pester_unzip_{0}" -f ([Guid]::NewGuid().ToString('N')))
-        [System.IO.Compression.ZipFile]::ExtractToDirectory($work, $unzip)
-        $docXml = Join-Path $unzip 'word\document.xml'
-        (Test-Path -LiteralPath $docXml) | Should Be $true
-        $xml = [xml](Get-Content -LiteralPath $docXml -Raw -Encoding UTF8)
-        $ns2 = New-Object System.Xml.XmlNamespaceManager($xml.NameTable)
-        [void]$ns2.AddNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main')
-        @($xml.SelectNodes('//w:drawing', $ns2)).Count | Should Be $drawingsBefore
-        @($xml.SelectNodes('//w:txbxContent', $ns2)).Count | Should Be $txbxBefore
-        if ($hasMedia) {
-            (Test-Path -LiteralPath (Join-Path $unzip 'word\media\image1.png')) | Should Be $true
-        }
-        $plain = (($xml.SelectNodes('//w:t', $ns2) | ForEach-Object { $_.InnerText }) -join '')
-        $plain.Contains('{{') | Should Be $false
-        $plain.Contains('ACME TEST') | Should Be $true
-        $plain.Contains('DUPONT') | Should Be $true
-        Remove-Item -LiteralPath $unzip -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $tplUnzip -Recurse -Force -ErrorAction SilentlyContinue
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($work)
+        $sr = New-Object System.IO.StreamReader($zip.GetEntry('content.xml').Open())
+        $xml = $sr.ReadToEnd(); $sr.Close()
+        $picsAfter = @($zip.Entries | Where-Object { $_.FullName -like 'Pictures/*' }).Count
+        $zip.Dispose()
+        $xml.Contains('{{') | Should Be $false
+        $xml.Contains('ACME TEST') | Should Be $true
+        $xml.Contains('DUPONT') | Should Be $true
+        $picsAfter | Should Be $picsBefore
         Remove-Item -LiteralPath $work -Force -ErrorAction SilentlyContinue
     }
 }
@@ -1041,9 +1022,9 @@ Describe 'PdfPlanningOptimizer - fusion PDF certificat (structure-preserving)' {
 
     BeforeAll {
         $mergePath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsPdfStructureMerge.ps1' | Resolve-Path
-        $wordPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsDestructionCertificateWord.ps1' | Resolve-Path
+        $odsPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsDestructionCertificateODS.ps1' | Resolve-Path
         . ([string]$mergePath)
-        . ([string]$wordPath)
+        . ([string]$odsPath)
     }
 
     It 'Test-CnsPdfPathIsDestructionCertificateFragment : detecte cert_dest_*.pdf' {
@@ -1076,17 +1057,17 @@ Describe 'PdfPlanningOptimizer - fusion PDF certificat (structure-preserving)' {
             Write-Host 'INCONCLUSIVE: LibreOffice absent' -ForegroundColor Yellow
             return
         }
-        $docx = Join-Path $env:TEMP ("cn_pester_merge_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
+        $ods = Join-Path $env:TEMP ("cn_pester_merge_{0}.ods" -f ([Guid]::NewGuid().ToString('N')))
         $certPdf = Join-Path $env:TEMP ("cert_dest_001_00001.pdf")
         $dummyPdf = Join-Path $env:TEMP ("cn_pester_dummy_{0}.pdf" -f ([Guid]::NewGuid().ToString('N')))
         $merged = Join-Path $env:TEMP ("cn_pester_merged_{0}.pdf" -f ([Guid]::NewGuid().ToString('N')))
-        Copy-Item -LiteralPath $tpl -Destination $docx -Force
         $ph = @{
             Date_Collecte = '01/01/2026'; Client_Nom = 'ACME'; Client_Adresse = '1 rue'
             Client_CP = '75001'; Client_Ville = 'Paris'; Collecteur_Nom = 'DUPONT'; Collecteur_Prenom = 'Jean'
+            Date_FinDestruction = '05/01/2026'; Trieur_Nom = 'X'; Trieur_Prenom = 'Y'; ODM_Numero = 'ODM-1'
         }
-        Set-CnsDocxTemplatePlaceholders -DocxPath $docx -Placeholders $ph | Should Be $true
-        (Convert-DocxToPdfUsingLibreOffice -DocxPath $docx -PdfPath $certPdf) | Should Be $true
+        Set-OdsTemplatePlaceholders -OdsPath $tpl -Placeholders $ph -OutputPath $ods | Should Be $true
+        (Convert-OdsToPdf -OdsPath $ods -PdfPath $certPdf) | Should Be $true
         Copy-Item -LiteralPath $certPdf -Destination $dummyPdf -Force
         $before = Get-CnsPdfFontStructureMarkers -PdfPath $certPdf
         $before.ToUnicode | Should BeGreaterThan 0
@@ -1096,14 +1077,14 @@ Describe 'PdfPlanningOptimizer - fusion PDF certificat (structure-preserving)' {
         $after = Get-CnsPdfFontStructureMarkers -PdfPath $merged
         $after.ToUnicode | Should BeGreaterThan 0
         $after.FontFile2 | Should BeGreaterThan 0
-        Remove-Item -LiteralPath $docx,$certPdf,$dummyPdf,$merged -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $ods,$certPdf,$dummyPdf,$merged -Force -ErrorAction SilentlyContinue
     }
 }
 
-Describe 'PdfPlanningOptimizer - bilan collecte Word' {
+Describe 'PdfPlanningOptimizer - bilan collecte ODS' {
 
     BeforeAll {
-        $bilanPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsBilanCollecteWord.ps1' | Resolve-Path
+        $bilanPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsBilanCollecteODS.ps1' | Resolve-Path
         . ([string]$bilanPath)
     }
 
@@ -1127,29 +1108,24 @@ Describe 'PdfPlanningOptimizer - bilan collecte Word' {
         $ph.Collecteur_Prenom | Should Be ''
     }
 
-    It 'Set-CnsDocxTemplatePlaceholders : remplace balises BilanDeCollecte.docx' {
+    It 'Set-OdsTemplatePlaceholders : remplace balises BilanDeCollecte.ods' {
         $tpl = Get-CnsBilanCollecteTemplatePath
-        if ($null -eq $tpl) {
-            Set-ItResult -Inconclusive -Because 'Template BilanDeCollecte.docx absent'
-        }
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        $work = Join-Path $env:TEMP ("cn_pester_bilan_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
-        Copy-Item -LiteralPath $tpl -Destination $work -Force
+        $work = Join-Path $env:TEMP ("cn_pester_bilan_{0}.ods" -f ([Guid]::NewGuid().ToString('N')))
         $ph = @{
             Date_Collecte     = '15/03/2026'
             Collecteur_Nom    = 'DURAND'
             Collecteur_Prenom = 'Paul'
         }
-        $ok = Set-CnsDocxTemplatePlaceholders -DocxPath $work -Placeholders $ph
+        $ok = Set-OdsTemplatePlaceholders -OdsPath $tpl -Placeholders $ph -OutputPath $work
         $ok | Should Be $true
-        $unzip = Join-Path $env:TEMP ("cn_pester_bilan_unzip_{0}" -f ([Guid]::NewGuid().ToString('N')))
-        [System.IO.Compression.ZipFile]::ExtractToDirectory($work, $unzip)
-        $docXml = Join-Path $unzip 'word\document.xml'
-        $plain = ([regex]::Matches([System.IO.File]::ReadAllText($docXml), '<w:t[^>]*>([^<]*)</w:t>') | ForEach-Object { $_.Groups[1].Value }) -join ''
-        $plain.Contains('{{') | Should Be $false
-        $plain.Contains('DURAND') | Should Be $true
-        $plain.Contains('15/03/2026') | Should Be $true
-        Remove-Item -LiteralPath $unzip,$work -Recurse -Force -ErrorAction SilentlyContinue
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($work)
+        $sr = New-Object System.IO.StreamReader($zip.GetEntry('content.xml').Open())
+        $xml = $sr.ReadToEnd(); $sr.Close(); $zip.Dispose()
+        $xml.Contains('{{') | Should Be $false
+        $xml.Contains('DURAND') | Should Be $true
+        $xml.Contains('15/03/2026') | Should Be $true
+        Remove-Item -LiteralPath $work -Force -ErrorAction SilentlyContinue
     }
 
     It 'Merge-CnsPdfFilesForStep5TourneeComposition : preserve ToUnicode bilan LO apres qpdf' {
@@ -1161,19 +1137,18 @@ Describe 'PdfPlanningOptimizer - bilan collecte Word' {
             return
         }
         $tpl = Get-CnsBilanCollecteTemplatePath
-        if ($null -eq $tpl -or -not (Get-CnsLibreOfficeSofficePath)) {
-            Write-Host 'INCONCLUSIVE: template bilan ou LibreOffice absent' -ForegroundColor Yellow
+        if (-not (Get-CnsLibreOfficeSofficePath)) {
+            Write-Host 'INCONCLUSIVE: LibreOffice absent' -ForegroundColor Yellow
             return
         }
-        $docx = Join-Path $env:TEMP ("cn_pester_bilan_merge_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
+        $ods = Join-Path $env:TEMP ("cn_pester_bilan_merge_{0}.ods" -f ([Guid]::NewGuid().ToString('N')))
         $bilanPdf = Join-Path $env:TEMP 'bilan_seg_001.pdf'
         $dummyPdf = Join-Path $env:TEMP ("cn_pester_dummy_bilan_{0}.pdf" -f ([Guid]::NewGuid().ToString('N')))
         $merged = Join-Path $env:TEMP ("cn_pester_merged_bilan_{0}.pdf" -f ([Guid]::NewGuid().ToString('N')))
-        Copy-Item -LiteralPath $tpl -Destination $docx -Force
-        Set-CnsDocxTemplatePlaceholders -DocxPath $docx -Placeholders @{
+        Set-OdsTemplatePlaceholders -OdsPath $tpl -Placeholders @{
             Date_Collecte = '01/01/2026'; Collecteur_Nom = 'TEST'; Collecteur_Prenom = 'Jean'
-        } | Should Be $true
-        (Convert-DocxToPdfUsingLibreOffice -DocxPath $docx -PdfPath $bilanPdf) | Should Be $true
+        } -OutputPath $ods | Should Be $true
+        (Convert-OdsToPdf -OdsPath $ods -PdfPath $bilanPdf) | Should Be $true
         Copy-Item -LiteralPath $bilanPdf -Destination $dummyPdf -Force
         $before = Get-CnsPdfFontStructureMarkers -PdfPath $bilanPdf
         $before.ToUnicode | Should BeGreaterThan 0
@@ -1183,14 +1158,14 @@ Describe 'PdfPlanningOptimizer - bilan collecte Word' {
         $after = Get-CnsPdfFontStructureMarkers -PdfPath $merged
         $after.ToUnicode | Should BeGreaterThan 0
         $after.FontFile2 | Should BeGreaterThan 0
-        Remove-Item -LiteralPath $docx,$bilanPdf,$dummyPdf,$merged -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $ods,$bilanPdf,$dummyPdf,$merged -Force -ErrorAction SilentlyContinue
     }
 }
 
-Describe 'PdfPlanningOptimizer - CEA points collecte Word' {
+Describe 'PdfPlanningOptimizer - CEA points collecte ODS' {
 
     BeforeAll {
-        $ceaPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsCeaPointsCollecteWord.ps1' | Resolve-Path
+        $ceaPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsCeaPointsCollecteODS.ps1' | Resolve-Path
         $metierPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsPdfMetierPrestation.ps1' | Resolve-Path
         $mergePath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsPdfStructureMerge.ps1' | Resolve-Path
         . ([string]$metierPath)
@@ -1198,72 +1173,40 @@ Describe 'PdfPlanningOptimizer - CEA points collecte Word' {
         . ([string]$mergePath)
     }
 
-    It 'Get-CnsCeaPointsDeCollectePlaceholders : client, date segment, ODM' {
-        $wo = [pscustomobject]@{
-            ClientID   = '24531'
-            ClientName = 'Client CEA Test'
-            WorkOrder  = '5517128-19811616'
-            Address    = @{ Street = '10 rue CEA'; PostalCode = '75001'; City = 'Paris' }
-            Services   = @()
-        }
+    It 'Get-CnsCeaPointsDeCollectePlaceholders : Date_Collecte depuis segment' {
         $seg = [pscustomobject]@{
             DisplayDateJM = '20/05/2026'
             TourDate      = [datetime]'2026-05-20'
             Collecteur    = 'Jean Martin'
         }
-        $ph = Get-CnsCeaPointsDeCollectePlaceholders -WorkOrderEntity $wo -PageEntity $null -SegmentMeta $seg -VisitDate ([datetime]'2026-01-01') -FragSlicePdfPath $null
-        $ph.Client_ID | Should Be '24531'
-        $ph.Client_Nom | Should Be 'Client CEA Test'
-        $ph.Client_Adresse | Should Be '10 rue CEA, 75001 Paris'
+        $ph = Get-CnsCeaPointsDeCollectePlaceholders -WorkOrderEntity $null -PageEntity $null -SegmentMeta $seg -VisitDate ([datetime]'2026-01-01') -FragSlicePdfPath $null
         $ph.Date_Collecte | Should Be '20/05/2026'
-        $ph.ODM_Numero | Should Be '5517128-19811616'
-        $ph.Collecteur_Nom | Should Be 'Martin'
-        $ph.Collecteur_Prenom | Should Be 'Jean'
+        $ph.Count | Should Be 1
     }
 
-    It 'Get-CnsCeaPointsDeCollectePlaceholders : Point_Collecte_Description vide sans slice' {
-        $ph = Get-CnsCeaPointsDeCollectePlaceholders -WorkOrderEntity $null -PageEntity $null -SegmentMeta $null -VisitDate ([datetime]'2026-01-01') -FragSlicePdfPath ''
-        $ph.Point_Collecte_Description | Should Be ''
-    }
-
-    It 'Set-CnsDocxTemplatePlaceholders : remplace Date_Collecte dans CeaPointsDeCollectes.docx' {
+    It 'Set-OdsTemplatePlaceholders : remplace Date_Collecte dans CeaPointsDeCollectes.ods' {
         $tpl = Get-CnsCeaPointsDeCollecteTemplatePath
-        if ($null -eq $tpl) {
-            Set-ItResult -Inconclusive -Because 'Template CeaPointsDeCollectes.docx absent'
-        }
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        $work = Join-Path $env:TEMP ("cn_pester_cea_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
-        Copy-Item -LiteralPath $tpl -Destination $work -Force
-        $ph = @{
-            Date_Collecte              = '20/05/2026'
-            Client_Nom                 = 'ACME CEA'
-            Client_ID                  = '24531'
-            Client_Adresse             = '1 rue Test'
-            ODM_Numero                 = 'ODM-CEA-1'
-            Collecteur_Nom             = 'DUPONT'
-            Point_Collecte_Description = 'CEA service logistique 24531'
-        }
-        $ok = Set-CnsDocxTemplatePlaceholders -DocxPath $work -Placeholders $ph
+        $work = Join-Path $env:TEMP ("cn_pester_cea_{0}.ods" -f ([Guid]::NewGuid().ToString('N')))
+        $ph = @{ Date_Collecte = '20/05/2026' }
+        $ok = Set-OdsTemplatePlaceholders -OdsPath $tpl -Placeholders $ph -OutputPath $work
         $ok | Should Be $true
-        $unzip = Join-Path $env:TEMP ("cn_pester_cea_unzip_{0}" -f ([Guid]::NewGuid().ToString('N')))
-        [System.IO.Compression.ZipFile]::ExtractToDirectory($work, $unzip)
-        $plain = ([regex]::Matches([IO.File]::ReadAllText((Join-Path $unzip 'word\document.xml')), '<w:t[^>]*>([^<]*)</w:t>') | ForEach-Object { $_.Groups[1].Value }) -join ''
-        $plain.Contains('{{') | Should Be $false
-        $plain.Contains('20/05/2026') | Should Be $true
-        Remove-Item -LiteralPath $unzip,$work -Recurse -Force -ErrorAction SilentlyContinue
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($work)
+        $sr = New-Object System.IO.StreamReader($zip.GetEntry('content.xml').Open())
+        $xml = $sr.ReadToEnd(); $sr.Close(); $zip.Dispose()
+        $xml.Contains('{{') | Should Be $false
+        $xml.Contains('20/05/2026') | Should Be $true
+        Remove-Item -LiteralPath $work -Force -ErrorAction SilentlyContinue
     }
 
-    It 'New-CnsCeaPointsDeCollectesPdfFromWordTemplate : produit PDF via LibreOffice' {
+    It 'New-CnsCeaPointsDeCollectesPdfFromOdsTemplate : produit PDF via LibreOffice' {
         if (-not (Get-CnsLibreOfficeSofficePath)) {
             Set-ItResult -Inconclusive -Because 'LibreOffice absent'
         }
         $tpl = Get-CnsCeaPointsDeCollecteTemplatePath
-        if ($null -eq $tpl) {
-            Set-ItResult -Inconclusive -Because 'Template CEA absent'
-        }
         $outPdf = Join-Path $env:TEMP ("cea_{0:D3}_{1:D5}.pdf" -f 1, 1)
-        $ph = @{ Date_Collecte = '01/06/2026'; Client_Nom = 'TEST'; Collecteur_Nom = 'X' }
-        $result = New-CnsCeaPointsDeCollectesPdfFromWordTemplate -OutPdfPath $outPdf -Placeholders $ph
+        $ph = @{ Date_Collecte = '01/06/2026' }
+        $result = New-CnsCeaPointsDeCollectesPdfFromOdsTemplate -OutPdfPath $outPdf -Placeholders $ph
         $result | Should Not BeNullOrEmpty
         (Test-Path -LiteralPath $outPdf) | Should Be $true
         $m = Get-CnsPdfFontStructureMarkers -PdfPath $outPdf
@@ -1274,92 +1217,30 @@ Describe 'PdfPlanningOptimizer - CEA points collecte Word' {
     }
 }
 
-Describe 'PdfPlanningOptimizer - Convert-DocxToPdf facade' {
+Describe 'PdfPlanningOptimizer - conversion ODS PDF LibreOffice' {
 
     BeforeAll {
-        $wordCertPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsDestructionCertificateWord.ps1' | Resolve-Path
-        . ([string]$wordCertPath)
+        $odsCertPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsDestructionCertificateODS.ps1' | Resolve-Path
+        . ([string]$odsCertPath)
     }
 
-    AfterEach {
-        if ($script:SavedCnPdfConverter -ne $null) {
-            $env:CN_PDF_CONVERTER = $script:SavedCnPdfConverter
-        }
-        else {
-            Remove-Item Env:CN_PDF_CONVERTER -ErrorAction SilentlyContinue
-        }
-        $script:CnsMicrosoftWordAvailableCache = $null
-        if ($script:SavedCnWordApp -ne $null) {
-            $env:CN_WORD_APP = $script:SavedCnWordApp
-        }
-        else {
-            Remove-Item Env:CN_WORD_APP -ErrorAction SilentlyContinue
-        }
-    }
-
-    It 'Get-CnsDocxToPdfConverterMode : vide ou AUTO' {
-        Remove-Item Env:CN_PDF_CONVERTER -ErrorAction SilentlyContinue
-        (Get-CnsDocxToPdfConverterMode) | Should Be 'AUTO'
-        $env:CN_PDF_CONVERTER = 'auto'
-        (Get-CnsDocxToPdfConverterMode) | Should Be 'AUTO'
-    }
-
-    It 'Convert-DocxToPdf : CN_PDF_CONVERTER=NONE retourne false' {
-        $script:SavedCnPdfConverter = $env:CN_PDF_CONVERTER
-        $env:CN_PDF_CONVERTER = 'NONE'
-        (Convert-DocxToPdf -DocxPath 'C:\inexistant.docx' -PdfPath 'C:\inexistant.pdf') | Should Be $false
-    }
-
-    It 'Resolve-CnsDocxToPdfEngine : WORD sans Word retourne null' -Pending:(script:Test-CnsWordInstalledForTests) {
-        $script:SavedCnPdfConverter = $env:CN_PDF_CONVERTER
-        $script:SavedCnWordApp = $env:CN_WORD_APP
-        $env:CN_PDF_CONVERTER = 'WORD'
-        $env:CN_WORD_APP = 'C:\__cn_pester_winword_inexistant__.exe'
-        $script:CnsMicrosoftWordAvailableCache = $false
-        (Resolve-CnsDocxToPdfEngine -Mode 'WORD') | Should BeNullOrEmpty
-    }
-
-    It 'Test-CnsMicrosoftWordAvailable : Word installe' -Pending:(-not (script:Test-CnsWordInstalledForTests)) {
-        Test-CnsMicrosoftWordAvailable | Should Be $true
-    }
-
-    It 'Convert-DocxToPdfUsingWord : produit un PDF si Word disponible' -Pending:(-not (script:Test-CnsWordInstalledForTests)) {
-        $tpl = Get-CnsDestructionCertificateTemplatePath
-        if ($null -eq $tpl) {
-            Write-Host 'Template certificat absent — test ignore' -ForegroundColor Yellow
-            return
-        }
-        $docx = Join-Path $env:TEMP ("cn_pester_word_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
-        $pdf = Join-Path $env:TEMP ("cn_pester_word_{0}.pdf" -f ([Guid]::NewGuid().ToString('N')))
-        Copy-Item -LiteralPath $tpl -Destination $docx -Force
-        try {
-            (Convert-DocxToPdfUsingWord -DocxPath $docx -PdfPath $pdf) | Should Be $true
-            (Test-Path -LiteralPath $pdf) | Should Be $true
-        }
-        finally {
-            Remove-Item -LiteralPath $docx, $pdf -Force -ErrorAction SilentlyContinue
-        }
-    }
-
-    It 'Convert-DocxToPdf : AUTO utilise LibreOffice si present' {
+    It 'Convert-OdsToPdf : produit un PDF depuis CertificatDeDestruction.ods' {
         if (-not (Get-CnsLibreOfficeSofficePath)) {
             Set-ItResult -Inconclusive -Because 'LibreOffice absent'
         }
         $tpl = Get-CnsDestructionCertificateTemplatePath
-        if ($null -eq $tpl) {
-            Set-ItResult -Inconclusive -Because 'Template certificat absent'
-        }
-        $script:SavedCnPdfConverter = $env:CN_PDF_CONVERTER
-        Remove-Item Env:CN_PDF_CONVERTER -ErrorAction SilentlyContinue
-        $docx = Join-Path $env:TEMP ("cn_pester_auto_{0}.docx" -f ([Guid]::NewGuid().ToString('N')))
-        $pdf = Join-Path $env:TEMP ("cn_pester_auto_{0}.pdf" -f ([Guid]::NewGuid().ToString('N')))
-        Copy-Item -LiteralPath $tpl -Destination $docx -Force
+        $ods = Join-Path $env:TEMP ("cn_pester_lo_{0}.ods" -f ([Guid]::NewGuid().ToString('N')))
+        $pdf = Join-Path $env:TEMP ("cn_pester_lo_{0}.pdf" -f ([Guid]::NewGuid().ToString('N')))
+        Set-OdsTemplatePlaceholders -OdsPath $tpl -Placeholders @{
+            Date_Collecte = '01/01/2026'; Client_Nom = 'TEST'; ODM_Numero = 'ODM-1'
+            Date_FinDestruction = '05/01/2026'; Trieur_Nom = 'X'; Trieur_Prenom = 'Y'
+        } -OutputPath $ods | Should Be $true
         try {
-            (Convert-DocxToPdf -DocxPath $docx -PdfPath $pdf) | Should Be $true
+            (Convert-OdsToPdf -OdsPath $ods -PdfPath $pdf) | Should Be $true
             (Test-Path -LiteralPath $pdf) | Should Be $true
         }
         finally {
-            Remove-Item -LiteralPath $docx, $pdf -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $ods, $pdf -Force -ErrorAction SilentlyContinue
         }
     }
 }

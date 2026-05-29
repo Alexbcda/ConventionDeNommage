@@ -16,17 +16,17 @@ function script:Write-CnsTourneeLog {
     }
 }
 
-$_cnsDestructionWord = Join-Path $PSScriptRoot 'CnsDestructionCertificateWord.ps1'
-if (Test-Path -LiteralPath $_cnsDestructionWord) {
-    . $_cnsDestructionWord
+$_cnsDestructionOds = Join-Path $PSScriptRoot 'CnsDestructionCertificateODS.ps1'
+if (Test-Path -LiteralPath $_cnsDestructionOds) {
+    . $_cnsDestructionOds
 }
-$_cnsBilanCollecteWord = Join-Path $PSScriptRoot 'CnsBilanCollecteWord.ps1'
-if (Test-Path -LiteralPath $_cnsBilanCollecteWord) {
-    . $_cnsBilanCollecteWord
+$_cnsBilanCollecteOds = Join-Path $PSScriptRoot 'CnsBilanCollecteODS.ps1'
+if (Test-Path -LiteralPath $_cnsBilanCollecteOds) {
+    . $_cnsBilanCollecteOds
 }
-$_cnsCeaPointsWord = Join-Path $PSScriptRoot 'CnsCeaPointsCollecteWord.ps1'
-if (Test-Path -LiteralPath $_cnsCeaPointsWord) {
-    . $_cnsCeaPointsWord
+$_cnsCeaPointsOds = Join-Path $PSScriptRoot 'CnsCeaPointsCollecteODS.ps1'
+if (Test-Path -LiteralPath $_cnsCeaPointsOds) {
+    . $_cnsCeaPointsOds
 }
 
 function Sanitize-CnsCoverTextForGhostscript {
@@ -1593,14 +1593,14 @@ function Invoke-CnsFlushOdmDuplicationRun {
         $pn = [int]$PendingCert.ReorderPage
         $woCacheKey = [string]$PendingCert.WorkOrderCacheKey
         if (-not [string]::IsNullOrWhiteSpace($woCacheKey) -and $certInjectedForWo.Add($woCacheKey)) {
-            if (Get-Command New-CnsDestructionCertificatePdfFromWordTemplate -ErrorAction SilentlyContinue) {
+            if (Get-Command New-CnsDestructionCertificatePdfFromOdsTemplate -ErrorAction SilentlyContinue) {
                 $segMeta = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $gsPair -FinalOrderToLine $FinalOrderToLine -Segments $Segments -ExcelOrderIndexToSegmentIndex $OrderToSeg -VisitDate $VisitDate
                 $phTable = @{}
                 foreach ($entry in (Get-CnsDestructionCertificatePlaceholders -WorkOrderEntity $woPage -SegmentMeta $segMeta -VisitDate $VisitDate).GetEnumerator()) {
                     $phTable[[string]$entry.Key] = [string]$entry.Value
                 }
                 $certOut = Join-Path $TmpDir ('cert_dest_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
-                $certPdf = New-CnsDestructionCertificatePdfFromWordTemplate -OutPdfPath $certOut -Placeholders $phTable
+                $certPdf = New-CnsDestructionCertificatePdfFromOdsTemplate -OutPdfPath $certOut -Placeholders $phTable
                 if (-not [string]::IsNullOrWhiteSpace($certPdf) -and (Test-Path -LiteralPath $certPdf)) {
                     if (Get-Command Write-CnsDestructionCertificatePdfMergeAudit -ErrorAction SilentlyContinue) {
                         Write-CnsDestructionCertificatePdfMergeAudit -Phase 'GENERATED' -PdfPath $certPdf
@@ -1637,13 +1637,13 @@ function Invoke-CnsFlushOdmDuplicationRun {
         $gsPair = $ceaItem.GsPair
         $ceaOut = Join-Path $TmpDir ('cea_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
         $ceaPdf = $null
-        if (Get-Command New-CnsCeaPointsDeCollectesPdfFromWordTemplate -ErrorAction SilentlyContinue) {
+        if (Get-Command New-CnsCeaPointsDeCollectesPdfFromOdsTemplate -ErrorAction SilentlyContinue) {
             $segMetaCea = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $gsPair -FinalOrderToLine $FinalOrderToLine -Segments $Segments -ExcelOrderIndexToSegmentIndex $OrderToSeg -VisitDate $VisitDate
             $phCea = @{}
             foreach ($entry in (Get-CnsCeaPointsDeCollectePlaceholders -WorkOrderEntity $woPage -PageEntity $pePage -SegmentMeta $segMetaCea -VisitDate $VisitDate -FragSlicePdfPath $slicePath).GetEnumerator()) {
                 $phCea[[string]$entry.Key] = [string]$entry.Value
             }
-            $ceaPdf = New-CnsCeaPointsDeCollectesPdfFromWordTemplate -OutPdfPath $ceaOut -Placeholders $phCea
+            $ceaPdf = New-CnsCeaPointsDeCollectesPdfFromOdsTemplate -OutPdfPath $ceaOut -Placeholders $phCea
         }
         else {
             Write-Warning '[CEA-POINTS] Module Word CEA non charge — fallback PDF statique legacy.'
@@ -2091,14 +2091,14 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     if (-not $isDupTarget -and $metierPage.RequiresDestructionCertificate -and $null -ne $woPage) {
                         $woCacheKey = Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage
                         if (-not [string]::IsNullOrWhiteSpace($woCacheKey) -and $certInjectedForWo.Add($woCacheKey)) {
-                            if (Get-Command New-CnsDestructionCertificatePdfFromWordTemplate -ErrorAction SilentlyContinue) {
+                            if (Get-Command New-CnsDestructionCertificatePdfFromOdsTemplate -ErrorAction SilentlyContinue) {
                                 $segMeta = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $gsPair -FinalOrderToLine $foToLine -Segments $segments -ExcelOrderIndexToSegmentIndex $orderToSeg -VisitDate $VisitDate
                                 $phTable = @{}
                                 foreach ($entry in (Get-CnsDestructionCertificatePlaceholders -WorkOrderEntity $woPage -SegmentMeta $segMeta -VisitDate $VisitDate).GetEnumerator()) {
                                     $phTable[[string]$entry.Key] = [string]$entry.Value
                                 }
                                 $certOut = Join-Path $tmpDir ('cert_dest_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
-                                $certPdf = New-CnsDestructionCertificatePdfFromWordTemplate -OutPdfPath $certOut -Placeholders $phTable
+                                $certPdf = New-CnsDestructionCertificatePdfFromOdsTemplate -OutPdfPath $certOut -Placeholders $phTable
                                 if (-not [string]::IsNullOrWhiteSpace($certPdf) -and (Test-Path -LiteralPath $certPdf)) {
                                     if (Get-Command Write-CnsDestructionCertificatePdfMergeAudit -ErrorAction SilentlyContinue) {
                                         Write-CnsDestructionCertificatePdfMergeAudit -Phase 'GENERATED' -PdfPath $certPdf
@@ -2124,13 +2124,13 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     if (-not $isDupTarget -and $requiresCeaPage -and $rawPnPage -gt 0 -and $ceaInjectedForPage.Add($rawPnPage)) {
                         $ceaOut = Join-Path $tmpDir ('cea_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
                         $ceaPdf = $null
-                        if (Get-Command New-CnsCeaPointsDeCollectesPdfFromWordTemplate -ErrorAction SilentlyContinue) {
+                        if (Get-Command New-CnsCeaPointsDeCollectesPdfFromOdsTemplate -ErrorAction SilentlyContinue) {
                             $segMetaCea = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $gsPair -FinalOrderToLine $foToLine -Segments $segments -ExcelOrderIndexToSegmentIndex $orderToSeg -VisitDate $VisitDate
                             $phCea = @{}
                             foreach ($entry in (Get-CnsCeaPointsDeCollectePlaceholders -WorkOrderEntity $woPage -PageEntity $pePage -SegmentMeta $segMetaCea -VisitDate $VisitDate -FragSlicePdfPath $slicePath).GetEnumerator()) {
                                 $phCea[[string]$entry.Key] = [string]$entry.Value
                             }
-                            $ceaPdf = New-CnsCeaPointsDeCollectesPdfFromWordTemplate -OutPdfPath $ceaOut -Placeholders $phCea
+                            $ceaPdf = New-CnsCeaPointsDeCollectesPdfFromOdsTemplate -OutPdfPath $ceaOut -Placeholders $phCea
                         }
                         else {
                             Write-Warning '[CEA-POINTS] Module Word CEA non charge — fallback PDF statique legacy.'
@@ -2167,14 +2167,14 @@ function Invoke-PlanningTourneePdfCoverComposition {
                 $segNumBilan = [int]$Matches[1]
                 if (-not $bilanInjectedForSeg.ContainsKey($segNumBilan)) {
                     $bilanInjectedForSeg[$segNumBilan] = $true
-                    if (Get-Command New-CnsBilanCollectePdfFromWordTemplate -ErrorAction SilentlyContinue) {
+                    if (Get-Command New-CnsBilanCollectePdfFromOdsTemplate -ErrorAction SilentlyContinue) {
                         $segBilan = ($segments | Where-Object { [int]$_.SegmentIndex -eq $segNumBilan } | Select-Object -First 1)
                         $phBilan = @{}
                         foreach ($entry in (Get-CnsBilanCollectePlaceholders -SegmentMeta $segBilan -VisitDate $VisitDate).GetEnumerator()) {
                             $phBilan[[string]$entry.Key] = [string]$entry.Value
                         }
                         $bilanOut = Join-Path $tmpDir ('bilan_seg_{0:D3}.pdf' -f $fi)
-                        $bilanPdf = New-CnsBilanCollectePdfFromWordTemplate -OutPdfPath $bilanOut -Placeholders $phBilan
+                        $bilanPdf = New-CnsBilanCollectePdfFromOdsTemplate -OutPdfPath $bilanOut -Placeholders $phBilan
                         if (-not [string]::IsNullOrWhiteSpace($bilanPdf) -and (Test-Path -LiteralPath $bilanPdf)) {
                             if (Get-Command Write-CnsLibreOfficePdfMergeAudit -ErrorAction SilentlyContinue) {
                                 Write-CnsLibreOfficePdfMergeAudit -Phase 'GENERATED' -PdfPath $bilanPdf -DocumentKind 'BILAN-COLLECTE'
