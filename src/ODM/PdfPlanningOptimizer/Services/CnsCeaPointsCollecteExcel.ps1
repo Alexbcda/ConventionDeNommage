@@ -1,32 +1,19 @@
-# CEA Points de collecte : template DOCX -> PDF (LibreOffice headless ou Microsoft Word COM en secours).
-# Reutilise le moteur w:t safe et la conversion LibreOffice du certificat destruction.
+# CEA Points de collecte : template XLSX -> PDF.
 
-. (Join-Path $PSScriptRoot 'CnsDestructionCertificateWord.ps1')
+. (Join-Path $PSScriptRoot 'CnsDestructionCertificateExcel.ps1')
 
 function Get-CnsCeaPointsDeCollecteTemplatePath {
-    $candidates = New-Object System.Collections.Generic.List[string]
-    try {
-        $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
-        [void]$candidates.Add((Join-Path $repoRoot 'templates\planning\cea\CeaPointsDeCollectes.docx'))
-        [void]$candidates.Add((Join-Path $repoRoot 'templates\CeaPointsDeCollectes.docx'))
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
+    $templatePath = Join-Path $repoRoot 'templates\CeaPointsDeCollectes.xlsx'
+
+    if (-not (Test-Path -LiteralPath $templatePath -PathType Leaf)) {
+        throw 'Template CeaPointsDeCollectes.xlsx introuvable dans le dossier templates/'
     }
-    catch { }
-    if (-not [string]::IsNullOrWhiteSpace($env:CN_CEA_POINTS_TEMPLATE)) {
-        [void]$candidates.Insert(0, $env:CN_CEA_POINTS_TEMPLATE.Trim())
-    }
-    foreach ($p in @($candidates)) {
-        if (-not [string]::IsNullOrWhiteSpace($p) -and (Test-Path -LiteralPath $p -PathType Leaf)) {
-            return ([System.IO.Path]::GetFullPath($p))
-        }
-    }
-    return $null
+
+    return [System.IO.Path]::GetFullPath($templatePath)
 }
 
 function Get-CnsCeaPointCollecteDescriptionFromFragSlice {
-    <#
-    .SYNOPSIS
-        Extrait une description CEA depuis le texte pdftotext du slice ODM STEP5.
-    #>
     param(
         [AllowNull()][AllowEmptyString()][string]$FragSlicePdfPath
     )
@@ -57,11 +44,7 @@ function Get-CnsCeaPointCollecteDescriptionFromFragSlice {
     return (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value $joined)
 }
 
-function Get-CnsCeaPointsDeCollectePlaceholders {
-    <#
-    .SYNOPSIS
-        Placeholders CeaPointsDeCollectes.docx (template actuel : Date_Collecte ; cles etendues si ajoutees au DOCX).
-    #>
+function Get-CnsCeaPointsDeCollectePlaceholdersExcel {
     param(
         [AllowNull()]
         $WorkOrderEntity,
@@ -86,7 +69,7 @@ function Get-CnsCeaPointsDeCollectePlaceholders {
     [string]$collecteurPrenom = ''
 
     if ($null -ne $WorkOrderEntity) {
-        $base = Get-CnsDestructionCertificatePlaceholders -WorkOrderEntity $WorkOrderEntity -SegmentMeta $SegmentMeta -VisitDate $VisitDate
+        $base = Get-CnsDestructionCertificateBasePlaceholders -WorkOrderEntity $WorkOrderEntity -SegmentMeta $SegmentMeta -VisitDate $VisitDate
         $dateCollecte = [string]$base.Date_Collecte
         $clientId = [string]$base.Client_ID
         $clientNom = [string]$base.Client_Nom
@@ -151,77 +134,55 @@ function Get-CnsCeaPointsDeCollectePlaceholders {
     [string]$pointDesc = Get-CnsCeaPointCollecteDescriptionFromFragSlice -FragSlicePdfPath $FragSlicePdfPath
 
     return [ordered]@{
-        Date_Collecte               = $dateCollecte
-        Client_ID                   = $clientId
-        Client_Nom                  = $clientNom
-        Client_Adresse              = $clientAdresse
-        Client_CP                   = $cp
-        Client_Ville                = $ville
-        ODM_Numero                  = $odmNum
-        Collecteur_Nom              = $collecteurNom
-        Collecteur_Prenom           = $collecteurPrenom
-        Point_Collecte_Description  = $pointDesc
+        Date_Collecte              = $dateCollecte
+        Client_ID                  = $clientId
+        Client_Nom                 = $clientNom
+        Client_Adresse             = $clientAdresse
+        Client_CP                  = $cp
+        Client_Ville               = $ville
+        ODM_Numero                 = $odmNum
+        Collecteur_Nom             = $collecteurNom
+        Collecteur_Prenom          = $collecteurPrenom
+        Point_Collecte_Description = $pointDesc
     }
 }
 
-function New-CnsCeaPointsDeCollectesPdfFromWordTemplate {
-    <#
-    .SYNOPSIS
-        Remplit CeaPointsDeCollectes.docx et exporte un PDF (LibreOffice ou Word). Retourne le chemin PDF ou $null.
-    #>
+function Get-CnsCeaPointsDeCollectePlaceholders {
     param(
+        [AllowNull()]
+        $WorkOrderEntity,
+        [AllowNull()]
+        $PageEntity,
+        [AllowNull()]
+        $SegmentMeta,
         [Parameter(Mandatory = $true)]
-        [string]$OutPdfPath,
-        [Parameter(Mandatory = $true)]
-        [hashtable]$Placeholders,
+        [datetime]$VisitDate,
+        [AllowNull()][AllowEmptyString()][string]$FragSlicePdfPath
+    )
+    return (Get-CnsCeaPointsDeCollectePlaceholdersExcel -WorkOrderEntity $WorkOrderEntity -PageEntity $PageEntity -SegmentMeta $SegmentMeta -VisitDate $VisitDate -FragSlicePdfPath $FragSlicePdfPath)
+}
+
+function New-CnsCeaPointsDeCollectesPdfFromExcelTemplate {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutPdfPath,
+        [Parameter(Mandatory = $true)][hashtable]$Placeholders,
         [string]$TemplatePath
     )
     if ([string]::IsNullOrWhiteSpace($TemplatePath)) {
         $TemplatePath = Get-CnsCeaPointsDeCollecteTemplatePath
     }
-    if ([string]::IsNullOrWhiteSpace($TemplatePath) -or -not (Test-Path -LiteralPath $TemplatePath -PathType Leaf)) {
-        Write-Warning '[CEA-POINTS] Template DOCX introuvable (templates\CeaPointsDeCollectes.docx ou CN_CEA_POINTS_TEMPLATE).'
-        return $null
+    $result = New-CnsFilledXlsxPdfFromTemplate -TemplatePath $TemplatePath -OutPdfPath $OutPdfPath -Placeholders $Placeholders -TempFilePrefix 'cn_cea_points' -KeepFilledXlsxEnvVar 'CN_KEEP_CEA_POINTS_XLSX'
+    if ($null -ne $result) {
+        Write-Host ("[CEA-POINTS] PDF genere dynamiquement : {0}" -f (Split-Path -Leaf $result)) -ForegroundColor Green
     }
+    return $result
+}
 
-    $outAbs = [System.IO.Path]::GetFullPath($OutPdfPath)
-    $outDir = Split-Path -Parent $outAbs
-    if (-not (Test-Path -LiteralPath $outDir)) {
-        $null = New-Item -ItemType Directory -Path $outDir -Force -ErrorAction Stop
-    }
-
-    $runId = [Guid]::NewGuid().ToString('N')
-    $workDocx = Join-Path $env:TEMP ("cn_cea_points_{0}.docx" -f $runId)
-    Copy-Item -LiteralPath $TemplatePath -Destination $workDocx -Force
-
-    try {
-        Write-Host ("[CEA-POINTS] Generation dynamique depuis DOCX : {0}" -f (Split-Path -Leaf $TemplatePath)) -ForegroundColor DarkCyan
-        if (-not (Set-CnsDocxTemplatePlaceholders -DocxPath $workDocx -Placeholders $Placeholders)) {
-            return $null
-        }
-        if (-not (Convert-DocxToPdfUsingLibreOffice -DocxPath $workDocx -PdfPath $outAbs)) {
-            return $null
-        }
-    }
-    finally {
-        if (Test-Path -LiteralPath $workDocx) {
-            if (-not [string]::IsNullOrWhiteSpace($env:CN_KEEP_CEA_POINTS_DOCX)) {
-                Write-Host ("[CEA-POINTS] DOCX conserve (CN_KEEP_CEA_POINTS_DOCX) : {0}" -f $workDocx) -ForegroundColor DarkYellow
-            }
-            else {
-                Remove-Item -LiteralPath $workDocx -Force -ErrorAction SilentlyContinue
-            }
-        }
-        $loPdfSide = Join-Path $env:TEMP ([System.IO.Path]::GetFileNameWithoutExtension($workDocx) + '.pdf')
-        if (Test-Path -LiteralPath $loPdfSide) {
-            Remove-Item -LiteralPath $loPdfSide -Force -ErrorAction SilentlyContinue
-        }
-    }
-
-    if (-not (Test-Path -LiteralPath $outAbs)) {
-        Write-Warning '[CEA-POINTS] PDF non produit apres conversion DOCX vers PDF.'
-        return $null
-    }
-    Write-Host ("[CEA-POINTS] PDF genere dynamiquement : {0}" -f (Split-Path -Leaf $outAbs)) -ForegroundColor Green
-    return $outAbs
+function New-CnsCeaPointsDeCollectesPdfFromWordTemplate {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutPdfPath,
+        [Parameter(Mandatory = $true)][hashtable]$Placeholders,
+        [string]$TemplatePath
+    )
+    return (New-CnsCeaPointsDeCollectesPdfFromExcelTemplate -OutPdfPath $OutPdfPath -Placeholders $Placeholders -TemplatePath $TemplatePath)
 }

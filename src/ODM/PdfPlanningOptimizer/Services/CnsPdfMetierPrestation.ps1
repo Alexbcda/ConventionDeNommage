@@ -6,9 +6,9 @@ $_cnsPlanningDatabase = Join-Path $PSScriptRoot '..\..\..\Database\Database.ps1'
 if (Test-Path -LiteralPath $_cnsPlanningDatabase) {
     . $_cnsPlanningDatabase
 }
-$_cnsCertWordForMetier = Join-Path $PSScriptRoot 'CnsDestructionCertificateWord.ps1'
-if (Test-Path -LiteralPath $_cnsCertWordForMetier) {
-    . $_cnsCertWordForMetier
+$_cnsCertPlaceholderCommon = Join-Path $PSScriptRoot 'CnsCertificatePlaceholderCommon.ps1'
+if (Test-Path -LiteralPath $_cnsCertPlaceholderCommon) {
+    . $_cnsCertPlaceholderCommon
 }
 
 function ConvertTo-CnsMetierMatchNormalizedText {
