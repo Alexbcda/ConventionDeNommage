@@ -6,6 +6,8 @@ if (-not (Get-Command Convert-ToUiText -ErrorAction SilentlyContinue)) {
     . "$scriptDir\Common\UiText.ps1"
 }
 . "$scriptDir\Common\Styles.ps1"
+. (Join-Path $scriptDir 'Common\CnsSharePointConnector.ps1')
+. (Join-Path $scriptDir 'Common\CnsSharePointUI.ps1')
 
 function Ensure-WinFormsInitialized {
     if (-not (Get-Command Initialize-ApplicationWinForms -ErrorAction SilentlyContinue)) {
@@ -101,6 +103,7 @@ function Start-GUI {
 
     # ONGLET 4 : Edition planning
     $tabPlanning = [System.Windows.Forms.TabPage]::new()
+    $tabPlanning.Name = 'TabPlanning'
     $tabPlanning.Text = "Edition planning"
     $tabPlanning.BackColor = $script:CouleurGrisFond
     $planningPanel = Show-PlanningRebuilderPanel

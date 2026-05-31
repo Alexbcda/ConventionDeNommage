@@ -375,6 +375,25 @@ function script:Write-PlanningFlowLog {
 
 # Anti reentrance (UI double clic, rappels concurrents) — un seul pipeline actif
 $script:PlanningPipelineRunning = $false
+$script:PlanningStopRequested = $false
+
+function Reset-PlanningRebuildStop {
+    $script:PlanningStopRequested = $false
+}
+
+function Request-PlanningRebuildStop {
+    $script:PlanningStopRequested = $true
+}
+
+function Test-PlanningRebuildStopRequested {
+    if ($true -eq $script:PlanningStopRequested) {
+        if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+            Write-Log 'Traitement annule par l''utilisateur' 'WARN'
+        }
+        return $true
+    }
+    return $false
+}
 
 # CN_PLANNING_ARITH_DEBUG=1 : log DEBUG avant chaque opération d’arithmetic probe (types des opérandes)
 # Détection System.Object[] (ou tableau non scalaire) vers opérateur binaire - / + : log ERROR + stack 30
@@ -3535,6 +3554,7 @@ function Start-PlanningRebuild {
     $script:PlanningPipelineRunning = $true
     $script:PlanningRebuildProgressCallback = $ProgressCallback
     $script:PlanningTourneeBlockTotal = 0
+    Reset-PlanningRebuildStop
     try {
     if (script:Test-CnChirurgicalTrace) { $script:ChirurgicalLeakLogged = $false }
     if (script:Test-CnObjectTrace) { $script:ObjectArrayLeakLogged = $false }
@@ -3557,6 +3577,7 @@ function Start-PlanningRebuild {
     }
 
     script:Write-PlanningLog -Message "[PIPELINE] STEP 1: Extraction PDF" -Level 'INFO'
+    if (Test-PlanningRebuildStopRequested) { return $null }
     Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 1 -StepCount $planningStepTotal -Label 'Extraction PDF' -Status 'Running' -Percent 0
     $pdfExtractProgressCb = {
         param([int]$PageNumber, [int]$TotalPages, [string]$Detail = $null)
@@ -3650,6 +3671,8 @@ function Start-PlanningRebuild {
     $extractedPageCount = @($pdfData.Pages).Count
     Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 1 -StepCount $planningStepTotal -Label 'Extraction PDF' -Status 'OK' `
         -Detail ("({0} pages extraites)" -f $extractedPageCount) -Percent (Get-PlanningRebuildStepPercent -StepIndex 1 -StepCount $planningStepTotal -SubRatio 1.0)
+
+    if (Test-PlanningRebuildStopRequested) { return $null }
 
     script:Write-PlanningLog -Message "[PIPELINE] STEP 2: Lecture Excel + matching" -Level 'INFO'
     $script:ClientIdPipelineStatus = 'PASS'
@@ -3748,6 +3771,7 @@ function Start-PlanningRebuild {
     Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 2 -StepCount $planningStepTotal -Label 'Lecture Excel + matching' -Status 'OK' `
         -Detail ("({0} match exacts, {1} flous, {2} non-matches)" -f $matchExact, $matchFuzzy, $matchMissing) `
         -Percent (Get-PlanningRebuildStepPercent -StepIndex 2 -StepCount $planningStepTotal -SubRatio 1.0)
+    if (Test-PlanningRebuildStopRequested) { return $null }
     Trace-DeepObjectLeak -Value $match -Name "MatchResult" -Location "Start-PlanningRebuild.afterMatch"
     if ($null -ne $match -and @($match.Matches).Count -gt 0) {
         $match.Matches = @(
@@ -3768,6 +3792,7 @@ function Start-PlanningRebuild {
     }
 
     script:Write-PlanningLog -Message "[PIPELINE] STEP 3: Reordonnancement planning" -Level 'INFO'
+    if (Test-PlanningRebuildStopRequested) { return $null }
     Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 3 -StepCount $planningStepTotal -Label 'Reordonnancement planning' -Status 'Running' `
         -Percent (Get-PlanningRebuildStepPercent -StepIndex 3 -StepCount $planningStepTotal -SubRatio 0)
     if ($null -ne $woValidation) {
@@ -3789,6 +3814,7 @@ function Start-PlanningRebuild {
     Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 3 -StepCount $planningStepTotal -Label 'Reordonnancement planning' -Status 'OK' `
         -Detail ("({0} groupes ODM crees)" -f @($workOrders).Count) `
         -Percent (Get-PlanningRebuildStepPercent -StepIndex 3 -StepCount $planningStepTotal -SubRatio 1.0)
+    if (Test-PlanningRebuildStopRequested) { return $null }
     Trace-DeepObjectLeak -Value $reordered -Name "ordered" -Location "Start-PlanningRebuild.afterBuildReorderedPlanning"
     Write-Host "[REORDERED-SNAPSHOT] Count=$($reordered.Count) NullCount=$(@($reordered | Where-Object { $_ -eq $null }).Count)"
 
@@ -4090,6 +4116,7 @@ function Start-PlanningRebuild {
         }
 
         script:Write-PlanningLog -Message "[PIPELINE] STEP 4: Generation PDF" -Level 'INFO'
+        if (Test-PlanningRebuildStopRequested) { return $null }
         Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 4 -StepCount $planningStepTotal -Label 'Generation PDF' -Status 'Running' `
             -Percent (Get-PlanningRebuildStepPercent -StepIndex 4 -StepCount $planningStepTotal -SubRatio 0)
         $pdfReorgProgressCb = {
@@ -4122,10 +4149,12 @@ function Start-PlanningRebuild {
         }
         Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 4 -StepCount $planningStepTotal -Label 'Generation PDF' -Status 'OK' `
             -Detail ("({0} octets)" -f $fileSize) -Percent (Get-PlanningRebuildStepPercent -StepIndex 4 -StepCount $planningStepTotal -SubRatio 1.0)
+        if (Test-PlanningRebuildStopRequested) { return $null }
         script:Write-PlanningLog -Message ("[SUCCESS] PDF genere : {0} ({1} octets)" -f $outputPdfPath, $fileSize) -Level 'INFO'
         Write-PlanningRebuildUiLog ("[SUCCESS] PDF genere : {0}" -f $outputPdfPath)
 
         script:Write-PlanningLog -Message '[PIPELINE] STEP 5: Composition pages de garde tournées (+ page 1 globale)' -Level 'INFO'
+        if (Test-PlanningRebuildStopRequested) { return $null }
         Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 5 -StepCount $planningStepTotal -Label 'Composition pages de garde' -Status 'Running' `
             -Percent (Get-PlanningRebuildStepPercent -StepIndex 5 -StepCount $planningStepTotal -SubRatio 0)
         $script:PlanningTourneeBlockTotal = 0

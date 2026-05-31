@@ -1,5 +1,306 @@
 . "$PSScriptRoot\Services\PlanningRebuilder.ps1"
-. "$PSScriptRoot\..\..\Common\Styles.ps1"
+. (Join-Path $PSScriptRoot '..\..\Common\Styles.ps1')
+. (Join-Path $PSScriptRoot '..\..\Common\CnsSharePointConnector.ps1')
+. (Join-Path $PSScriptRoot '..\..\Common\CnsSharePointUI.ps1')
+
+if (-not (Get-Command Update-SharePointUI -ErrorAction SilentlyContinue)) {
+    throw 'PlanningRebuilderPanel.ps1 : Update-SharePointUI introuvable — verifier le dot-sourcing de CnsSharePointUI.ps1.'
+}
+
+# References de commandes en $script: — visibles depuis les closures BackgroundWorker.
+$script:UpdateSharePointUiCmd = Get-Command Update-SharePointUI -ErrorAction Stop
+$script:ConnectSharePointPlanningCmd = Get-Command Connect-SharePointPlanning -ErrorAction Stop
+$script:SyncSharePointPlanningFileCmd = Get-Command Sync-SharePointPlanningFile -ErrorAction Stop
+$script:PlanningRebuilderPanelContext = $null
+$script:PlanningRunning = $false
+$script:PlanningFormClosingRegistered = $false
+$script:PlanningHostRunspace = $null
+$script:PlanningRebuildJob = $null
+$script:PlanningRebuildJobTimer = $null
+
+function Stop-PlanningRebuildJobIfRunning {
+    if ($null -ne $script:PlanningRebuildJobTimer) {
+        try { $script:PlanningRebuildJobTimer.Stop() } catch { }
+    }
+    if ($null -ne $script:PlanningRebuildJob) {
+        try {
+            if ($script:PlanningRebuildJob.State -eq 'Running') {
+                Stop-Job -Job $script:PlanningRebuildJob -ErrorAction SilentlyContinue
+            }
+        }
+        catch { }
+        Remove-Job -Job $script:PlanningRebuildJob -Force -ErrorAction SilentlyContinue
+        $script:PlanningRebuildJob = $null
+    }
+}
+
+function Complete-PlanningRebuildJobUi {
+    param(
+        [System.Management.Automation.Job]$Job,
+        [System.Windows.Forms.Control]$RootPanel
+    )
+
+    Stop-PlanningRebuildStep2ActivityAnimation
+
+    $result = $null
+    $errMsg = $null
+    $jobState = $Job.State
+
+    try {
+        if ($jobState -eq 'Failed') {
+            $errMsg = 'Echec du traitement planning'
+            if ($null -ne $Job.JobStateInfo.Reason) {
+                $errMsg = [string]$Job.JobStateInfo.Reason.Message
+            }
+            Receive-Job -Job $Job -ErrorAction SilentlyContinue | Out-Null
+        }
+        elseif ($jobState -eq 'Stopped') {
+            Receive-Job -Job $Job -ErrorAction SilentlyContinue | Out-Null
+        }
+        else {
+            $result = Receive-Job -Job $Job -ErrorAction Stop
+        }
+    }
+    catch {
+        $jobState = 'Failed'
+        $errMsg = [string]$_.Exception.Message
+    }
+    finally {
+        Remove-Job -Job $Job -Force -ErrorAction SilentlyContinue
+        if ($script:PlanningRebuildJob -eq $Job) { $script:PlanningRebuildJob = $null }
+        if ($null -ne $script:PlanningRebuildJobTimer) {
+            try { $script:PlanningRebuildJobTimer.Stop() } catch { }
+        }
+    }
+
+    Safe-UpdateUIControl -Control $RootPanel -UpdateAction {
+        $ui = $script:PlanningRebuilderPanelContext.Ui
+        if ($ui.BtnPdf -is [System.Windows.Forms.Control]) { $ui.BtnPdf.Enabled = $true }
+        if ($ui.BtnStop -is [System.Windows.Forms.Control]) { $ui.BtnStop.Enabled = $false }
+    }
+
+    if ($jobState -eq 'Failed') {
+        if ([string]::IsNullOrWhiteSpace($errMsg)) { $errMsg = 'Echec du traitement planning' }
+        Safe-UpdateUIControl -Control $RootPanel -UpdateAction {
+            $ui = $script:PlanningRebuilderPanelContext.Ui
+            [void]$ui.TxtDebug.AppendText(("ERREUR: {0}" -f $errMsg) + [Environment]::NewLine)
+            $ui.LblStepProgress.Text = 'Echec du traitement'
+            $ui.ProgressBar.Value = 0
+            $ui.LblPercent.Text = '0%'
+        }
+        [System.Windows.Forms.MessageBox]::Show(
+            $errMsg,
+            'Echec traitement planning',
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        ) | Out-Null
+    }
+    elseif ($jobState -eq 'Stopped' -or $null -eq $result) {
+        Safe-UpdateUIControl -Control $RootPanel -UpdateAction {
+            $ui = $script:PlanningRebuilderPanelContext.Ui
+            if ($script:PlanningStopRequested) {
+                [void]$ui.TxtDebug.AppendText('Traitement annule par l''utilisateur.' + [Environment]::NewLine)
+                $ui.LblStepProgress.Text = 'Traitement annule'
+            }
+            else {
+                [void]$ui.TxtDebug.AppendText('Traitement interrompu.' + [Environment]::NewLine)
+                $ui.LblStepProgress.Text = 'Traitement interrompu'
+            }
+            $ui.ProgressBar.Value = 0
+            $ui.LblPercent.Text = '0%'
+        }
+    }
+    else {
+        $outPdf = [string]$result.OutputPdf
+        if (-not [string]::IsNullOrWhiteSpace($outPdf)) {
+            $outName = Split-Path -Leaf $outPdf
+            Safe-UpdateUIControl -Control $RootPanel -UpdateAction {
+                $ui = $script:PlanningRebuilderPanelContext.Ui
+                $ui.ProgressBar.Value = 100
+                $ui.LblPercent.Text = '100%'
+                $ui.LblStepProgress.Text = 'Traitement termine'
+                if ([string]::IsNullOrWhiteSpace($ui.LblOutputPdf.Text)) {
+                    $ui.LblOutputPdf.Text = ('PDF genere : {0}' -f $outName)
+                }
+            }
+        }
+        Reset-PlanningPdfImportSelection
+    }
+
+    Set-PlanningRunningState -IsRunning $false
+}
+
+function Start-PlanningRebuildJob {
+    param(
+        [string]$PdfPath,
+        [string]$ExcelPath,
+        [System.Windows.Forms.Control]$RootPanel
+    )
+
+    Stop-PlanningRebuildJobIfRunning
+
+    $rebuilderPath = Join-Path $PSScriptRoot 'Services\PlanningRebuilder.ps1'
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
+
+    $script:PlanningRebuildJob = Start-Job -Name 'PlanningRebuild' -ScriptBlock {
+        param($rebuilderPath, $repoRoot, $pdf, $excel)
+        Set-Location -LiteralPath $repoRoot
+        . $rebuilderPath
+        Start-PlanningRebuild -PdfPath $pdf -ExcelPath $excel -ProgressCallback $null
+    } -ArgumentList $rebuilderPath, $repoRoot, $PdfPath, $ExcelPath
+
+    if ($null -eq $script:PlanningRebuildJobTimer) {
+        $script:PlanningRebuildJobTimer = [System.Windows.Forms.Timer]::new()
+        $script:PlanningRebuildJobTimer.Interval = 300
+        $script:PlanningRebuildJobTimer.Add_Tick({
+            $job = $script:PlanningRebuildJob
+            $rootPanel = $script:PlanningRebuilderPanelContext.Panel
+            if ($null -eq $job -or $null -eq $rootPanel -or $rootPanel.IsDisposed) { return }
+            if ($job.State -in @('Completed', 'Failed', 'Stopped')) {
+                Complete-PlanningRebuildJobUi -Job $job -RootPanel $rootPanel
+            }
+        })
+    }
+
+    $script:PlanningRebuildJobTimer.Start()
+}
+
+function Safe-UpdateUIControl {
+    param(
+        [System.Windows.Forms.Control]$Control,
+        [scriptblock]$UpdateAction
+    )
+
+    if ($null -eq $Control -or $Control.IsDisposed) { return }
+    $form = $Control.FindForm()
+    if ($null -eq $form -or $form.IsDisposed) { return }
+
+    try {
+        if ($Control.InvokeRequired) {
+            $Control.Invoke([System.Action]{ & $UpdateAction })
+        }
+        else {
+            & $UpdateAction
+        }
+    }
+    catch {
+        Write-Debug ("Safe-UpdateUIControl: {0}" -f $_.Exception.Message)
+    }
+}
+
+function Set-PlanningRunningState {
+    param([bool]$IsRunning)
+    $script:PlanningRebuildUiBusy = $IsRunning
+    $script:PlanningRunning = $IsRunning
+}
+
+function Set-PlanningControlText {
+    param(
+        $Control,
+        [string]$Text
+    )
+    if ($null -eq $Control) { return }
+    if ($Control -isnot [System.Windows.Forms.Control]) { return }
+    if ($Control.IsDisposed) { return }
+    $Control.Text = [string]$Text
+}
+
+$script:InvokePlanningRebuildProgressUi = {
+    param(
+        [hashtable]$Event = $null,
+        [int]$StepIndex = 0,
+        [int]$StepCount = 0,
+        [string]$Label = '',
+        [string]$Status = '',
+        [string]$Detail = $null,
+        [int]$Percent = -1,
+        [string]$SubStep = $null,
+        [int]$SubStepIndex = 0,
+        [int]$SubStepCount = 0,
+        [string]$TreePrefix = $null,
+        [string]$OutputPath = $null
+    )
+    if (-not [string]::IsNullOrWhiteSpace($Status) -and $Status -eq 'Log') { return }
+    $ctx = $script:PlanningRebuilderPanelContext
+    if ($null -eq $ctx -or $null -eq $ctx.Panel -or $null -eq $ctx.Ui) { return }
+    Safe-UpdateUIControl -Control $ctx.Panel -UpdateAction {
+        $ui = $script:PlanningRebuilderPanelContext.Ui
+        if ($null -ne $Event) {
+            $h = $Event
+            $st = [string]$h.Status
+            if ($st -eq 'Log') { return }
+            Update-PlanningRebuildDebugProgress -DebugBox $ui.TxtDebug -ProgressBar $ui.ProgressBar `
+                -StepIndex ([int]$h.StepIndex) -StepCount ([int]$h.StepCount) -Label ([string]$h.Label) `
+                -Status $st -Detail ([string]$h.Detail) -Percent $(if ($h.ContainsKey('Percent')) { [int]$h.Percent } else { -1 }) `
+                -TreePrefix ([string]$h.TreePrefix) -OutputPath $(if ($h.ContainsKey('OutputPath')) { [string]$h.OutputPath } else { $null }) `
+                -StepLabel $ui.LblStepProgress -OutputLabel $ui.LblOutputPdf -PercentLabel $ui.LblPercent
+            return
+        }
+        Update-PlanningRebuildDebugProgress -DebugBox $ui.TxtDebug -ProgressBar $ui.ProgressBar `
+            -StepIndex $StepIndex -StepCount $StepCount -Label $Label -Status $Status -Detail $Detail `
+            -Percent $Percent -SubStep $SubStep -SubStepIndex $SubStepIndex -SubStepCount $SubStepCount `
+            -TreePrefix $TreePrefix -OutputPath $OutputPath `
+            -StepLabel $ui.LblStepProgress -OutputLabel $ui.LblOutputPdf -PercentLabel $ui.LblPercent
+    }
+}
+
+# Scriptblock en $script: (visible depuis BackgroundWorker ; les fonctions dot-sourcees dans Start-GUI ne le sont pas).
+$script:InvokePlanningSharePointUiUpdate = {
+    param($State)
+    $script:PlanningSharePointState = $State
+    Set-CnsSharePointConnectionState -State $State
+    if ($null -ne $State -and $State.Status -eq 'Connected' -and -not [string]::IsNullOrWhiteSpace([string]$State.FilePath)) {
+        $script:PlanningExcelPath = [string]$State.FilePath
+    }
+    $ctx = $script:PlanningRebuilderPanelContext
+    if ($null -eq $ctx -or $null -eq $ctx.Panel) { return }
+    $uiState = $State
+    $uiCmd = $script:UpdateSharePointUiCmd
+    $uiAction = {
+        $c = $script:PlanningRebuilderPanelContext
+        $uiStateLocal = $uiState
+        $lastSync = $null
+        if ($null -ne $uiStateLocal -and $null -ne $uiStateLocal.LastSync) {
+            try { $lastSync = [datetime]$uiStateLocal.LastSync } catch { $lastSync = $null }
+        }
+        $statusCode = if ($null -ne $uiStateLocal) { [string]$uiStateLocal.Status } else { 'Error' }
+        if ([string]::IsNullOrWhiteSpace($statusCode)) { $statusCode = 'Error' }
+        $importExcelBtn = $null
+        if ($null -ne $c.Ui) { $importExcelBtn = $c.Ui.BtnImportExcel }
+        $effectiveExcel = $script:PlanningExcelPath
+        if ([string]::IsNullOrWhiteSpace($effectiveExcel)) {
+            $effectiveExcel = Get-CnsSharePointEffectiveExcelPath
+        }
+        $uiParams = @{
+            State   = $statusCode
+            Labels  = @{
+                FileNameLabel      = $c.SpUi.FileName
+                StatusLabel        = $c.SpUi.Status
+                DateLabel          = $c.SpUi.Date
+                Icon               = $c.SpUi.Icon
+                StatusDot          = $c.SpUi.StatusDot
+                LocalMode          = $c.SpUi.LocalMode
+                ImportExcel        = $importExcelBtn
+                Connect            = $c.SpUi.Connect
+                EffectiveExcelPath = $effectiveExcel
+            }
+            Buttons  = $c.SpUi.Buttons
+            OnAction = $c.SharePointActionHandler
+        }
+        if ($null -ne $lastSync -and $lastSync -ne [datetime]::MinValue) {
+            $uiParams['LastSync'] = $lastSync
+        }
+        if ($null -ne $uiStateLocal -and -not [string]::IsNullOrWhiteSpace([string]$uiStateLocal.Message)) {
+            $uiParams['Message'] = [string]$uiStateLocal.Message
+        }
+        if ($null -ne $uiStateLocal -and -not [string]::IsNullOrWhiteSpace([string]$uiStateLocal.FilePath)) {
+            $uiParams['FilePath'] = [string]$uiStateLocal.FilePath
+        }
+        & $uiCmd @uiParams
+    }
+    $rootPanel = $ctx.Panel
+    Safe-UpdateUIControl -Control $rootPanel -UpdateAction $uiAction
+}
 
 $script:PlanningCurrentProgressLine = $null
 $script:PlanningProgressTextStart = 0
@@ -15,6 +316,184 @@ $script:PlanningStep2ActivityTimer = $null
 $script:PlanningStep2ActivityLabel = $null
 $script:PlanningStep2EllipsisPhase = 0
 $script:PlanningStep2ActivityActive = $false
+
+function Reset-PlanningPdfImportSelection {
+    $script:PlanningPdfPath = $null
+    Set-CnsPlanningRegistryValue -Name 'LastPdfPath' -Value $null
+    $ctx = $script:PlanningRebuilderPanelContext
+    if ($null -eq $ctx -or $null -eq $ctx.Panel) { return }
+    Safe-UpdateUIControl -Control $ctx.Panel -UpdateAction {
+        $ui = $script:PlanningRebuilderPanelContext.Ui
+        if ($null -ne $ui) {
+            Set-PlanningControlText -Control $ui.LblPdf -Text 'Aucun PDF selectionne'
+        }
+    }
+}
+
+function Update-PlanningSharePointUiState {
+    param($State)
+    & $script:InvokePlanningSharePointUiUpdate -State $State
+}
+
+function Set-PlanningSharePointConnectButtonEnabled {
+    param([bool]$Enabled)
+    $ctx = $script:PlanningRebuilderPanelContext
+    if ($null -eq $ctx -or $null -eq $ctx.SpUi -or $null -eq $ctx.SpUi.Connect) { return }
+    $rootPanel = $ctx.Panel
+    if ($null -eq $rootPanel -or $rootPanel.IsDisposed) { return }
+    Safe-UpdateUIControl -Control $rootPanel -UpdateAction {
+        $connectBtn = $script:PlanningRebuilderPanelContext.SpUi.Connect
+        if ($null -ne $connectBtn -and $connectBtn -is [System.Windows.Forms.Control] -and -not $connectBtn.IsDisposed) {
+            $connectBtn.Enabled = $Enabled
+        }
+    }
+}
+
+function Stop-PlanningSharePointWorkerForInteractiveLogin {
+    if ($null -eq $script:PlanningSharePointWorker) { return }
+    if (-not $script:PlanningSharePointWorker.IsBusy) { return }
+    try {
+        Request-CnsSharePointConnectCancel
+        $script:PlanningSharePointWorker.CancelAsync()
+    }
+    catch { }
+    $deadline = (Get-Date).AddSeconds(3)
+    while ($script:PlanningSharePointWorker.IsBusy -and (Get-Date) -lt $deadline) {
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Milliseconds 50
+    }
+}
+
+function Start-PlanningSharePointSync {
+    param(
+        [switch]$ForceRefresh,
+        [switch]$InteractiveLogin,
+        [switch]$ShowConnecting
+    )
+    if ($null -ne $script:PlanningSharePointWorker -and $script:PlanningSharePointWorker.IsBusy) {
+        if (-not $InteractiveLogin) { return }
+        Stop-PlanningSharePointWorkerForInteractiveLogin
+    }
+    Reset-CnsSharePointConnectCancel
+    if ($ShowConnecting) {
+        $connectMsg = if ($InteractiveLogin) {
+            'Authentification Microsoft 365 - suivez la fenetre ou le navigateur'
+        } else {
+            'Connexion SharePoint en cours...'
+        }
+        Update-PlanningSharePointUiState -State ([pscustomobject]@{
+                Status  = 'Connecting'
+                Message = $connectMsg
+            })
+    }
+
+    if ($InteractiveLogin) {
+        if (Test-CnsSharePointAuthInProgress) {
+            Write-Host 'Authentification Microsoft 365 deja en cours...' -ForegroundColor Yellow
+            return
+        }
+        Set-PlanningSharePointConnectButtonEnabled -Enabled $false
+        Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
+        if (-not (Test-MicrosoftGraphModule -PromptInstall)) {
+            Set-PlanningSharePointConnectButtonEnabled -Enabled $true
+            Update-PlanningSharePointUiState -State ([pscustomobject]@{
+                    Status      = 'Error'
+                    Message     = 'Module Microsoft.Graph requis - installez-le manuellement'
+                    ErrorDetail = 'Microsoft.Graph absent'
+                })
+            return
+        }
+        try {
+            Connect-SharePointGraph -Interactive | Out-Null
+        }
+        catch {
+            $errMsg = [string]$_.Exception.Message
+            $resolved = Resolve-CnsSharePointConnectError -ErrorMessage $errMsg
+            Update-PlanningSharePointUiState -State ([pscustomobject]@{
+                    Status      = $resolved.Status
+                    Message     = $resolved.Message
+                    ErrorDetail = $errMsg
+                })
+            Set-PlanningSharePointConnectButtonEnabled -Enabled $true
+            return
+        }
+        finally {
+            if (-not (Test-CnsSharePointAuthInProgress)) {
+                Set-PlanningSharePointConnectButtonEnabled -Enabled $true
+            }
+        }
+    }
+
+    $syncCmd = $script:SyncSharePointPlanningFileCmd
+    $connectCmd = $script:ConnectSharePointPlanningCmd
+    $wantRefresh = [bool]$ForceRefresh
+    $script:PlanningSharePointWorker = [System.ComponentModel.BackgroundWorker]::new()
+    $script:PlanningSharePointWorker.WorkerSupportsCancellation = $true
+    $workerRunspace = $script:PlanningHostRunspace
+    $script:PlanningSharePointWorker.Add_DoWork({
+        param($sender, $e)
+        if ($null -ne $workerRunspace) { [runspace]::DefaultRunspace = $workerRunspace }
+        if ($e.Cancel) { return }
+        if ($wantRefresh) {
+            $e.Result = & $syncCmd
+        }
+        else {
+            $e.Result = & $connectCmd
+        }
+    })
+    $script:PlanningSharePointWorker.Add_RunWorkerCompleted({
+        param($sender, $e)
+        $rootPanel = $script:PlanningRebuilderPanelContext.Panel
+        if ($null -eq $rootPanel -or $rootPanel.IsDisposed) { return }
+        Safe-UpdateUIControl -Control $rootPanel -UpdateAction {
+            if ($e.Cancelled) {
+                & $script:InvokePlanningSharePointUiUpdate -State ([pscustomobject]@{
+                        Status  = 'Error'
+                        Message = 'Connexion annulee'
+                    })
+                return
+            }
+            if ($null -ne $e.Error) {
+                $errorMsg = [string]$e.Error.Message
+                $stateMessage = 'Connexion échouée – cliquez sur "Connexion" pour réessayer'
+                & $script:InvokePlanningSharePointUiUpdate -State ([pscustomobject]@{
+                        Status      = 'Offline'
+                        Message     = $stateMessage
+                        ErrorDetail = $errorMsg
+                    })
+                return
+            }
+            & $script:InvokePlanningSharePointUiUpdate -State $e.Result
+            if ($script:PlanningPendingAutoRun -and $null -ne $e.Result -and $e.Result.Status -eq 'Connected' `
+                -and -not $script:PlanningRebuildUiBusy -and -not [string]::IsNullOrWhiteSpace($script:PlanningPdfPath)) {
+                $script:PlanningPendingAutoRun = $false
+                $rebuildHandler = $script:PlanningRebuilderPanelContext.RebuildRunHandler
+                if ($null -ne $rebuildHandler) {
+                    & $rebuildHandler
+                }
+            }
+        }
+    })
+    $script:PlanningSharePointWorker.RunWorkerAsync()
+}
+
+function Start-SharePointConnectionBackground {
+    param(
+        [switch]$InteractiveLogin,
+        [switch]$ForceRefresh
+    )
+    if ($InteractiveLogin -or $ForceRefresh) {
+        Start-PlanningSharePointSync -ForceRefresh:$ForceRefresh -InteractiveLogin:$InteractiveLogin -ShowConnecting
+        return
+    }
+    if ($script:PlanningSharePointConnectionStarted) { return }
+    $script:PlanningSharePointConnectionStarted = $true
+    Start-PlanningSharePointSync -ShowConnecting
+}
+
+function Invoke-PlanningPanelDeferredInit {
+    Start-SharePointConnectionBackground
+}
 
 function Stop-PlanningRebuildStep2ActivityAnimation {
     $script:PlanningStep2ActivityActive = $false
@@ -107,7 +586,7 @@ function Get-PlanningRebuildOutputFileSizeLabel {
 
 function Scroll-PlanningRebuildDebugToEnd {
     param([System.Windows.Forms.TextBoxBase]$DebugBox)
-    if ($null -eq $DebugBox) { return }
+    if ($null -eq $DebugBox -or $DebugBox.IsDisposed) { return }
 
     $DebugBox.Select($DebugBox.TextLength, 0)
     $DebugBox.ScrollToCaret()
@@ -115,7 +594,7 @@ function Scroll-PlanningRebuildDebugToEnd {
     $DebugBox.SelectionLength = 0
     if (-not $DebugBox.Focused) { [void]$DebugBox.Focus() }
     $DebugBox.Refresh()
-    [System.Windows.Forms.Application]::DoEvents()
+    try { [System.Windows.Forms.Application]::DoEvents() } catch { }
 }
 
 function Add-PlanningRebuildDebugLogLine {
@@ -143,7 +622,10 @@ function Update-PlanningRebuildDebugProgress {
         [int]$SubStepIndex = 0,
         [int]$SubStepCount = 0,
         [string]$TreePrefix = $null,
-        [string]$OutputPath = $null
+        [string]$OutputPath = $null,
+        [System.Windows.Forms.Label]$StepLabel = $null,
+        [System.Windows.Forms.Label]$OutputLabel = $null,
+        [System.Windows.Forms.Label]$PercentLabel = $null
     )
 
     if ($null -eq $DebugBox) {
@@ -169,6 +651,11 @@ function Update-PlanningRebuildDebugProgress {
         }
         [void]$DebugBox.AppendText('========================================' + [Environment]::NewLine)
         if ($null -ne $ProgressBar) { $ProgressBar.Value = 100 }
+        if ($null -ne $OutputLabel -and -not [string]::IsNullOrWhiteSpace($outPath)) {
+            $OutputLabel.Text = ('PDF genere : {0}' -f (Split-Path -Leaf $outPath))
+        }
+        if ($null -ne $StepLabel) { $StepLabel.Text = 'Traitement termine' }
+        if ($null -ne $PercentLabel) { $PercentLabel.Text = '100%' }
         Scroll-PlanningRebuildDebugToEnd -DebugBox $DebugBox
         return
     }
@@ -469,6 +956,17 @@ function Update-PlanningRebuildDebugProgress {
         if ($ProgressBar.Value -ne $clamped) {
             $ProgressBar.Value = $clamped
         }
+        if ($null -ne $PercentLabel) {
+            $PercentLabel.Text = ('{0}%' -f $clamped)
+        }
+    }
+
+    if ($null -ne $StepLabel -and $StepIndex -gt 0 -and $StepCount -gt 0 -and $Status -notin @('Complete', 'Log')) {
+        $stepText = ('Etape {0}/{1} : {2}' -f $StepIndex, $StepCount, $Label)
+        if (-not [string]::IsNullOrWhiteSpace($SubStep)) {
+            $stepText = ('{0} - {1}' -f $stepText, $SubStep)
+        }
+        $StepLabel.Text = $stepText
     }
 
     Scroll-PlanningRebuildDebugToEnd -DebugBox $DebugBox
@@ -478,92 +976,188 @@ function Show-PlanningRebuilderPanel {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
+    $script:PlanningHostRunspace = [runspace]::DefaultRunspace
+
     $script:PlanningPdfPath = $null
     $script:PlanningExcelPath = $null
+    $script:PlanningSharePointState = $null
+    $script:PlanningSharePointWorker = $null
+    $script:PlanningRebuildJob = $null
+    $script:PlanningPendingAutoRun = $false
+    $script:PlanningSharePointConnectionStarted = $false
 
     $panel = [System.Windows.Forms.Panel]::new()
-    $panel.Name = "PlanningRebuilderPanel"
-    $panel.Dock = "Fill"
+    $panel.Name = 'PlanningRebuilderPanel'
+    $panel.Dock = 'Fill'
     $panel.BackColor = $script:CouleurGrisFond
     $panel.Padding = [System.Windows.Forms.Padding]::new(20)
+    $panel.AutoScroll = $true
 
     $lblTitle = [System.Windows.Forms.Label]::new()
-    $lblTitle.Text = "Edition du planning"
+    $lblTitle.Text = 'Edition du planning'
     $lblTitle.Font = $script:PoliceTitreGestionFenetre
     $lblTitle.ForeColor = $script:CouleurOrange
-    $lblTitle.Location = [System.Drawing.Point]::new(20, 20)
+    $lblTitle.Location = [System.Drawing.Point]::new(0, 0)
     $lblTitle.Size = [System.Drawing.Size]::new(500, 50)
     $panel.Controls.Add($lblTitle)
 
-    $lblPdf = [System.Windows.Forms.Label]::new()
-    $lblPdf.Name = "lblPdf"
-    $lblPdf.Text = "PDF: non selectionne"
-    $lblPdf.Font = $script:PoliceLabelSecondaireFenetre
-    $lblPdf.ForeColor = $script:CouleurTexteSecondairePanel
-    $lblPdf.Location = [System.Drawing.Point]::new(20, 80)
-    $lblPdf.Size = [System.Drawing.Size]::new(1100, 22)
-    $panel.Controls.Add($lblPdf)
+    $lblSharePointSection = [System.Windows.Forms.Label]::new()
+    $lblSharePointSection.Name = 'lblSharePointSection'
+    $lblSharePointSection.Text = 'CONNEXION SHAREPOINT'
+    $lblSharePointSection.Font = $script:PoliceTitre3
+    $lblSharePointSection.ForeColor = $script:CouleurTexteSecondairePanel
+    $lblSharePointSection.Location = [System.Drawing.Point]::new(0, 52)
+    $lblSharePointSection.Size = [System.Drawing.Size]::new(500, 22)
+    $panel.Controls.Add($lblSharePointSection)
 
-    $lblExcel = [System.Windows.Forms.Label]::new()
-    $lblExcel.Name = "lblExcel"
-    $lblExcel.Text = "Excel: non selectionne"
-    $lblExcel.Font = $script:PoliceLabelSecondaireFenetre
-    $lblExcel.ForeColor = $script:CouleurTexteSecondairePanel
-    $lblExcel.Location = [System.Drawing.Point]::new(20, 105)
-    $lblExcel.Size = [System.Drawing.Size]::new(1100, 22)
-    $panel.Controls.Add($lblExcel)
+    $spUi = New-SharePointStatusControls -Parent $panel -Location ([System.Drawing.Point]::new(0, 76)) -Size ([System.Drawing.Size]::new(1100, 120))
+    $script:PlanningRebuilderPanelContext = @{
+        Panel                   = $panel
+        SpUi                    = $spUi
+        SharePointActionHandler = $null
+        RebuildRunHandler       = $null
+    }
+
+    $grpPdf = [System.Windows.Forms.GroupBox]::new()
+    $grpPdf.Name = 'grpPdfImport'
+    $grpPdf.Text = 'Import du PDF'
+    $grpPdf.Location = [System.Drawing.Point]::new(0, 210)
+    $grpPdf.Size = [System.Drawing.Size]::new(1100, 72)
+    $grpPdf.Anchor = 'Top,Left,Right'
+    $grpPdf.Font = $script:PoliceTitre3
 
     $btnPdf = [System.Windows.Forms.Button]::new()
-    Set-BtnBorderStyle -Button $btnPdf -Text "Importer PDF" -BorderColor $script:CouleurBleu -Width 170 -Height 45
-    $btnPdf.Location = [System.Drawing.Point]::new(20, 140)
-    $panel.Controls.Add($btnPdf)
+    $btnPdf.Name = 'btnPdf'
+    Set-BtnBorderStyle -Button $btnPdf -Text 'Importer PDF' -BorderColor $script:CouleurBleu -Width 170 -Height 40
+    $btnPdf.Location = [System.Drawing.Point]::new(12, 28)
 
-    $btnExcel = [System.Windows.Forms.Button]::new()
-    Set-BtnBorderStyle -Button $btnExcel -Text "Importer Excel" -BorderColor $script:CouleurVert -Width 170 -Height 45
-    $btnExcel.Location = [System.Drawing.Point]::new(200, 140)
-    $panel.Controls.Add($btnExcel)
+    $btnImportExcel = [System.Windows.Forms.Button]::new()
+    $btnImportExcel.Name = 'btnImportExcel'
+    Set-BtnBorderStyle -Button $btnImportExcel -Text 'Importer Excel' -BorderColor $script:CouleurBleu -Width 170 -Height 40
+    $btnImportExcel.Location = [System.Drawing.Point]::new(190, 28)
+    $btnImportExcel.Visible = $false
 
-    $btnRun = [System.Windows.Forms.Button]::new()
-    $btnRun.Name = 'btnRunPlanning'
-    Set-BtnBorderStyle -Button $btnRun -Text "Lancer le traitement" -BorderColor $script:CouleurCertificat -Width 220 -Height 45
-    $btnRun.Location = [System.Drawing.Point]::new(380, 140)
-    $panel.Controls.Add($btnRun)
+    $lblPdf = [System.Windows.Forms.Label]::new()
+    $lblPdf.Name = 'lblPdf'
+    $lblPdf.Text = 'Aucun PDF selectionne'
+    $lblPdf.Font = $script:PoliceLabelSecondaireFenetre
+    $lblPdf.ForeColor = $script:CouleurTexteSecondairePanel
+    $lblPdf.Location = [System.Drawing.Point]::new(370, 34)
+    $lblPdf.Size = [System.Drawing.Size]::new(710, 22)
+    $lblPdf.Anchor = 'Top,Left,Right'
+    $grpPdf.Controls.AddRange(@($btnPdf, $btnImportExcel, $lblPdf))
+    $panel.Controls.Add($grpPdf)
 
-    $txtDebug = [System.Windows.Forms.RichTextBox]::new()
-    $txtDebug.Name = "txtDebug"
-    $txtDebug.Multiline = $true
-    $txtDebug.ScrollBars = "Vertical"
-    $txtDebug.ReadOnly = $true
-    $txtDebug.HideSelection = $false
-    $txtDebug.WordWrap = $false
-    $txtDebug.Location = [System.Drawing.Point]::new(20, 200)
-    $txtDebug.Size = [System.Drawing.Size]::new(1100, 465)
-    $txtDebug.Anchor = "Top,Bottom,Left,Right"
-    $panel.Controls.Add($txtDebug)
+    $grpTreatment = [System.Windows.Forms.GroupBox]::new()
+    $grpTreatment.Name = 'grpTreatment'
+    $grpTreatment.Text = 'Traitement'
+    $grpTreatment.Location = [System.Drawing.Point]::new(0, 300)
+    $grpTreatment.Size = [System.Drawing.Size]::new(1100, 520)
+    $grpTreatment.Anchor = 'Top,Bottom,Left,Right'
+    $grpTreatment.Font = $script:PoliceTitre3
+
+    $btnStop = [System.Windows.Forms.Button]::new()
+    $btnStop.Name = 'btnStopPlanning'
+    Set-BtnQuitterStyle -BtnQuitter $btnStop
+    $btnStop.Text = 'ARRETER'
+    $btnStop.Size = [System.Drawing.Size]::new(130, 40)
+    $btnStop.Location = [System.Drawing.Point]::new(12, 28)
+    $btnStop.Enabled = $false
+
+    $lblStepProgress = [System.Windows.Forms.Label]::new()
+    $lblStepProgress.Name = 'lblStepProgress'
+    $lblStepProgress.Text = 'En attente d''un PDF...'
+    $lblStepProgress.Font = $script:PoliceLabelSecondaireFenetre
+    $lblStepProgress.ForeColor = $script:CouleurTexteSecondairePanel
+    $lblStepProgress.Location = [System.Drawing.Point]::new(12, 76)
+    $lblStepProgress.Size = [System.Drawing.Size]::new(900, 22)
+
+    $lblPercent = [System.Windows.Forms.Label]::new()
+    $lblPercent.Name = 'lblPercent'
+    $lblPercent.Text = '0%'
+    $lblPercent.Font = $script:PoliceLabelSecondaireFenetre
+    $lblPercent.ForeColor = $script:CouleurTexteSecondairePanel
+    $lblPercent.Location = [System.Drawing.Point]::new(1020, 76)
+    $lblPercent.Size = [System.Drawing.Size]::new(70, 22)
+    $lblPercent.TextAlign = 'MiddleRight'
+    $lblPercent.Anchor = 'Top,Right'
 
     $progressBar = [System.Windows.Forms.ProgressBar]::new()
     $progressBar.Name = 'progressBar'
-    $progressBar.Location = [System.Drawing.Point]::new(20, 680)
-    $progressBar.Size = [System.Drawing.Size]::new(1100, 20)
+    $progressBar.Location = [System.Drawing.Point]::new(12, 102)
+    $progressBar.Size = [System.Drawing.Size]::new(1076, 20)
     $progressBar.Style = 'Continuous'
     $progressBar.Minimum = 0
     $progressBar.Maximum = 100
     $progressBar.Value = 0
-    $progressBar.Visible = $true
-    $progressBar.Anchor = 'Bottom,Left,Right'
-    $panel.Controls.Add($progressBar)
+    $progressBar.Anchor = 'Top,Left,Right'
+
+    $txtDebug = [System.Windows.Forms.RichTextBox]::new()
+    $txtDebug.Name = 'txtDebug'
+    $txtDebug.Multiline = $true
+    $txtDebug.ScrollBars = 'Vertical'
+    $txtDebug.ReadOnly = $true
+    $txtDebug.HideSelection = $false
+    $txtDebug.WordWrap = $false
+    $txtDebug.Location = [System.Drawing.Point]::new(12, 130)
+    $txtDebug.Size = [System.Drawing.Size]::new(1076, 340)
+    $txtDebug.Anchor = 'Top,Bottom,Left,Right'
 
     $lblStep2Activity = [System.Windows.Forms.Label]::new()
     $lblStep2Activity.Name = 'lblStep2Activity'
     $lblStep2Activity.Text = ''
     $lblStep2Activity.Visible = $false
     $lblStep2Activity.AutoSize = $true
-    $lblStep2Activity.Location = [System.Drawing.Point]::new(20, 668)
+    $lblStep2Activity.Location = [System.Drawing.Point]::new(12, 478)
     $lblStep2Activity.Font = $script:PoliceLabelSecondaireFenetre
     $lblStep2Activity.ForeColor = $script:CouleurTexteSecondairePanel
     $lblStep2Activity.Anchor = 'Bottom,Left'
-    $panel.Controls.Add($lblStep2Activity)
     $script:PlanningStep2ActivityLabel = $lblStep2Activity
+
+    $lblOutputPdf = [System.Windows.Forms.Label]::new()
+    $lblOutputPdf.Name = 'lblOutputPdf'
+    $lblOutputPdf.Text = ''
+    $lblOutputPdf.Font = $script:PoliceLabelSecondaireFenetre
+    $lblOutputPdf.ForeColor = $script:CouleurVert
+    $lblOutputPdf.Location = [System.Drawing.Point]::new(12, 478)
+    $lblOutputPdf.Size = [System.Drawing.Size]::new(1076, 22)
+    $lblOutputPdf.Anchor = 'Bottom,Left,Right'
+
+    $grpTreatment.Controls.AddRange(@($btnStop, $lblStepProgress, $lblPercent, $progressBar, $txtDebug, $lblStep2Activity, $lblOutputPdf))
+    $panel.Controls.Add($grpTreatment)
+
+    $script:PlanningRebuilderPanelContext.Ui = @{
+        ProgressBar      = $progressBar
+        TxtDebug         = $txtDebug
+        LblStepProgress  = $lblStepProgress
+        LblOutputPdf     = $lblOutputPdf
+        LblPercent       = $lblPercent
+        LblPdf           = $lblPdf
+        BtnPdf           = $btnPdf
+        BtnImportExcel   = $btnImportExcel
+        BtnStop          = $btnStop
+        LblStep2Activity = $lblStep2Activity
+    }
+
+    if (-not $script:PlanningFormClosingRegistered) {
+        $panel.Add_ParentChanged({
+            if ($script:PlanningFormClosingRegistered) { return }
+            $frm = $this.FindForm()
+            if ($null -eq $frm) { return }
+            $script:PlanningFormClosingRegistered = $true
+            $frm.Add_FormClosing({
+                if ($script:PlanningRunning -or $script:PlanningRebuildUiBusy) {
+                    Request-PlanningRebuildStop
+                    Stop-PlanningRebuildJobIfRunning
+                    Request-CnsSharePointConnectCancel
+                    if ($null -ne $script:PlanningSharePointWorker -and $script:PlanningSharePointWorker.IsBusy) {
+                        $script:PlanningSharePointWorker.CancelAsync()
+                    }
+                    Start-Sleep -Milliseconds 500
+                }
+            })
+        })
+    }
 
     function script:Get-PlanningCtrl {
         param(
@@ -572,162 +1166,246 @@ function Show-PlanningRebuilderPanel {
             [Type]$ExpectedType
         )
         if ($null -eq $Root) { return $null }
-        $ctrl = $Root.Controls[$Name]
-        if ($null -eq $ctrl) { return $null }
-        if ($null -ne $ExpectedType -and $ctrl -isnot $ExpectedType) { return $null }
-        return $ctrl
+        $found = $null
+        function script:Find-PlanningCtrlRecursive {
+            param($Node, $TargetName, $Expected)
+            if ($null -eq $Node) { return $null }
+            if ([string]$Node.Name -eq $TargetName) {
+                if ($null -eq $Expected -or $Node -is $Expected) { return $Node }
+            }
+            foreach ($child in @($Node.Controls)) {
+                $hit = Find-PlanningCtrlRecursive -Node $child -TargetName $TargetName -Expected $Expected
+                if ($null -ne $hit) { return $hit }
+            }
+            return $null
+        }
+        return (Find-PlanningCtrlRecursive -Node $Root -TargetName $Name -Expected $ExpectedType)
     }
 
-    $btnPdf.Add_Click({
-        $ofd = [System.Windows.Forms.OpenFileDialog]::new()
-        $ofd.Filter = "PDF (*.pdf)|*.pdf|Tous les fichiers (*.*)|*.*"
-        if ($ofd.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-            $script:PlanningPdfPath = $ofd.FileName
-            $root = $this.Parent
-            $lbl = Get-PlanningCtrl -Root $root -Name "lblPdf" -ExpectedType ([System.Windows.Forms.Label])
-            if ($null -ne $lbl) {
-                $lbl.Text = "PDF: $($script:PlanningPdfPath)"
+    function script:Invoke-PlanningPanelUi {
+        param([scriptblock]$Action)
+        if ($null -eq $Action) { return }
+        Safe-UpdateUIControl -Control $panel -UpdateAction $Action
+    }
+
+    function script:Invoke-PlanningLocalExcelImport {
+        param(
+            [switch]$AutoRunRebuild
+        )
+        $localPath = Invoke-SharePointLocalFilePicker
+        if ([string]::IsNullOrWhiteSpace($localPath)) {
+            return $false
+        }
+        $script:PlanningExcelPath = $localPath
+        Update-PlanningSharePointUiState -State ([pscustomobject]@{
+                Status   = 'Expired'
+                FilePath = $localPath
+                LastSync = Get-Date
+                Message  = ('Mode local - {0}' -f (Split-Path -Leaf $localPath))
+            })
+        if ($AutoRunRebuild -and -not [string]::IsNullOrWhiteSpace($script:PlanningPdfPath) -and -not $script:PlanningRebuildUiBusy) {
+            $rebuildHandler = $script:PlanningRebuilderPanelContext.RebuildRunHandler
+            if ($null -ne $rebuildHandler) {
+                & $rebuildHandler
             }
         }
-    })
+        return $true
+    }
 
-    $btnExcel.Add_Click({
-        $ofd = [System.Windows.Forms.OpenFileDialog]::new()
-        $ofd.Filter = "Excel (*.xlsx;*.xlsm;*.xls)|*.xlsx;*.xlsm;*.xls|Tous les fichiers (*.*)|*.*"
-        if ($ofd.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-            $script:PlanningExcelPath = $ofd.FileName
-            $root = $this.Parent
-            $lbl = Get-PlanningCtrl -Root $root -Name "lblExcel" -ExpectedType ([System.Windows.Forms.Label])
-            if ($null -ne $lbl) {
-                $lbl.Text = "Excel: $($script:PlanningExcelPath)"
+    $script:PlanningSharePointActionHandler = {
+        param([string]$ActionId)
+        switch ($ActionId) {
+            'Refresh' {
+                Start-PlanningSharePointSync -ForceRefresh -ShowConnecting
+            }
+            'Login' {
+                Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
+                Start-PlanningSharePointSync -ForceRefresh -InteractiveLogin -ShowConnecting
+            }
+            'Copy' {
+                Copy-SharePointErrorToClipboard -State $script:PlanningSharePointState
+                [System.Windows.Forms.MessageBox]::Show(
+                    'Erreur copiee dans le presse-papier.',
+                    'SharePoint',
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Information
+                ) | Out-Null
             }
         }
-    })
+    }
 
-    $onRunPlanning = {
-        param($sender, $e)
-        $__dbg = ($env:CN_DEBUG_PLANNING_UI -in @('1', 'true')) -or ($env:CN_DEBUG_PIPELINE -in @('1', 'true'))
-        if ($__dbg) { Write-Host '[DEBUG] CLICK btnRunPlanning' -ForegroundColor Magenta }
-        if ($script:PlanningRebuildUiBusy) {
-            if ($__dbg) { Write-Host '[DEBUG] IGNORE: double run / deja en cours' -ForegroundColor DarkYellow }
+    function script:Invoke-PlanningRebuildRun {
+        if ($script:PlanningRebuildUiBusy) { return }
+        if ([string]::IsNullOrWhiteSpace($script:PlanningPdfPath)) { return }
+
+        $excelPath = $script:PlanningExcelPath
+        if ([string]::IsNullOrWhiteSpace($excelPath)) {
+            $excelPath = Get-CnsSharePointEffectiveExcelPath
+        }
+
+        $needsLocalExcel = [string]::IsNullOrWhiteSpace($excelPath) -or -not (Test-Path -LiteralPath $excelPath)
+        if ($needsLocalExcel) {
+            $spState = Get-SharePointConnectionState
+            if ($null -ne $spState -and [string]$spState.Status -eq 'Connected' -and -not [string]::IsNullOrWhiteSpace([string]$spState.FilePath)) {
+                $candidate = [string]$spState.FilePath
+                if (Test-Path -LiteralPath $candidate) {
+                    $excelPath = $candidate
+                    $needsLocalExcel = $false
+                }
+            }
+        }
+        if ($needsLocalExcel) {
+            $result = [System.Windows.Forms.MessageBox]::Show(
+                'SharePoint inaccessible. Voulez-vous importer un fichier Excel local ?',
+                'Connexion SharePoint',
+                [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                [System.Windows.Forms.MessageBoxIcon]::Question
+            )
+            if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+                if (-not (Invoke-PlanningLocalExcelImport)) {
+                    return
+                }
+                $excelPath = $script:PlanningExcelPath
+            }
+            else {
+                $script:PlanningPendingAutoRun = $true
+                Start-PlanningSharePointSync -ShowConnecting
+                return
+            }
+        }
+        if ([string]::IsNullOrWhiteSpace($excelPath) -or -not (Test-Path -LiteralPath $excelPath)) {
             return
         }
+        $script:PlanningExcelPath = $excelPath
 
-        $root = $this.Parent
-        $dbg = Get-PlanningCtrl -Root $root -Name "txtDebug" -ExpectedType ([System.Windows.Forms.TextBoxBase])
-        $pbar = Get-PlanningCtrl -Root $root -Name "progressBar" -ExpectedType ([System.Windows.Forms.ProgressBar])
-        if ($null -eq $dbg) {
-            Write-Host '[DEBUG] txtDebug introuvable ou type incompatible (attendu TextBoxBase/RichTextBox)' -ForegroundColor Red
-        }
-        if ([string]::IsNullOrWhiteSpace($script:PlanningPdfPath) -or [string]::IsNullOrWhiteSpace($script:PlanningExcelPath)) {
-            [System.Windows.Forms.MessageBox]::Show(
-                "Selectionnez d'abord un PDF et un Excel.",
-                "Edition planning",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Warning
-            ) | Out-Null
-            return
-        }
-
-        $script:PlanningRebuildUiBusy = $true
-        Stop-PlanningRebuildStep2ActivityAnimation
+        Set-PlanningRunningState -IsRunning $true
+        Reset-PlanningRebuildStop
         Reset-PlanningRebuildProgressUiState
         $script:PlanningCurrentStepIndex = 0
         $script:PlanningProgressHadError = $false
-        $script:PlanningStep2ActivityLabel = Get-PlanningCtrl -Root $root -Name 'lblStep2Activity' -ExpectedType ([System.Windows.Forms.Label])
-        if ($null -ne $btnRun) { $btnRun.Enabled = $false }
-        try {
-            if ($__dbg) { Write-Host '[DEBUG] ENTER Start-PlanningRebuild (UI)' -ForegroundColor Magenta }
-            if ($null -ne $dbg) { $dbg.Clear() }
-            if ($null -ne $pbar) { $pbar.Value = 0 }
-            [System.Windows.Forms.Application]::DoEvents()
+        $script:PlanningStep2ActivityLabel = $script:PlanningRebuilderPanelContext.Ui.LblStep2Activity
 
-            $progressCb = {
-                try {
-                if ($args.Count -eq 1 -and $args[0] -is [hashtable]) {
-                    $h = $args[0]
-                    $st = [string]$h.Status
-                    if ($st -eq 'Log') { return }
-                    Update-PlanningRebuildDebugProgress -DebugBox $dbg -ProgressBar $pbar `
-                        -StepIndex ([int]$h.StepIndex) -StepCount ([int]$h.StepCount) -Label ([string]$h.Label) `
-                        -Status $st -Detail ([string]$h.Detail) -Percent $(if ($h.ContainsKey('Percent')) { [int]$h.Percent } else { -1 }) `
-                        -TreePrefix ([string]$h.TreePrefix) -OutputPath $(if ($h.ContainsKey('OutputPath')) { [string]$h.OutputPath } else { $null })
-                    return
-                }
-                $StepIndex = [int]$args[0]
-                $StepCount = [int]$args[1]
-                $Label = [string]$args[2]
-                $Status = [string]$args[3]
-                $Detail = if ($args.Count -gt 4) { [string]$args[4] } else { $null }
-                $Percent = if ($args.Count -gt 5) { [int]$args[5] } else { -1 }
-                $SubStep = if ($args.Count -gt 6) { [string]$args[6] } else { $null }
-                $SubStepIndex = if ($args.Count -gt 7) { [int]$args[7] } else { 0 }
-                $SubStepCount = if ($args.Count -gt 8) { [int]$args[8] } else { 0 }
-                $TreePrefix = if ($args.Count -gt 9) { [string]$args[9] } else { $null }
-                $OutputPath = if ($args.Count -gt 10) { [string]$args[10] } else { $null }
-                if ($Status -eq 'Log') { return }
-                Update-PlanningRebuildDebugProgress -DebugBox $dbg -ProgressBar $pbar -StepIndex $StepIndex -StepCount $StepCount `
-                    -Label $Label -Status $Status -Detail $Detail -Percent $Percent `
-                    -SubStep $SubStep -SubStepIndex $SubStepIndex -SubStepCount $SubStepCount -TreePrefix $TreePrefix -OutputPath $OutputPath
-                }
-                catch {
-                    $stFail = if ($args.Count -eq 1 -and $args[0] -is [hashtable]) { [string]$args[0].Status } else { $Status }
-                    Write-Warning ("[PLANNING-UI] progressCb echoue (Status={0}) : {1}" -f $stFail, $_.Exception.Message)
-                }
-            }
+        $rootPanel = $script:PlanningRebuilderPanelContext.Panel
+        Safe-UpdateUIControl -Control $rootPanel -UpdateAction {
+            $ui = $script:PlanningRebuilderPanelContext.Ui
+            if ($ui.BtnPdf -is [System.Windows.Forms.Control]) { $ui.BtnPdf.Enabled = $false }
+            if ($ui.BtnStop -is [System.Windows.Forms.Control]) { $ui.BtnStop.Enabled = $true }
+            Set-PlanningControlText -Control $ui.LblOutputPdf -Text ''
+            Set-PlanningControlText -Control $ui.LblStepProgress -Text 'Demarrage du traitement...'
+            Set-PlanningControlText -Control $ui.LblPercent -Text '0%'
+            if ($ui.TxtDebug -is [System.Windows.Forms.Control]) { $ui.TxtDebug.Clear() }
+            if ($ui.ProgressBar -is [System.Windows.Forms.Control]) { $ui.ProgressBar.Value = 0 }
+        }
 
-            $result = Start-PlanningRebuild -PdfPath $script:PlanningPdfPath -ExcelPath $script:PlanningExcelPath -ProgressCallback $progressCb
+        $runPdf = $script:PlanningPdfPath
+        $runExcel = $script:PlanningExcelPath
 
-            if ($null -eq $result) {
-                if ($null -ne $dbg) {
-                    if ($null -eq $script:PlanningCurrentProgressLine) {
-                        [void]$dbg.AppendText("Traitement interrompu." + [Environment]::NewLine)
-                    }
-                    Scroll-PlanningRebuildDebugToEnd -DebugBox $dbg
-                }
-                if ($null -ne $pbar) { $pbar.Value = 0 }
+        Start-PlanningRebuildJob -PdfPath $runPdf -ExcelPath $runExcel -RootPanel $rootPanel
+    }
+
+    $script:PlanningRebuilderPanelContext.SharePointActionHandler = $script:PlanningSharePointActionHandler
+    if ($null -ne $spUi.Connect) {
+        $spUi.Connect.Add_Click({
+            if ($script:PlanningRebuildUiBusy) { return }
+            if (Test-CnsSharePointAuthInProgress) {
+                Write-Host 'Authentification Microsoft 365 deja en cours...' -ForegroundColor Yellow
                 return
             }
+            Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
+            Start-SharePointConnectionBackground -InteractiveLogin -ForceRefresh
+        })
+    }
+    $rebuildCmd = Get-Command Invoke-PlanningRebuildRun -ErrorAction SilentlyContinue
+    if ($null -ne $rebuildCmd) {
+        $script:PlanningRebuilderPanelContext.RebuildRunHandler = $rebuildCmd
+    }
 
-            if (-not [string]::IsNullOrWhiteSpace([string]$result.OutputPdf)) {
-                if ($null -ne $pbar) { $pbar.Value = 100 }
+    $btnImportExcel.Add_Click({
+        if ($script:PlanningRebuildUiBusy) { return }
+        Invoke-PlanningLocalExcelImport -AutoRunRebuild | Out-Null
+    })
+
+    $btnStop.Add_Click({
+        Request-PlanningRebuildStop
+        if ($null -ne $script:PlanningRebuildJob -and $script:PlanningRebuildJob.State -eq 'Running') {
+            Stop-Job -Job $script:PlanningRebuildJob -ErrorAction SilentlyContinue
+        }
+        $ui = $script:PlanningRebuilderPanelContext.Ui
+        if ($null -ne $ui -and $null -ne $ui.BtnStop -and $ui.BtnStop -is [System.Windows.Forms.Control]) { $ui.BtnStop.Enabled = $false }
+        if ($null -ne $ui -and $null -ne $ui.LblStepProgress) { Set-PlanningControlText -Control $ui.LblStepProgress -Text 'Arret demande...' }
+    })
+
+    $btnPdf.Add_Click({
+        if ($script:PlanningRebuildUiBusy) { return }
+        $ofd = [System.Windows.Forms.OpenFileDialog]::new()
+        $ofd.Filter = 'PDF (*.pdf)|*.pdf|Tous les fichiers (*.*)|*.*'
+        if ($ofd.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
+
+        $script:PlanningPdfPath = $ofd.FileName
+        Set-CnsPlanningRegistryValue -Name 'LastPdfPath' -Value $script:PlanningPdfPath
+
+        $pdfLabel = $null
+        $outputLabel = $null
+        $rootPanel = $null
+        if ($null -ne $script:PlanningRebuilderPanelContext) {
+            if ($null -ne $script:PlanningRebuilderPanelContext.Ui) {
+                $pdfLabel = $script:PlanningRebuilderPanelContext.Ui.LblPdf
+                $outputLabel = $script:PlanningRebuilderPanelContext.Ui.LblOutputPdf
             }
+            $rootPanel = $script:PlanningRebuilderPanelContext.Panel
+        }
 
+        $pdfName = Split-Path -Leaf $script:PlanningPdfPath
+        $updatePdfLabels = {
+            Set-PlanningControlText -Control $pdfLabel -Text ('PDF : {0}' -f $pdfName)
+            Set-PlanningControlText -Control $outputLabel -Text ''
         }
-        catch {
-            if ($null -ne $dbg) {
-                if ($null -ne $script:PlanningCurrentProgressLine) {
-                    [void]$dbg.AppendText(' [ERREUR]')
-                    [void]$dbg.AppendText([Environment]::NewLine)
-                    $script:PlanningCurrentProgressLine = $null
-                }
-                [void]$dbg.AppendText(("ERREUR: {0}" -f $_.Exception.Message) + [Environment]::NewLine)
-                Scroll-PlanningRebuildDebugToEnd -DebugBox $dbg
-                [System.Windows.Forms.Application]::DoEvents()
-            }
-            [System.Windows.Forms.MessageBox]::Show(
-                $_.Exception.Message,
-                "Echec traitement planning",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Error
-            ) | Out-Null
+        if ($null -ne $rootPanel -and $rootPanel -is [System.Windows.Forms.Control]) {
+            Safe-UpdateUIControl -Control $rootPanel -UpdateAction $updatePdfLabels
         }
-        finally {
-            Stop-PlanningRebuildStep2ActivityAnimation
-            if ($null -ne $btnRun) { $btnRun.Enabled = $true }
-            if ($null -ne $pbar -and $null -eq $result) { $pbar.Value = 0 }
-            $script:PlanningRebuildUiBusy = $false
+        else {
+            & $updatePdfLabels
         }
+
+        $rebuildHandler = $script:PlanningRebuilderPanelContext.RebuildRunHandler
+        if ($null -ne $rebuildHandler) {
+            & $rebuildHandler
+        }
+    })
+
+    $lastPdf = Get-CnsPlanningRegistryValue -Name 'LastPdfPath'
+    if (-not [string]::IsNullOrWhiteSpace($lastPdf) -and (Test-Path -LiteralPath $lastPdf)) {
+        $script:PlanningPdfPath = $lastPdf
+        Set-PlanningControlText -Control $lblPdf -Text ('PDF : {0}' -f (Split-Path -Leaf $lastPdf))
     }
 
-    if ($null -eq $script:PlanningRunHandlerRegistry) {
-        $script:PlanningRunHandlerRegistry = @{}
+    $cachedExcel = Get-CnsSharePointEffectiveExcelPath
+    if (-not [string]::IsNullOrWhiteSpace($cachedExcel)) {
+        $script:PlanningExcelPath = $cachedExcel
     }
-    $btnKey = [string]([System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($btnRun))
-    if (-not $script:PlanningRunHandlerRegistry.ContainsKey($btnKey)) {
-        $null = $btnRun.add_Click($onRunPlanning)
-        $script:PlanningRunHandlerRegistry[$btnKey] = $true
+
+    $panel.Add_HandleCreated({
+        Update-PlanningSharePointUiState -State ([pscustomobject]@{
+                Status  = 'Offline'
+                Message = 'Connexion échouée – cliquez sur "Connexion" pour réessayer'
+            })
+        Start-SharePointConnectionBackground
+    })
+
+    # Diagnostic zone SharePoint (temporaire)
+    Write-Host '=== DIAGNOSTIC SHAREPOINT ZONE ===' -ForegroundColor Cyan
+    $spGroup = $spUi.GroupBox
+    if ($null -ne $spGroup) {
+        Write-Host "GroupBox trouve (grpSharePoint) : Visible=$($spGroup.Visible), Height=$($spGroup.Height), ClientSize=$($spGroup.ClientSize)"
+        Write-Host "Contrôles enfants : $($spGroup.Controls.Count)"
+        foreach ($ctrl in $spGroup.Controls) {
+            Write-Host "  - $($ctrl.Name) : Visible=$($ctrl.Visible), Text='$($ctrl.Text)'"
+        }
     }
+    else {
+        Write-Host "GroupBox grpSharePoint NON TROUVE"
+    }
+    Write-Host '=================================' -ForegroundColor Cyan
 
     return $panel
 }
