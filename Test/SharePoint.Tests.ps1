@@ -17,12 +17,12 @@
 [CmdletBinding()]
 param()
 
-$script:SharePointModulePath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\SharePointDownload.ps1'
+$script:SharePointModulePath = Join-Path $PSScriptRoot '..\src\Common\CnsSharePointConnector.ps1'
 if (Test-Path -LiteralPath $script:SharePointModulePath) {
     . ([string](Resolve-Path -LiteralPath $script:SharePointModulePath))
 }
 else {
-    Write-Host 'SharePointDownload.ps1 absent du depot — tests SharePoint desactives.' -ForegroundColor Yellow
+    Write-Host 'CnsSharePointConnector.ps1 absent du depot — tests SharePoint desactives.' -ForegroundColor Yellow
 }
 
 $script:DefaultSharePointSiteUrl = $(if (-not [string]::IsNullOrWhiteSpace($env:CN_SHAREPOINT_SITE_URL)) {
@@ -44,8 +44,8 @@ $script:SharePointTestsEnabled = (Test-Path -LiteralPath $script:SharePointModul
 
 Describe 'SharePoint Integration' {
 
-    It 'Se connecte a Microsoft Graph' -Pending:(-not $script:SharePointTestsEnabled) {
-        $result = Connect-SharePointGraph
+    It 'T1 - Se connecte a Microsoft Graph' -Pending:(-not $script:SharePointTestsEnabled) {
+        $result = Connect-SharePointGraph -Interactive
         $result | Should Be $true
         $ctx = Get-MgContext
         $ctx | Should Not BeNullOrEmpty
@@ -81,6 +81,24 @@ Describe 'SharePoint Integration' {
             if (Test-Path -LiteralPath $dest) {
                 Remove-Item -LiteralPath $dest -Force -ErrorAction SilentlyContinue
             }
+        }
+    }
+
+    It 'Connect-SharePointPlanning retourne un objet avec Status' {
+        Mock Connect-SharePointGraph { return $true }
+        Mock Get-SharePointPlanningFile { return $true }
+        Mock Test-CnsSharePointGraphModuleAvailable { return $true }
+        Mock Import-CnsSharePointGraphModule { }
+        $local = Join-Path $env:TEMP ("cn_sp_test_{0}.xlsm" -f ([Guid]::NewGuid().ToString('N')))
+        try {
+            Set-Content -LiteralPath $local -Value 'test' -Encoding ASCII
+            Mock Get-CnsSharePointLocalPlanningPath { return $local }
+            $result = Connect-SharePointPlanning -ForceRefresh
+            $result.Status | Should Be 'Connected'
+            $result.FilePath | Should Be $local
+        }
+        finally {
+            if (Test-Path -LiteralPath $local) { Remove-Item -LiteralPath $local -Force -ErrorAction SilentlyContinue }
         }
     }
 }
