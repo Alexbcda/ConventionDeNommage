@@ -1639,33 +1639,39 @@ function Test-CnsOdmDuplicationTargetClient {
         [AllowNull()] $PageEntity
     )
     $targetIds = New-Object System.Collections.Generic.List[string]
-    [void]$targetIds.Add('25263')
+    [void]$targetIds.Add('25263')   # LABORATOIRES AGUETTANT
+    [void]$targetIds.Add('61742')   # AIR LIQUIDE INDUSTRIE VOREPPE
     if (-not [string]::IsNullOrWhiteSpace($env:CN_ODM_DUPLICATE_CLIENT_IDS)) {
         foreach ($part in @($env:CN_ODM_DUPLICATE_CLIENT_IDS -split '[,;]')) {
             $t = $part.Trim()
             if (-not [string]::IsNullOrWhiteSpace($t)) { [void]$targetIds.Add($t) }
         }
     }
+
     [string]$cid = ''
+    [string]$cname = ''
     if ($null -ne $WorkOrderEntity) {
         try { $cid = ([string]$WorkOrderEntity.ClientID).Trim() } catch { $cid = '' }
+        try { $cname = ([string]$WorkOrderEntity.ClientName).Trim() } catch { $cname = '' }
     }
-    if ([string]::IsNullOrWhiteSpace($cid) -and $null -ne $PageEntity) {
-        try { $cid = ([string]$PageEntity.ClientID).Trim() } catch { $cid = '' }
+    if ($null -ne $PageEntity) {
+        if ([string]::IsNullOrWhiteSpace($cid)) {
+            try { $cid = ([string]$PageEntity.ClientID).Trim() } catch { $cid = '' }
+        }
+        if ([string]::IsNullOrWhiteSpace($cname)) {
+            try { $cname = ([string]$PageEntity.ClientName).Trim() } catch { $cname = '' }
+        }
     }
+
     foreach ($id in @($targetIds)) {
         if (-not [string]::IsNullOrWhiteSpace($cid) -and $cid -eq $id) { return $true }
     }
-    [string]$cname = ''
-    if ($null -ne $WorkOrderEntity) {
-        try { $cname = [string]$WorkOrderEntity.ClientName } catch { $cname = '' }
+
+    if (-not [string]::IsNullOrWhiteSpace($cname)) {
+        if ($cname -match '(?i)LABORATOIRES\s+AGUETTANT') { return $true }
+        if ($cname -match '(?i)AIR\s+LIQUIDE\s+INDUSTRIE\s+VOREPPE') { return $true }
     }
-    if ([string]::IsNullOrWhiteSpace($cname) -and $null -ne $PageEntity) {
-        try { $cname = [string]$PageEntity.ClientName } catch { $cname = '' }
-    }
-    if (-not [string]::IsNullOrWhiteSpace($cname) -and $cname -match '(?i)LABORATOIRES\s+AGUETTANT') {
-        return $true
-    }
+
     return $false
 }
 
