@@ -1698,10 +1698,29 @@ function Get-CnsOdmDuplicationRunKey {
     return $null
 }
 
+function Add-CnsOdmDuplicateSliceAfterOriginal {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SlicePath,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.List[string]]$Frag,
+        [Parameter(Mandatory = $true)]
+        [string]$RunKeyLabel
+    )
+    if ([string]::IsNullOrWhiteSpace($SlicePath) -or -not (Test-Path -LiteralPath $SlicePath)) { return }
+    $dupPath = Join-Path ([System.IO.Path]::GetDirectoryName($SlicePath)) (
+        ([System.IO.Path]::GetFileNameWithoutExtension($SlicePath) + '_dup.pdf')
+    )
+    Copy-Item -LiteralPath $SlicePath -Destination $dupPath -Force
+    [void]$Frag.Add($dupPath)
+    Write-Host ("[DUPLICATION-ODM] 1 page(s) copiee(s) pour {0} (immediatement apres original)." -f $RunKeyLabel) -ForegroundColor Green
+}
+
 function Invoke-CnsFlushOdmDuplicationRun {
     <#
     .SYNOPSIS
-        Insere les copies ODM du tampon puis les certificats/CEA différés (apres toutes les pages originales du run).
+        Insere les copies ODM du tampon (legacy) ou uniquement certificats/CEA différés du run de duplication.
+        Les copies sont normalement ajoutées via Add-CnsOdmDuplicateSliceAfterOriginal dans la boucle STEP 5.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -1745,7 +1764,10 @@ function Invoke-CnsFlushOdmDuplicationRun {
         $PendingCea = [System.Collections.Generic.List[object]]::new()
     }
 
-    if ($SlicePaths.Count -lt 1) { return }
+    $hasPendingCopies = ($SlicePaths.Count -ge 1)
+    $hasPendingCert = ($null -ne $PendingCert)
+    $hasPendingCea = ($PendingCea.Count -gt 0)
+    if (-not $hasPendingCopies -and -not $hasPendingCert -and -not $hasPendingCea) { return }
 
     $dupCount = 0
     foreach ($origPath in @($SlicePaths)) {
@@ -2178,9 +2200,9 @@ function Invoke-PlanningTourneePdfCoverComposition {
             $sliceIx = 0
             $odmIdx = 0
             $dupRunKey = $null
-            $dupSliceBuffer = [System.Collections.Generic.List[string]]::new()
             $dupPendingCert = $null
             $dupPendingCea = [System.Collections.Generic.List[object]]::new()
+            $emptyDupSliceList = [System.Collections.Generic.List[string]]::new()
             for ($pn = [int]$blk.MainFrom1; $pn -le [int]$blk.MainTo1; $pn++) {
                 $sliceIx++
                 $odmIdx++
@@ -2207,14 +2229,15 @@ function Invoke-PlanningTourneePdfCoverComposition {
 
                     $runKey = Get-CnsOdmDuplicationRunKey -WorkOrderEntity $woPage -PageEntity $pePage
                     $isDupTarget = Test-CnsOdmDuplicationTargetClient -WorkOrderEntity $woPage -PageEntity $pePage
-                    if ($dupSliceBuffer.Count -gt 0 -and (
+                    $hasDupMetierPending = ($null -ne $dupPendingCert) -or ($dupPendingCea.Count -gt 0)
+                    if ($hasDupMetierPending -and (
                             -not $isDupTarget -or
                             [string]::IsNullOrWhiteSpace($runKey) -or
                             ($null -ne $dupRunKey -and $runKey -ne $dupRunKey)
                         )) {
-                        Invoke-CnsFlushOdmDuplicationRun -Frag $frag -SlicePaths $dupSliceBuffer `
+                        Invoke-CnsFlushOdmDuplicationRun -Frag $frag -SlicePaths $emptyDupSliceList `
                             -PendingCert $dupPendingCert -PendingCea $dupPendingCea `
-                            -RunKeyLabel $dupRunKey -TmpDir $tmpDir `
+                            -RunKeyLabel $(if ([string]::IsNullOrWhiteSpace($dupRunKey)) { 'client cible' } else { $dupRunKey }) -TmpDir $tmpDir `
                             -CertInjectedForWo $certInjectedForWo -CeaInjectedForPage $ceaInjectedForPage `
                             -ProgressCallback $ProgressCallback -TChildCore $tChildCore `
                             -FinalOrderToLine $foToLine -Segments @($segments) -OrderToSeg $orderToSeg -VisitDate $VisitDate
@@ -2224,7 +2247,8 @@ function Invoke-PlanningTourneePdfCoverComposition {
 
                     if ($isDupTarget) {
                         if ([string]::IsNullOrWhiteSpace($dupRunKey)) { $dupRunKey = $runKey }
-                        [void]$dupSliceBuffer.Add($slicePath)
+                        $dupLabel = if ([string]::IsNullOrWhiteSpace($runKey)) { 'client cible' } else { $runKey }
+                        Add-CnsOdmDuplicateSliceAfterOriginal -SlicePath $slicePath -Frag $frag -RunKeyLabel $dupLabel
                     }
 
                     $metierPage = Get-CnsPdfPageMetierAnalysis -PageEntity $pePage -WorkOrderEntity $woPage
@@ -2342,8 +2366,8 @@ function Invoke-PlanningTourneePdfCoverComposition {
                 }
             }
 
-            if ($dupSliceBuffer.Count -gt 0) {
-                Invoke-CnsFlushOdmDuplicationRun -Frag $frag -SlicePaths $dupSliceBuffer `
+            if (($null -ne $dupPendingCert) -or ($dupPendingCea.Count -gt 0)) {
+                Invoke-CnsFlushOdmDuplicationRun -Frag $frag -SlicePaths $emptyDupSliceList `
                     -PendingCert $dupPendingCert -PendingCea $dupPendingCea `
                     -RunKeyLabel $(if ([string]::IsNullOrWhiteSpace($dupRunKey)) { 'client cible' } else { $dupRunKey }) `
                     -TmpDir $tmpDir -CertInjectedForWo $certInjectedForWo -CeaInjectedForPage $ceaInjectedForPage `
