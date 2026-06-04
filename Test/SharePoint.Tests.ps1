@@ -88,6 +88,7 @@ Describe 'SharePoint Integration' {
         Mock Connect-SharePointGraph { return $true }
         Mock Get-SharePointPlanningFile { return $true }
         Mock Test-CnsSharePointGraphModuleAvailable { return $true }
+        Mock Test-CnsSharePointGraphSessionValid { return $true }
         Mock Import-CnsSharePointGraphModule { }
         $local = Join-Path $env:TEMP ("cn_sp_test_{0}.xlsm" -f ([Guid]::NewGuid().ToString('N')))
         try {

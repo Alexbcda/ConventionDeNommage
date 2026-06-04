@@ -74,3 +74,34 @@ function Get-ResolvedGhostscriptPath {
 
     return $null
 }
+
+function Invoke-GhostscriptSilent {
+    <#
+    .SYNOPSIS
+        Execute Ghostscript sans sortie sur stdout (jobs background).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments
+    )
+
+    $tempOut = [System.IO.Path]::GetTempFileName()
+    $tempErr = [System.IO.Path]::GetTempFileName()
+
+    try {
+        $process = Start-Process -FilePath (Get-ResolvedGhostscriptPath) -ArgumentList $Arguments `
+            -NoNewWindow -Wait -PassThru -RedirectStandardOutput $tempOut -RedirectStandardError $tempErr
+
+        $errors = @(Get-Content -LiteralPath $tempErr -ErrorAction SilentlyContinue)
+
+        return @{
+            ExitCode = $process.ExitCode
+            Errors   = $errors
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $tempOut -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $tempErr -Force -ErrorAction SilentlyContinue
+    }
+}

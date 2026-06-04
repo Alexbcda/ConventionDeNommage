@@ -498,6 +498,26 @@ function Get-PlanningExcelTourneeCoverSegments {
         }
 
         $orderList = @($orderIdx | Sort-Object)
+        if ($orderList.Count -eq 0 -and @($ExcelOrder).Count -gt 0) {
+            foreach ($ex in @($ExcelOrder)) {
+                if ($null -eq $ex) { continue }
+                try {
+                    [int]$er = [int]$ex.ExcelRow
+                    if ($er -ge $lo1 -and $er -le $hi1) {
+                        [void]$orderIdx.Add([int]$ex.OrderIndex)
+                    }
+                }
+                catch { }
+            }
+            $orderList = @($orderIdx | Sort-Object)
+        }
+        if ($orderList.Count -eq 0 -and $cap -eq 1 -and @($ExcelOrder).Count -gt 0) {
+            foreach ($ex in @($ExcelOrder)) {
+                if ($null -eq $ex) { continue }
+                try { [void]$orderIdx.Add([int]$ex.OrderIndex) } catch { }
+            }
+            $orderList = @($orderIdx | Sort-Object)
+        }
 
         [string]$collecteurSeg = [string]$ts.Collecteur
         [string]$vehiculeSeg = [string]$ts.Vehicule

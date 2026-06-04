@@ -348,6 +348,8 @@ function Reorganiser-PDF {
         # CN_GS_BATCH_SLICES=0 : desactive le lotissement (1 processus par occurrence de page, comme avant).
         $errFile = Join-Path $env:TEMP ("cn_gs_err_{0}.txt" -f [Guid]::NewGuid().ToString('N'))
         if (Test-Path -LiteralPath $errFile) { Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue }
+        $outFile = Join-Path $env:TEMP ("cn_gs_out_{0}.txt" -f [Guid]::NewGuid().ToString('N'))
+        if (Test-Path -LiteralPath $outFile) { Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue }
 
         $runGuid = [Guid]::NewGuid().ToString('N')
         $tempSingles = [System.Collections.Generic.List[string]]::new()
@@ -369,7 +371,7 @@ function Reorganiser-PDF {
                 $cmdChars = 0
                 foreach ($_a in $gsArgsSingle) { $cmdChars += $_a.Length + 1 }
                 script:Write-PdfReorgLog -Message "[GS-PREP] singlePass approxArgChars=$cmdChars" -Level 'INFO'
-                $process = Start-Process -FilePath $gsPath -ArgumentList $gsArgsSingle -NoNewWindow -Wait -PassThru -RedirectStandardError $errFile
+                $process = Start-Process -FilePath $gsPath -ArgumentList $gsArgsSingle -NoNewWindow -Wait -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
                 if ($null -ne $ProgressCallback) {
                     try { & $ProgressCallback 1 1 $only } catch { }
                 }
@@ -411,7 +413,7 @@ function Reorganiser-PDF {
                             ) -ForegroundColor Gray
                         }
 
-                        $prSlice = Start-Process -FilePath $gsPath -ArgumentList $argSlice -NoNewWindow -Wait -PassThru -RedirectStandardError $errFile
+                        $prSlice = Start-Process -FilePath $gsPath -ArgumentList $argSlice -NoNewWindow -Wait -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
                         if ($null -eq $prSlice -or $prSlice.ExitCode -ne 0) {
                             $ec = if ($null -eq $prSlice) { '(null)' } else { "$($prSlice.ExitCode)" }
                             script:Write-PdfReorgLog -Message ("[ERROR] Ghostscript extraction echouee lot : First=$fP Last=$lP ExitCode=$ec") -Level 'ERROR'
@@ -451,7 +453,7 @@ function Reorganiser-PDF {
                         if ($pi -eq 1 -or ($pi % 50 -eq 0)) {
                             Write-Host ("[PDF] Ghostscript extraction page {0}/{1}" -f $pi, $pageNumbers.Count) -ForegroundColor Gray
                         }
-                        $prSlice = Start-Process -FilePath $gsPath -ArgumentList $argSlice -NoNewWindow -Wait -PassThru -RedirectStandardError $errFile
+                        $prSlice = Start-Process -FilePath $gsPath -ArgumentList $argSlice -NoNewWindow -Wait -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
                         if ($null -eq $prSlice -or $prSlice.ExitCode -ne 0) {
                             $ec = if ($null -eq $prSlice) { '(null)' } else { "$($prSlice.ExitCode)" }
                             script:Write-PdfReorgLog -Message "[ERROR] Ghostscript extraction echouee : page=$pnI ExitCode=$ec" -Level 'ERROR'
@@ -525,13 +527,13 @@ function Reorganiser-PDF {
                     }
 
                     $mergeArgsRsp = @('-dNOPAUSE', '-dBATCH') + @($permRsp) + @('-sDEVICE=pdfwrite', ("-sOutputFile=$outAbs"), $atMerge )
-                    $process = Start-Process -FilePath $gsPath -ArgumentList $mergeArgsRsp -NoNewWindow -Wait -PassThru -RedirectStandardError $errFile
+                    $process = Start-Process -FilePath $gsPath -ArgumentList $mergeArgsRsp -NoNewWindow -Wait -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
                     if (Test-Path -LiteralPath $rspPath) {
                         Remove-Item -LiteralPath $rspPath -Force -ErrorAction SilentlyContinue
                     }
                 }
                 else {
-                    $process = Start-Process -FilePath $gsPath -ArgumentList @($mergeArgs.ToArray()) -NoNewWindow -Wait -PassThru -RedirectStandardError $errFile
+                    $process = Start-Process -FilePath $gsPath -ArgumentList @($mergeArgs.ToArray()) -NoNewWindow -Wait -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
                 }
             }
         } catch {
@@ -546,6 +548,9 @@ function Reorganiser-PDF {
             if (Test-Path -LiteralPath $errFile) {
                 $stderr = [string](Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue)
                 Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
+            }
+            if (Test-Path -LiteralPath $outFile) {
+                Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
             }
         }
 
