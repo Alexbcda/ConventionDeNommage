@@ -11,9 +11,29 @@ function script:Write-CnsTourneeLog {
         [Parameter(Mandatory = $true)][string]$Message,
         [string]$Level = 'INFO'
     )
+    $pf = $env:CN_PLANNING_JOB_PROGRESS_FILE
+    if ($Level -eq 'INFO' -and -not [string]::IsNullOrWhiteSpace($pf)) {
+        try {
+            Add-Content -LiteralPath $pf -Value ('{0} - {1}' -f (Get-Date -Format 'HH:mm:ss'), $Message) -Encoding UTF8 -ErrorAction SilentlyContinue
+        }
+        catch { }
+    }
     if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
         Write-Log $Message $Level
     }
+}
+
+function Write-CnsStep5ConsoleProgress {
+    <#
+    .SYNOPSIS
+        Messages [PROGRESS] STEP 5 sur la console (hors job GUI pour ne pas polluer Receive-Job).
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [ConsoleColor]$ForegroundColor = [ConsoleColor]::Gray
+    )
+    if ($env:CN_PLANNING_REBUILD_JOB -in @('1', 'true')) { return }
+    Write-Host $Message -ForegroundColor $ForegroundColor
 }
 
 $_cnsDestructionOds = Join-Path $PSScriptRoot 'CnsDestructionCertificateODS.ps1'
@@ -27,6 +47,79 @@ if (Test-Path -LiteralPath $_cnsBilanCollecteOds) {
 $_cnsCeaPointsOds = Join-Path $PSScriptRoot 'CnsCeaPointsCollecteODS.ps1'
 if (Test-Path -LiteralPath $_cnsCeaPointsOds) {
     . $_cnsCeaPointsOds
+}
+
+function Invoke-CnsProcessWithTimeout {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$ArgumentList,
+        [int]$TimeoutSeconds = 120,
+        [string]$RedirectStandardOutput = $null,
+        [string]$RedirectStandardError = $null
+    )
+    if ($TimeoutSeconds -lt 1) { $TimeoutSeconds = 120 }
+    $startParams = @{
+        FilePath     = $FilePath
+        ArgumentList = $ArgumentList
+        PassThru     = $true
+        NoNewWindow  = $true
+    }
+    if (-not [string]::IsNullOrWhiteSpace($RedirectStandardOutput)) {
+        $startParams.RedirectStandardOutput = $RedirectStandardOutput
+    }
+    if (-not [string]::IsNullOrWhiteSpace($RedirectStandardError)) {
+        $startParams.RedirectStandardError = $RedirectStandardError
+    }
+    $proc = Start-Process @startParams
+    if ($proc.WaitForExit($TimeoutSeconds * 1000)) {
+        return $proc
+    }
+    try {
+        if (-not $proc.HasExited) { $proc.Kill() }
+    }
+    catch { }
+    Write-Warning ("[PROCESS] Timeout apres {0}s : {1}" -f $TimeoutSeconds, (Split-Path -Leaf $FilePath))
+    return $null
+}
+
+function Invoke-CnsGhostscriptProcess {
+    <#
+    .SYNOPSIS
+        Lance Ghostscript. Redirige stdout/stderr uniquement en job (CN_PLANNING_REBUILD_JOB) ou si -RedirectStreamsForJob.
+        La redirection n'affecte pas les PDF ecrits via -sOutputFile sur disque.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$GsPath,
+        [Parameter(Mandatory = $true)][string[]]$ArgumentList,
+        [switch]$RedirectStreamsForJob,
+        [int]$TimeoutSeconds = 0
+    )
+
+    if ($TimeoutSeconds -lt 1) {
+        $envTs = $env:CN_GS_TIMEOUT_SEC
+        if (-not [string]::IsNullOrWhiteSpace($envTs)) {
+            try { $TimeoutSeconds = [int]$envTs } catch { $TimeoutSeconds = 120 }
+        }
+        else {
+            $TimeoutSeconds = if ($RedirectStreamsForJob) { 300 } else { 60 }
+        }
+    }
+
+    $redirect = $RedirectStreamsForJob.IsPresent -or ($env:CN_PLANNING_REBUILD_JOB -in @('1', 'true'))
+    if (-not $redirect) {
+        return Invoke-CnsProcessWithTimeout -FilePath $GsPath -ArgumentList $ArgumentList -TimeoutSeconds $TimeoutSeconds
+    }
+
+    $outFile = Join-Path $env:TEMP ("cn_gs_out_{0}.txt" -f [Guid]::NewGuid().ToString('N'))
+    $errFile = Join-Path $env:TEMP ("cn_gs_err_{0}.txt" -f [Guid]::NewGuid().ToString('N'))
+    try {
+        return Invoke-CnsProcessWithTimeout -FilePath $GsPath -ArgumentList $ArgumentList -TimeoutSeconds $TimeoutSeconds `
+            -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+    }
+    finally {
+        if (Test-Path -LiteralPath $outFile) { Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $errFile) { Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue }
+    }
 }
 
 function Sanitize-CnsCoverTextForGhostscript {
@@ -180,7 +273,7 @@ function Write-CnsPostScriptPdfPage {
     [void]$gsArgs.Add($psArg)
 
     try {
-        $p = Start-Process -FilePath $gs -ArgumentList @($gsArgs.ToArray()) -Wait -PassThru -NoNewWindow
+        $p = Invoke-CnsGhostscriptProcess -GsPath $gs -ArgumentList @($gsArgs.ToArray()) -TimeoutSeconds 90
         if ($null -eq $p -or $p.ExitCode -ne 0) {
             Remove-Item -LiteralPath $psPath -Force -ErrorAction SilentlyContinue
             return $false
@@ -1196,7 +1289,7 @@ function Invoke-CnsGhostscriptExtractOnePage {
     [void]$arg.AddRange([string[]](Get-CnsGhostscriptPermitFileReadArgs -Paths @($srcAbs, $outAbs)))
     [void]$arg.Add($srcAbs)
     try {
-        $p = Start-Process -FilePath $gs -ArgumentList @($arg.ToArray()) -Wait -PassThru -NoNewWindow
+        $p = Invoke-CnsGhostscriptProcess -GsPath $gs -ArgumentList @($arg.ToArray()) -TimeoutSeconds 60
         return ($null -ne $p -and $p.ExitCode -eq 0 -and (Test-Path -LiteralPath $outAbs))
     }
     catch { return $false }
@@ -1235,7 +1328,7 @@ function Merge-CnsPdfFilesGhostscriptOrdered {
             [void]$mergeArgsRsp.AddRange([string[]]@(("-sOutputFile=$outAbs")))
             [void]$mergeArgsRsp.AddRange([string[]](Get-CnsGhostscriptPermitFileReadArgs -Paths (@($paths) + @($outAbs))))
             [void]$mergeArgsRsp.Add($atArg)
-            $p = Start-Process -FilePath $gs -ArgumentList @($mergeArgsRsp.ToArray()) -Wait -PassThru -NoNewWindow
+            $p = Invoke-CnsGhostscriptProcess -GsPath $gs -ArgumentList @($mergeArgsRsp.ToArray()) -RedirectStreamsForJob -TimeoutSeconds 600
             if (Test-Path -LiteralPath $rspPath) { Remove-Item -LiteralPath $rspPath -Force -ErrorAction SilentlyContinue }
             return ($null -ne $p -and $p.ExitCode -eq 0 -and (Test-Path -LiteralPath $outAbs))
         }
@@ -1249,10 +1342,75 @@ function Merge-CnsPdfFilesGhostscriptOrdered {
             [void]$mergeArgs.Add('-f')
             [void]$mergeArgs.Add($tp)
         }
-        $p = Start-Process -FilePath $gs -ArgumentList @($mergeArgs.ToArray()) -Wait -PassThru -NoNewWindow
+        $p = Invoke-CnsGhostscriptProcess -GsPath $gs -ArgumentList @($mergeArgs.ToArray()) -RedirectStreamsForJob -TimeoutSeconds 600
         return ($null -ne $p -and $p.ExitCode -eq 0 -and (Test-Path -LiteralPath $outAbs))
     }
     finally { }
+}
+
+function Build-CnsTourneeOrderToSegmentMap {
+    param(
+        [array]$Segments,
+        [object[]]$ExcelOrder,
+        [hashtable]$ReorderedByFinalOrder
+    )
+    $orderToSeg = @{}
+    foreach ($seg in @($Segments)) {
+        if ($null -eq $seg) { continue }
+        [int]$segNum = 1
+        try { $segNum = [int]$seg.SegmentIndex } catch { }
+        if ($segNum -lt 1) { continue }
+        $oiList = @()
+        if ($null -ne $seg.PSObject.Properties['OrderIndices']) { $oiList = @($seg.OrderIndices) }
+        foreach ($oi in $oiList) {
+            try {
+                $k = [int]$oi
+                $orderToSeg[$k] = $segNum
+                $orderToSeg["$k"] = $segNum
+            }
+            catch { }
+        }
+    }
+
+    if ($orderToSeg.Count -eq 0 -and @($Segments).Count -eq 1 -and @($ExcelOrder).Count -gt 0) {
+        [int]$segNum = 1
+        try { $segNum = [int]$Segments[0].SegmentIndex } catch { }
+        foreach ($ex in @($ExcelOrder)) {
+            if ($null -eq $ex) { continue }
+            try {
+                $k = [int]$ex.OrderIndex
+                $orderToSeg[$k] = $segNum
+                $orderToSeg["$k"] = $segNum
+            }
+            catch { }
+        }
+        script:Write-CnsTourneeLog -Message ("[TOURNEE] OrderToSeg reconstruit depuis ExcelOrder (1 segment, {0} indices)." -f $orderToSeg.Count) -Level 'WARN'
+    }
+
+    if ($orderToSeg.Count -eq 0 -and $null -ne $ReorderedByFinalOrder -and $ReorderedByFinalOrder.Count -gt 0) {
+        [int]$defaultSeg = 1
+        if (@($Segments).Count -ge 1) {
+            try { $defaultSeg = [int]$Segments[0].SegmentIndex } catch { }
+        }
+        foreach ($ln in $ReorderedByFinalOrder.Values) {
+            if ($null -eq $ln) { continue }
+            try {
+                $ex = $ln.ExcelSourceOrder
+                if ($null -eq $ex) { continue }
+                $k = [int]$ex
+                if (-not $orderToSeg.ContainsKey($k)) {
+                    $orderToSeg[$k] = $defaultSeg
+                    $orderToSeg["$k"] = $defaultSeg
+                }
+            }
+            catch { }
+        }
+        if ($orderToSeg.Count -gt 0) {
+            script:Write-CnsTourneeLog -Message ("[TOURNEE] OrderToSeg reconstruit depuis Reordered ({0} indices, segment {1})." -f $orderToSeg.Count, $defaultSeg) -Level 'WARN'
+        }
+    }
+
+    return $orderToSeg
 }
 
 function Get-CnsTourneeCoverGroupingKeyFromPair {
@@ -1552,9 +1710,11 @@ function Invoke-CnsFlushOdmDuplicationRun {
         [string]$RunKeyLabel,
         [Parameter(Mandatory = $true)]
         [string]$TmpDir,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
+        [AllowNull()]
         [System.Collections.Generic.HashSet[string]]$CertInjectedForWo,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
+        [AllowNull()]
         [System.Collections.Generic.HashSet[int]]$CeaInjectedForPage,
         [AllowNull()][scriptblock]$ProgressCallback,
         [Parameter(Mandatory = $true)]
@@ -1568,6 +1728,16 @@ function Invoke-CnsFlushOdmDuplicationRun {
         [Parameter(Mandatory = $true)]
         [datetime]$VisitDate
     )
+
+    if ($null -eq $CertInjectedForWo -or -not ($CertInjectedForWo -is [System.Collections.Generic.HashSet[string]])) {
+        $CertInjectedForWo = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    }
+    if ($null -eq $CeaInjectedForPage -or -not ($CeaInjectedForPage -is [System.Collections.Generic.HashSet[int]])) {
+        $CeaInjectedForPage = [System.Collections.Generic.HashSet[int]]::new()
+    }
+    if ($null -eq $PendingCea) {
+        $PendingCea = [System.Collections.Generic.List[object]]::new()
+    }
 
     if ($SlicePaths.Count -lt 1) { return }
 
@@ -1779,34 +1949,16 @@ function Invoke-PlanningTourneePdfCoverComposition {
     ).Count
 
     $segments = @()
-    if ($null -ne $ColumnInfo -and $null -ne $ExcelData) {
+    if ($null -eq $ColumnInfo) {
+        script:Write-CnsTourneeLog -Message '[TOURNEE] ColumnInfo absent — detection segments Excel impossible.' -Level 'WARN'
+    }
+    elseif ($null -ne $ExcelData) {
         try {
             $segments = @(Get-PlanningExcelTourneeCoverSegments -ExcelData $ExcelData -ColumnInfo $ColumnInfo -FallbackVisitDate $VisitDate -ExcelOrder $ExcelOrder -OrderToWorkOrder $orderToWorkOrder)
         }
         catch {
             Write-Warning ("[TOURNEE] Segments Excel non disponibles : {0}" -f $_.Exception.Message)
             $segments = @()
-        }
-    }
-
-    $orderToSeg = @{}
-    $segIx = 0
-    foreach ($seg in @($segments)) {
-        $segIx++
-        [int]$segNum = $segIx
-        try { $segNum = [int]$seg.SegmentIndex } catch { $segNum = $segIx }
-        $oiList = @()
-        if ($null -ne $seg.PSObject.Properties['OrderIndices']) { $oiList = @($seg.OrderIndices) }
-        if ($oiList.Count -eq 0) {
-            Write-Warning ("[TOURNEE] Segment {0} sans OrderIndices — cle PDF SEG{0} absente pour les lignes concernees." -f $segNum)
-        }
-        foreach ($oi in $oiList) {
-            try {
-                $k = [int]$oi
-                $orderToSeg[$k] = [int]$segIx
-                $orderToSeg["$k"] = [int]$segIx
-            }
-            catch { }
         }
     }
 
@@ -1819,8 +1971,25 @@ function Invoke-PlanningTourneePdfCoverComposition {
         catch { }
     }
 
+    $orderToSeg = Build-CnsTourneeOrderToSegmentMap -Segments @($segments) -ExcelOrder @($ExcelOrder) -ReorderedByFinalOrder $foToLine
+    script:Write-CnsTourneeLog -Message ("[TOURNEE] Segments Excel={0}, OrderToSeg={1}, pages PDF={2}." -f @($segments).Count, $orderToSeg.Count, $mainPageCount) -Level 'INFO'
+
     $blocks = @(Build-PlanningTourneeCoverBlocks -SortedGsPairs $SortedGsPairs -FinalOrderToLine $foToLine -ExcelOrderIndexToSegmentIndex $orderToSeg)
     $blockTotal = @($blocks).Count
+    if ($blockTotal -lt 1 -and $mainPageCount -ge 1) {
+        script:Write-CnsTourneeLog -Message '[TOURNEE] Aucun bloc detecte — bloc unique SEG1 sur tout le PDF.' -Level 'WARN'
+        $blocks = @([pscustomobject]@{
+            GroupKey  = 'SEG1'
+            MainFrom1 = 1
+            MainTo1   = $mainPageCount
+        })
+        $blockTotal = 1
+        if ($orderToSeg.Count -lt 1) {
+            $orderToSeg[1] = 1
+            $orderToSeg['1'] = 1
+        }
+    }
+    script:Write-CnsTourneeLog -Message ("[TOURNEE] Blocs composition : {0} ({1})." -f $blockTotal, (($blocks | ForEach-Object { '{0}:{1}-{2}' -f $_.GroupKey, $_.MainFrom1, $_.MainTo1 }) -join ', ')) -Level 'INFO'
     $script:PlanningTourneeBlockTotal = $blockTotal
     $script:PlanningTourneeGeneratedDocCount = 0
 
@@ -1831,6 +2000,9 @@ function Invoke-PlanningTourneePdfCoverComposition {
 
     try {
         $null = New-Item -ItemType Directory -Path $tmpDir -Force -ErrorAction Stop
+
+        Write-CnsStep5ConsoleProgress -Message "`n[PROGRESS] STEP 5 : Composition des pages de garde..." -ForegroundColor Cyan
+        Write-CnsStep5ConsoleProgress -Message '[PROGRESS]   - Creation des pages de garde globales...' -ForegroundColor Gray
 
         $globalCov = Join-Path $tmpDir 'cover_global.pdf'
 
@@ -1865,6 +2037,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                 Write-Warning ("[TOURNEE] Diagnostic ODM non matches indisponible : {0}" -f $_.Exception.Message)
             }
         }
+        Write-CnsStep5ConsoleProgress -Message '[PROGRESS]   - Page de garde globale...' -ForegroundColor Gray
         $gcOk = (New-CnsGlobalMismatchCoverPdf -OutPdfPath $globalCov `
                 -TotalOdmCount $totalODM `
                 -UnmatchedOdmCount $unmatchedCount `
@@ -1877,6 +2050,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
             throw 'Ghostscript global cover echouee'
         }
         [void]$frag.Add($globalCov)
+        script:Write-CnsTourneeLog -Message '[TOURNEE] Page de garde globale OK.' -Level 'INFO'
 
         $seenSegments = @{}
         $prefaceAlreadyAdded = $false
@@ -1887,6 +2061,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
         $fi = 0
         foreach ($blk in @($blocks)) {
             $fi++
+            script:Write-CnsTourneeLog -Message ("[TOURNEE] Bloc {0}/{1} : {2} (pages {3}-{4})." -f $fi, $blockTotal, [string]$blk.GroupKey, $blk.MainFrom1, $blk.MainTo1) -Level 'INFO'
             $isLastTour = ($fi -eq $blockTotal)
             $tBranchCore = if ($isLastTour) { '└── ' } else { '├── ' }
             $tChildCore = if ($isLastTour) { '    ' } else { '│   ' }
@@ -1910,6 +2085,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                 }
             }
             if ([string]::IsNullOrWhiteSpace($tourHeaderDetail)) { $tourHeaderDetail = 'Operation en cours' }
+            Write-CnsStep5ConsoleProgress -Message ("`n[PROGRESS]   - Tournee {0}/{1} : {2}" -f $fi, $blockTotal, $tourHeaderDetail) -ForegroundColor Yellow
             Write-TourneeCompositionTourStart -ProgressCallback $ProgressCallback -Detail ("{0}/{1}" -f $fi, $blockTotal)
             Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
                 -Detail ("{0}Tournee {1}/{2} : {3}" -f $tBranchCore, $fi, $blockTotal, $tourHeaderDetail)
@@ -1921,6 +2097,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
 
             $coverPath = Join-Path $tmpDir ('cover_blk_{0}.pdf' -f $fi)
             $coverCreated = $false
+            Write-CnsStep5ConsoleProgress -Message '[PROGRESS]       -> Creation page de garde...' -ForegroundColor Gray
 
             switch -Regex ([string]$blk.GroupKey) {
                 '^SEG(\d+)$' {
@@ -1930,6 +2107,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     }
                     else {
                         $seenSegments[$n] = $true
+                        script:Write-CnsTourneeLog -Message ("[TOURNEE] Creating cover page for segment {0}" -f $n) -Level 'INFO'
                         Write-Host "[TOURNEE] Creating cover page for segment $n" -ForegroundColor Cyan
                         $seg = ($segments | Where-Object { [int]$_.SegmentIndex -eq $n } | Select-Object -First 1)
                         if ($null -eq $seg) {
@@ -1970,6 +2148,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     }
                 }
                 default {
+                    script:Write-CnsTourneeLog -Message ("[TOURNEE] Creating cover page for preface / hors segment (cle={0})" -f [string]$blk.GroupKey) -Level 'INFO'
                     Write-Host ('[TOURNEE] Creating cover page for preface / hors segment Excel (cle=' + ([string]$blk.GroupKey) + ')') -ForegroundColor Cyan
                     Write-Host ("[TOURNEE] Pages count (bloque principal) = {0}" -f (1 + $blk.MainTo1 - $blk.MainFrom1)) -ForegroundColor DarkCyan
                     if (-not $prefaceAlreadyAdded) {
@@ -1999,6 +2178,9 @@ function Invoke-PlanningTourneePdfCoverComposition {
             for ($pn = [int]$blk.MainFrom1; $pn -le [int]$blk.MainTo1; $pn++) {
                 $sliceIx++
                 $odmIdx++
+                if ($odmTotal -gt 0 -and $odmIdx % 10 -eq 0) {
+                    Write-CnsStep5ConsoleProgress -Message ("[PROGRESS]       -> Traitement ODM {0}/{1}..." -f $odmIdx, $odmTotal) -ForegroundColor Gray
+                }
                 $slicePath = Join-Path $tmpDir ('main_slice_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
                 if (-not (Invoke-CnsGhostscriptExtractOnePage -SourcePdf $mainAbs -FirstPageOneBased $pn -OutPdfPath $slicePath)) {
                     throw ("[TOURNEE] Extraction page principale #{0} echouee." -f $pn)
@@ -2098,6 +2280,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                                     $phTable[[string]$entry.Key] = [string]$entry.Value
                                 }
                                 $certOut = Join-Path $tmpDir ('cert_dest_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
+                                Write-CnsStep5ConsoleProgress -Message '[PROGRESS]       -> Generation certificat destruction...' -ForegroundColor Gray
                                 $certPdf = New-CnsDestructionCertificatePdfFromOdsTemplate -OutPdfPath $certOut -Placeholders $phTable
                                 if (-not [string]::IsNullOrWhiteSpace($certPdf) -and (Test-Path -LiteralPath $certPdf)) {
                                     if (Get-Command Write-CnsDestructionCertificatePdfMergeAudit -ErrorAction SilentlyContinue) {
@@ -2123,6 +2306,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
 
                     if (-not $isDupTarget -and $requiresCeaPage -and $rawPnPage -gt 0 -and $ceaInjectedForPage.Add($rawPnPage)) {
                         $ceaOut = Join-Path $tmpDir ('cea_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
+                        Write-CnsStep5ConsoleProgress -Message '[PROGRESS]       -> Generation document CEA...' -ForegroundColor Gray
                         $ceaPdf = $null
                         if (Get-Command New-CnsCeaPointsDeCollectesPdfFromOdsTemplate -ErrorAction SilentlyContinue) {
                             $segMetaCea = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $gsPair -FinalOrderToLine $foToLine -Segments $segments -ExcelOrderIndexToSegmentIndex $orderToSeg -VisitDate $VisitDate
@@ -2174,6 +2358,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                             $phBilan[[string]$entry.Key] = [string]$entry.Value
                         }
                         $bilanOut = Join-Path $tmpDir ('bilan_seg_{0:D3}.pdf' -f $fi)
+                        Write-CnsStep5ConsoleProgress -Message '[PROGRESS]       -> Generation bilan collecte...' -ForegroundColor Gray
                         $bilanPdf = New-CnsBilanCollectePdfFromOdsTemplate -OutPdfPath $bilanOut -Placeholders $phBilan
                         if (-not [string]::IsNullOrWhiteSpace($bilanPdf) -and (Test-Path -LiteralPath $bilanPdf)) {
                             if (Get-Command Write-CnsLibreOfficePdfMergeAudit -ErrorAction SilentlyContinue) {
@@ -2198,6 +2383,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
         }
 
         Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback -Detail 'Phase 3 : Assemblage final'
+        Write-CnsStep5ConsoleProgress -Message '[PROGRESS]   - Fusion des documents...' -ForegroundColor Gray
         $fragCount = @($frag).Count
         $mergeMsg = "Fusion des {0} elements PDF... [OK]" -f $fragCount
         if ([string]::IsNullOrWhiteSpace($mergeMsg)) { $mergeMsg = 'Operation en cours' }
@@ -2212,12 +2398,22 @@ function Invoke-PlanningTourneePdfCoverComposition {
         $nCoverSheets = 1 + @($blocks).Count
         $tourneeMsg = "[TOURNEE] PDF final compose : {0} garde(s) + {1} page(s) corps reorder (Ghostscript reorder inchange)." -f $nCoverSheets, $mainPageCount
         script:Write-CnsTourneeLog -Message $tourneeMsg -Level 'INFO'
+        Write-CnsStep5ConsoleProgress -Message '[PROGRESS] STEP 5 : Termine !' -ForegroundColor Green
+        Write-CnsStep5ConsoleProgress -Message ("[PROGRESS] PDF final : {0}" -f $mainAbs) -ForegroundColor Cyan
         if (Get-Command Write-PlanningRebuildUiLog -ErrorAction SilentlyContinue) {
             Write-PlanningRebuildUiLog $tourneeMsg
         }
         return $true
     }
     catch {
+        $errDetail = $_.Exception.Message
+        try {
+            if ($null -ne $_.ScriptStackTrace) {
+                $errDetail = '{0} | {1}' -f $errDetail, ($_.ScriptStackTrace -replace '\r?\n', ' ')
+            }
+        }
+        catch { }
+        script:Write-CnsTourneeLog -Message ("[TOURNEE] Composition abandonnee : {0}" -f $errDetail) -Level 'ERROR'
         Write-Warning ("[TOURNEE] Composition abandonnee : {0}" -f $_.Exception.Message)
         return $false
     }

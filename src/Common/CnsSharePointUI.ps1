@@ -385,14 +385,26 @@ function Update-SharePointUI {
     if ($Labels.ContainsKey('ImportExcel')) {
         $importExcelBtn = $Labels.ImportExcel
     }
-    $showImportExcel = [bool]$def.DegradedMode
-    if (-not $showImportExcel) {
-        $effectiveExcel = $null
-        if ($Labels.ContainsKey('EffectiveExcelPath')) {
-            $effectiveExcel = [string]$Labels.EffectiveExcelPath
-        }
-        if ([string]::IsNullOrWhiteSpace($effectiveExcel) -or -not (Test-Path -LiteralPath $effectiveExcel)) {
-            $showImportExcel = $true
+    $planningUIMode = $null
+    if ($Labels.ContainsKey('PlanningUIMode')) {
+        $planningUIMode = [string]$Labels.PlanningUIMode
+    }
+    if ($planningUIMode -eq 'SharePoint') {
+        $showImportExcel = ($status -notin @('Connected', 'Connecting'))
+    }
+    elseif ($planningUIMode -eq 'Local') {
+        $showImportExcel = $true
+    }
+    else {
+        $showImportExcel = [bool]$def.DegradedMode
+        if (-not $showImportExcel) {
+            $effectiveExcel = $null
+            if ($Labels.ContainsKey('EffectiveExcelPath')) {
+                $effectiveExcel = [string]$Labels.EffectiveExcelPath
+            }
+            if ([string]::IsNullOrWhiteSpace($effectiveExcel) -or -not (Test-Path -LiteralPath $effectiveExcel)) {
+                $showImportExcel = $true
+            }
         }
     }
     if ($null -ne $importExcelBtn -and $importExcelBtn -is [System.Windows.Forms.Control]) {
@@ -406,23 +418,32 @@ function Update-SharePointUI {
     if ($null -ne $connectBtn -and $connectBtn -is [System.Windows.Forms.Control]) {
         $connectBtnWidth = 160
         $connectBtnHeight = 32
-        $showConnectBtn = $status -in @('Expired', 'Offline', 'Denied', 'Error', 'WamBlocked', 'Connecting')
-        $connectBtnEnabled = $status -in @('Expired', 'Offline', 'Denied', 'Error', 'WamBlocked')
+        $isLocalMode = ($planningUIMode -eq 'Local')
 
         if ($status -eq 'Connecting') {
             Set-BtnQuitterStyle -BtnQuitter $connectBtn
             $connectBtn.Text = '⏳ Connexion en cours...'
+            $connectBtn.Tag = 'Connect'
             $connectBtn.Size = [System.Drawing.Size]::new($connectBtnWidth, $connectBtnHeight)
             $connectBtn.Enabled = $false
+            $showConnectBtn = $true
         }
-        elseif ($connectBtnEnabled) {
+        elseif ($status -eq 'Connected' -and -not $isLocalMode) {
             Set-BtnCertificatStyle -BtnCertificat $connectBtn
-            $connectBtn.Text = '🔐 Connexion'
+            $connectBtn.Text = '🔓 Déconnexion'
+            $connectBtn.Tag = 'Disconnect'
             $connectBtn.Size = [System.Drawing.Size]::new($connectBtnWidth, $connectBtnHeight)
             $connectBtn.Enabled = $true
+            $showConnectBtn = $true
         }
         else {
-            $connectBtn.Enabled = $false
+            Set-BtnCertificatStyle -BtnCertificat $connectBtn
+            $connectBtn.Text = '🔐 Connexion'
+            $connectBtn.Tag = 'Connect'
+            $connectBtn.Size = [System.Drawing.Size]::new($connectBtnWidth, $connectBtnHeight)
+            $connectBtnEnabled = $status -in @('Expired', 'Offline', 'Denied', 'Error', 'WamBlocked') -or $isLocalMode
+            $connectBtn.Enabled = $connectBtnEnabled
+            $showConnectBtn = $isLocalMode -or ($status -in @('Expired', 'Offline', 'Denied', 'Error', 'WamBlocked'))
         }
 
         $connectBtn.Visible = $showConnectBtn

@@ -713,34 +713,8 @@ function Connect-SharePointPlanning {
 
     Ensure-CnsSharePointCacheDir
     $localPath = Get-CnsSharePointLocalPlanningPath
-    $meta = Get-CnsSharePointSyncMeta
-
-    if (-not $ForceRefresh -and (Test-Path -LiteralPath $localPath -PathType Leaf) -and $null -ne $meta -and $meta.source -eq 'SharePoint') {
-        try {
-            $lastSync = [datetime]$meta.lastSync
-        }
-        catch {
-            $lastSync = (Get-Item -LiteralPath $localPath).LastWriteTime
-        }
-        if ((Get-Item -LiteralPath $localPath).Length -lt 1) {
-            Remove-Item -LiteralPath $localPath -Force -ErrorAction SilentlyContinue
-        }
-        elseif (Test-CnsSharePointGraphSessionValid) {
-            return (New-CnsSharePointResult -Status 'Connected' -FilePath $localPath -LastSync $lastSync `
-                -Message ("Connecte - {0}" -f $script:CnsSharePointPlanningFileName))
-        }
-        else {
-            return (New-CnsSharePointResult -Status 'Expired' -FilePath $localPath -LastSync $lastSync `
-                -Message 'Fichier en cache - cliquez Se connecter pour synchroniser SharePoint')
-        }
-    }
 
     if (-not (Test-CnsSharePointGraphModuleAvailable)) {
-        $localFallback = Get-CnsPlanningRegistryValue -Name 'LocalExcelPath'
-        if (-not [string]::IsNullOrWhiteSpace($localFallback) -and (Test-Path -LiteralPath $localFallback)) {
-            return (New-CnsSharePointResult -Status 'Expired' -FilePath $localFallback `
-                -Message ('Mode local - {0}' -f (Split-Path -Leaf $localFallback)) -ErrorDetail 'Microsoft.Graph absent')
-        }
         return (New-CnsSharePointResult -Status 'Error' `
             -Message 'Module Microsoft.Graph requis - installez-le depuis l''onglet Edition planning' `
             -ErrorDetail 'Microsoft.Graph absent')
@@ -749,11 +723,6 @@ function Connect-SharePointPlanning {
     $mustAuthenticate = $InteractiveLogin -or -not (Test-CnsSharePointGraphSessionValid)
     if ($mustAuthenticate) {
         if (-not $InteractiveLogin) {
-            if (Test-Path -LiteralPath $localPath -PathType Leaf) {
-                try { $lastSync = [datetime]$meta.lastSync } catch { $lastSync = (Get-Item -LiteralPath $localPath).LastWriteTime }
-                return (New-CnsSharePointResult -Status 'Expired' -FilePath $localPath -LastSync $lastSync `
-                    -Message 'Session SharePoint absente - cliquez Se connecter')
-            }
             return (New-CnsSharePointResult -Status 'Offline' `
                 -Message 'Connexion échouée – cliquez sur "Connexion" pour réessayer')
         }
@@ -822,19 +791,6 @@ function Set-CnsSharePointLocalPlanningFile {
 }
 
 function Get-CnsSharePointEffectiveExcelPath {
-    $preferLocal = Get-CnsPlanningRegistryValue -Name 'PreferLocalMode'
-    if ($preferLocal -in @('1', 'true', 'TRUE')) {
-        $local = Get-CnsPlanningRegistryValue -Name 'LocalExcelPath'
-        if (-not [string]::IsNullOrWhiteSpace($local) -and (Test-Path -LiteralPath $local)) {
-            return $local
-        }
-    }
-    $meta = Get-CnsSharePointSyncMeta
-    if ($null -ne $meta -and -not [string]::IsNullOrWhiteSpace([string]$meta.localPath) -and (Test-Path -LiteralPath ([string]$meta.localPath))) {
-        return [string]$meta.localPath
-    }
-    $cached = Get-CnsSharePointLocalPlanningPath
-    if (Test-Path -LiteralPath $cached) { return $cached }
     return $null
 }
 

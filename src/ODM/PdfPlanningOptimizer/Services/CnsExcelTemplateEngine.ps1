@@ -344,30 +344,43 @@ function Convert-XlsxToPdfUsingLibreOffice {
         '--outdir', $outDir,
         $xlsxAbs
     )
+
+    $outFile = Join-Path $env:TEMP ("cn_soffice_out_{0}.txt" -f [Guid]::NewGuid().ToString('N'))
+    $errFile = Join-Path $env:TEMP ("cn_soffice_err_{0}.txt" -f [Guid]::NewGuid().ToString('N'))
+
     try {
-        $proc = Start-Process -FilePath $soffice -ArgumentList $loArgs -Wait -PassThru -NoNewWindow -ErrorAction Stop
+        try {
+            $proc = Start-Process -FilePath $soffice -ArgumentList $loArgs -Wait -PassThru -NoNewWindow -ErrorAction Stop `
+                -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+        }
+        catch {
+            Write-Warning ("[XLSX-PDF] LibreOffice echoue : {0}" -f $_.Exception.Message)
+            return $false
+        }
+
         if ($null -eq $proc -or $proc.ExitCode -ne 0) {
             Write-Warning ("[XLSX-PDF] LibreOffice code {0}." -f $(if ($null -eq $proc) { 'null' } else { $proc.ExitCode }))
             return $false
         }
-    }
-    catch {
-        Write-Warning ("[XLSX-PDF] LibreOffice echoue : {0}" -f $_.Exception.Message)
-        return $false
-    }
 
-    $produced = Join-Path $outDir ([System.IO.Path]::GetFileNameWithoutExtension($xlsxAbs) + '.pdf')
-    if (-not (Test-Path -LiteralPath $produced)) {
-        Write-Warning '[XLSX-PDF] PDF non produit apres conversion LibreOffice.'
-        return $false
-    }
-    if (-not ($produced.Equals($pdfAbs, [System.StringComparison]::OrdinalIgnoreCase))) {
-        if (Test-Path -LiteralPath $pdfAbs) {
-            Remove-Item -LiteralPath $pdfAbs -Force -ErrorAction SilentlyContinue
+        $produced = Join-Path $outDir ([System.IO.Path]::GetFileNameWithoutExtension($xlsxAbs) + '.pdf')
+        if (-not (Test-Path -LiteralPath $produced)) {
+            Write-Warning '[XLSX-PDF] PDF non produit apres conversion LibreOffice.'
+            return $false
         }
-        Move-Item -LiteralPath $produced -Destination $pdfAbs -Force
+        if (-not ($produced.Equals($pdfAbs, [System.StringComparison]::OrdinalIgnoreCase))) {
+            if (Test-Path -LiteralPath $pdfAbs) {
+                Remove-Item -LiteralPath $pdfAbs -Force -ErrorAction SilentlyContinue
+            }
+            Move-Item -LiteralPath $produced -Destination $pdfAbs -Force
+        }
+
+        return (Test-Path -LiteralPath $pdfAbs)
     }
-    return (Test-Path -LiteralPath $pdfAbs)
+    finally {
+        if (Test-Path -LiteralPath $outFile) { Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $errFile) { Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue }
+    }
 }
 
 function Convert-XlsxToPdfViaExcel {

@@ -49,11 +49,25 @@ function script:Write-PlanningDebugLog {
 }
 
 # Journalisation pipeline (hors boucles) : STEP / ERROR / SUCCESS uniquement — pas d'appel dans les boucles matching/ODM.
+function script:Write-PlanningJobProgressFile {
+    param([Parameter(Mandatory = $true)][string]$Message)
+    $pf = $env:CN_PLANNING_JOB_PROGRESS_FILE
+    if ([string]::IsNullOrWhiteSpace($pf)) { return }
+    try {
+        $line = '{0} - {1}' -f (Get-Date -Format 'HH:mm:ss'), $Message
+        Add-Content -LiteralPath $pf -Value $line -Encoding UTF8 -ErrorAction SilentlyContinue
+    }
+    catch { }
+}
+
 function script:Write-PlanningLog {
     param(
         [Parameter(Mandatory = $true)][string]$Message,
         [string]$Level = 'INFO'
     )
+    if ($Level -eq 'INFO') {
+        script:Write-PlanningJobProgressFile -Message $Message
+    }
     if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
         Write-Log $Message $Level
     }
@@ -1187,23 +1201,96 @@ function script:Test-PlanningExcelFixedHeaderMatchesDate {
     return $false
 }
 
+function script:Test-PlanningExcelSheetNameMatchesIsoWeek {
+    param(
+        [string]$SheetName,
+        [int]$Week
+    )
+    if ([string]::IsNullOrWhiteSpace($SheetName)) { return $false }
+    $weekToken = [regex]::Escape([string]$Week)
+    # Ex. S24, S024, "Planning S24 modifié" — pas de sous-chaîne ambiguë type S124 pour la semaine 24.
+    return ($SheetName -match ("(?i)S0?{0}(?:\D|$)" -f $weekToken))
+}
+
 function script:Get-PlanningExcelSheetForIsoWeek {
     param(
         [object]$ExcelData,
         [int]$Week
     )
     if ($null -eq $ExcelData -or $null -eq $ExcelData.Sheets) { return $null }
+
+    foreach ($sheet in @($ExcelData.Sheets)) {
+        if (script:Test-PlanningExcelSheetNameMatchesIsoWeek -SheetName ([string]$sheet.Name) -Week $Week) {
+            Write-Host ("[EXCEL] Onglet trouve (recherche flexible) : '{0}' (semaine {1})" -f $sheet.Name, $Week) -ForegroundColor Green
+            return $sheet
+        }
+    }
+
+    $weekStrPadded = '{0:D2}' -f $Week
     $candidates = @(
-        ('S{0:D2} (à faire)' -f $Week),
+        ("S$weekStrPadded (à faire)"),
         ("S$Week (à faire)"),
-        ('S{0:D2}' -f $Week),
+        ("S$weekStrPadded"),
         ("S$Week")
     )
     foreach ($name in $candidates) {
         $sheet = @($ExcelData.Sheets | Where-Object { $_.Name -eq $name } | Select-Object -First 1)[0]
-        if ($null -ne $sheet) { return $sheet }
+        if ($null -ne $sheet) {
+            Write-Host ("[EXCEL] Onglet trouve (recherche exacte) : '{0}'" -f $name) -ForegroundColor Green
+            return $sheet
+        }
     }
     return $null
+}
+
+function script:Get-PlanningExcelFixedColumnFromVisitDate {
+    param([datetime]$VisitDate)
+    $dayColMap = @{
+        'Monday'    = 2
+        'Tuesday'   = 25
+        'Wednesday' = 48
+        'Thursday'  = 71
+        'Friday'    = 94
+    }
+    $dayOfWeek = $VisitDate.DayOfWeek
+    if (-not $dayColMap.ContainsKey([string]$dayOfWeek)) { return $null }
+    return $dayColMap[[string]$dayOfWeek]
+}
+
+function script:Find-ExcelColumnOnSheetForVisitDateFixed {
+    param(
+        [Parameter(Mandatory = $true)][object]$Sheet,
+        [Parameter(Mandatory = $true)][datetime]$VisitDate,
+        [Parameter(Mandatory = $true)][int]$Column,
+        [string]$Source = 'Fixed'
+    )
+    $headerRowIndex = 4
+    $rowCount = (ConvertTo-SafeInt -Value (Normalize-Scalar -Value $Sheet.RowCount -Name 'Fixed.sheet.RowCount') -Name 'Fixed.sheet.RowCount')
+    if ($rowCount -le $headerRowIndex) { return $null }
+
+    $colCount = (ConvertTo-SafeInt -Value (Normalize-Scalar -Value $Sheet.ColCount -Name 'Fixed.sheet.ColCount') -Name 'Fixed.sheet.ColCount')
+    if ($Column -gt $colCount) { return $null }
+
+    $colZero = $Column - 1
+    if ($null -eq $Sheet.Grid -or $null -eq $Sheet.Grid[$headerRowIndex]) { return $null }
+    if ($colZero -ge @($Sheet.Grid[$headerRowIndex]).Count) { return $null }
+
+    $headerCell = [string]$Sheet.Grid[$headerRowIndex][$colZero]
+    if ([string]::IsNullOrWhiteSpace($headerCell)) { return $null }
+    if (-not (Test-PlanningExcelFixedHeaderMatchesDate -HeaderCell $headerCell -VisitDate $VisitDate)) { return $null }
+
+    $dayName = Get-FrenchDayName -Date $VisitDate
+    $dateShort = $VisitDate.ToString('dd/MM')
+
+    return [pscustomobject]@{
+        SheetName   = $Sheet.Name
+        ColumnIndex = $Column
+        HeaderRow   = 5
+        HeaderText  = $headerCell
+        TargetDay   = $dayName
+        TargetDate  = $dateShort
+        Source      = $Source
+    }
 }
 
 function script:Write-PlanningExcelNonStandardColumnWarning {
@@ -1228,48 +1315,29 @@ function Find-ExcelColumnFromDateFixed {
         [string]$ExcelPath = $null
     )
 
+    $column = script:Get-PlanningExcelFixedColumnFromVisitDate -VisitDate $VisitDate
+    if ($null -eq $column) { return $null }
+
     $week = Get-Iso8601WeekOfYear -Date $VisitDate
-    $sheet = Get-PlanningExcelSheetForIsoWeek -ExcelData $ExcelData -Week $week
-    if (-not $sheet) { return $null }
-
-    $dayColMap = @{
-        'Monday'    = 2
-        'Tuesday'   = 25
-        'Wednesday' = 48
-        'Thursday'  = 71
-        'Friday'    = 94
+    $preferredSheet = Get-PlanningExcelSheetForIsoWeek -ExcelData $ExcelData -Week $week
+    if ($null -ne $preferredSheet) {
+        $preferredResult = script:Find-ExcelColumnOnSheetForVisitDateFixed -Sheet $preferredSheet -VisitDate $VisitDate -Column $column -Source 'Fixed'
+        if ($null -ne $preferredResult) {
+            Write-Host ("[EXCEL] Date trouvee dans l'onglet '{0}' colonne {1}" -f $preferredResult.SheetName, $column) -ForegroundColor Green
+            return $preferredResult
+        }
     }
-    $dayOfWeek = $VisitDate.DayOfWeek
-    if (-not $dayColMap.ContainsKey([string]$dayOfWeek)) { return $null }
-    $column = $dayColMap[[string]$dayOfWeek]
 
-    $headerRowIndex = 4
-    $rowCount = (ConvertTo-SafeInt -Value (Normalize-Scalar -Value $sheet.RowCount -Name "Fixed.sheet.RowCount") -Name "Fixed.sheet.RowCount")
-    if ($rowCount -le $headerRowIndex) { return $null }
-
-    $colCount = (ConvertTo-SafeInt -Value (Normalize-Scalar -Value $sheet.ColCount -Name "Fixed.sheet.ColCount") -Name "Fixed.sheet.ColCount")
-    if ($column -gt $colCount) { return $null }
-
-    $colZero = $column - 1
-    if ($null -eq $sheet.Grid -or $null -eq $sheet.Grid[$headerRowIndex]) { return $null }
-    if ($colZero -ge @($sheet.Grid[$headerRowIndex]).Count) { return $null }
-
-    $headerCell = [string]$sheet.Grid[$headerRowIndex][$colZero]
-    if ([string]::IsNullOrWhiteSpace($headerCell)) { return $null }
-    if (-not (Test-PlanningExcelFixedHeaderMatchesDate -HeaderCell $headerCell -VisitDate $VisitDate)) { return $null }
-
-    $dayName = Get-FrenchDayName -Date $VisitDate
-    $dateShort = $VisitDate.ToString('dd/MM')
-
-    return [pscustomobject]@{
-        SheetName   = $sheet.Name
-        ColumnIndex = $column
-        HeaderRow   = 5
-        HeaderText  = $headerCell
-        TargetDay   = $dayName
-        TargetDate  = $dateShort
-        Source      = 'Fixed'
+    foreach ($sheet in @($ExcelData.Sheets)) {
+        if ($null -ne $preferredSheet -and $sheet.Name -eq $preferredSheet.Name) { continue }
+        $flexResult = script:Find-ExcelColumnOnSheetForVisitDateFixed -Sheet $sheet -VisitDate $VisitDate -Column $column -Source 'Flexible'
+        if ($null -ne $flexResult) {
+            Write-Host ("[EXCEL] Date trouvee dans l'onglet '{0}' colonne {1} (nom personnalise)" -f $flexResult.SheetName, $column) -ForegroundColor Green
+            return $flexResult
+        }
     }
+
+    return $null
 }
 
 function Find-ExcelColumnFromDateLegacy {
@@ -3555,6 +3623,12 @@ function Start-PlanningRebuild {
     $script:PlanningRebuildProgressCallback = $ProgressCallback
     $script:PlanningTourneeBlockTotal = 0
     Reset-PlanningRebuildStop
+    $savedProgressPref = $ProgressPreference
+    $savedVerbosePref = $VerbosePreference
+    if ($env:CN_DEBUG_PIPELINE -notin @('1', 'true')) {
+        $ProgressPreference = 'SilentlyContinue'
+        $VerbosePreference = 'SilentlyContinue'
+    }
     try {
     if (script:Test-CnChirurgicalTrace) { $script:ChirurgicalLeakLogged = $false }
     if (script:Test-CnObjectTrace) { $script:ObjectArrayLeakLogged = $false }
@@ -4126,7 +4200,23 @@ function Start-PlanningRebuild {
             Update-PlanningRebuildStepProgress -StepIndex 4 -StepCount $planningStepTotal -Label 'Generation PDF' -Status 'Running' `
                 -Detail ("lot {0}/{1}" -f $CurrentBatch, $TotalBatches) -SubRatio $ratio
         }
-        $ok = Reorganiser-PDF -SourcePDF $PdfPath -OutputPDF $outputPdfPath -Mapping $pageMapping -OrderedPhysicalPages $orderedPhysicalForGs -SourcePdfPageCountHint $pdfRealPageCount -ProgressCallback $pdfReorgProgressCb
+        # Rediriger stdout Ghostscript pour eviter la pollution du flux de retour du job
+        $oldVerbose = $VerbosePreference
+        $oldProgress = $ProgressPreference
+        $VerbosePreference = 'SilentlyContinue'
+        $ProgressPreference = 'SilentlyContinue'
+
+        $reorgOutput = Reorganiser-PDF -SourcePDF $PdfPath -OutputPDF $outputPdfPath -Mapping $pageMapping -OrderedPhysicalPages $orderedPhysicalForGs -SourcePdfPageCountHint $pdfRealPageCount -ProgressCallback $pdfReorgProgressCb 2>&1
+
+        $VerbosePreference = $oldVerbose
+        $ProgressPreference = $oldProgress
+
+        if ($reorgOutput -is [boolean]) {
+            $ok = $reorgOutput
+        }
+        else {
+            $ok = ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $outputPdfPath))
+        }
         if (-not $ok) {
             script:Write-PlanningLog -Message '[ERROR] Generation PDF echouee (Reorganiser-PDF a retourne false)' -Level 'ERROR'
             Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 4 -StepCount $planningStepTotal -Label 'Generation PDF' -Status 'Error'
@@ -4251,5 +4341,7 @@ function Start-PlanningRebuild {
     finally {
         $script:PlanningPipelineRunning = $false
         $script:PlanningRebuildProgressCallback = $null
+        $ProgressPreference = $savedProgressPref
+        $VerbosePreference = $savedVerbosePref
     }
 }
