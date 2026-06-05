@@ -36,6 +36,13 @@ function Write-CnsStep5ConsoleProgress {
     Write-Host $Message -ForegroundColor $ForegroundColor
 }
 
+function Write-PlanningTourneeStep5UiLog {
+    param([Parameter(Mandatory = $true)][string]$Message)
+    if (Get-Command Write-PlanningRebuildUiLog -ErrorAction SilentlyContinue) {
+        Write-PlanningRebuildUiLog $Message
+    }
+}
+
 $_cnsDestructionOds = Join-Path $PSScriptRoot 'CnsDestructionCertificateODS.ps1'
 if (Test-Path -LiteralPath $_cnsDestructionOds) {
     . $_cnsDestructionOds
@@ -1500,23 +1507,75 @@ function Get-CnsOdmPagePrestationDetectionLabel {
     return ($parts -join ', ')
 }
 
+function Get-PlanningTourneeStep5Percent {
+    param([double]$SubRatio = 0)
+    $ratio = [Math]::Max(0.0, [Math]::Min(1.0, $SubRatio))
+    if (Get-Command Get-PlanningRebuildStepPercent -ErrorAction SilentlyContinue) {
+        return (Get-PlanningRebuildStepPercent -StepIndex 5 -StepCount 5 -SubRatio $ratio)
+    }
+    return [int][Math]::Min(100, [Math]::Max(0, [Math]::Round(65.0 + ($ratio * 35.0))))
+}
+
+function Update-PlanningTourneeStep5Progress {
+    param(
+        [double]$SubRatio = 0,
+        [string]$Detail = $null,
+        [ValidateSet('Running', 'OK')]
+        [string]$Status = 'Running'
+    )
+    if (Get-Command Update-PlanningRebuildStepProgress -ErrorAction SilentlyContinue) {
+        Update-PlanningRebuildStepProgress -StepIndex 5 -StepCount 5 -Label 'Composition pages de garde' `
+            -Status $Status -Detail $Detail -SubRatio $SubRatio
+        return
+    }
+    $cb = $script:PlanningRebuildProgressCallback
+    if ($null -eq $cb) { return }
+    try {
+        & $cb @{
+            StepIndex = 5
+            StepCount = 5
+            Label     = 'Composition pages de garde'
+            Status    = 'Running'
+            Detail    = $Detail
+            Percent   = (Get-PlanningTourneeStep5Percent -SubRatio $SubRatio)
+        }
+    }
+    catch {
+        Write-Warning ("[TOURNEE-UI] ProgressCallback echoue : {0}" -f $_.Exception.Message)
+    }
+}
+
+function Update-PlanningTourneeStep5OdmSearchProgress {
+    param(
+        [int]$WoIndex,
+        [int]$TotalWos
+    )
+    if ($TotalWos -lt 1) { $TotalWos = 1 }
+    $safeIndex = [Math]::Max(0, [Math]::Min($WoIndex, $TotalWos))
+    $percent = if ($safeIndex -lt 1) { 0 } else { [math]::Floor(($safeIndex / $TotalWos) * 100) }
+    $detail = "🔍 Recherche des ODM sans correspondance... ($safeIndex/$TotalWos - $percent%)"
+    $subRatio = 0.10 + (($safeIndex / $TotalWos) * 0.05)
+    Update-PlanningTourneeStep5Progress -SubRatio $subRatio -Detail $detail
+}
+
 function Write-TourneeCompositionTourStart {
     param(
         [AllowNull()][scriptblock]$ProgressCallback,
         [Parameter(Mandatory = $true)][string]$Detail,
         [int]$StepIndex = 5,
-        [int]$StepCount = 5
+        [int]$StepCount = 5,
+        [double]$SubRatio = -1
     )
     if ($null -eq $ProgressCallback) { return }
-    try {
-        & $ProgressCallback @{
-            StepIndex  = $StepIndex
-            StepCount  = $StepCount
-            Label      = 'Composition pages de garde'
-            Status     = 'TourneeStart'
-            Detail     = $Detail
-        }
+    $evt = @{
+        StepIndex = $StepIndex
+        StepCount = $StepCount
+        Label     = 'Composition pages de garde'
+        Status    = 'TourneeStart'
+        Detail    = $Detail
     }
+    if ($SubRatio -ge 0) { $evt['Percent'] = (Get-PlanningTourneeStep5Percent -SubRatio $SubRatio) }
+    try { & $ProgressCallback $evt }
     catch {
         Write-Warning ("[TOURNEE-UI] ProgressCallback echoue (Status=TourneeStart) : {0}" -f $_.Exception.Message)
     }
@@ -1527,18 +1586,19 @@ function Write-TourneeCompositionTourProgress {
         [AllowNull()][scriptblock]$ProgressCallback,
         [Parameter(Mandatory = $true)][string]$Detail,
         [int]$StepIndex = 5,
-        [int]$StepCount = 5
+        [int]$StepCount = 5,
+        [double]$SubRatio = -1
     )
     if ($null -eq $ProgressCallback -or [string]::IsNullOrWhiteSpace($Detail)) { return }
-    try {
-        & $ProgressCallback @{
-            StepIndex  = $StepIndex
-            StepCount  = $StepCount
-            Label      = 'Composition pages de garde'
-            Status     = 'TourneeProgress'
-            Detail     = $Detail
-        }
+    $evt = @{
+        StepIndex = $StepIndex
+        StepCount = $StepCount
+        Label     = 'Composition pages de garde'
+        Status    = 'TourneeProgress'
+        Detail    = $Detail
     }
+    if ($SubRatio -ge 0) { $evt['Percent'] = (Get-PlanningTourneeStep5Percent -SubRatio $SubRatio) }
+    try { & $ProgressCallback $evt }
     catch {
         Write-Warning ("[TOURNEE-UI] ProgressCallback echoue (Status=TourneeProgress) : {0}" -f $_.Exception.Message)
     }
@@ -1989,6 +2049,8 @@ function Invoke-PlanningTourneePdfCoverComposition {
             $segments = @()
         }
     }
+    Write-PlanningTourneeStep5UiLog '📊 Analyse du planning Excel...'
+    Write-PlanningTourneeStep5UiLog ("📄 Organisation des tournées... ({0} tournée(s) détectée(s))" -f @($segments).Count)
 
     $foToLine = @{}
     foreach ($ln in @($Reordered)) {
@@ -2001,6 +2063,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
 
     $orderToSeg = Build-CnsTourneeOrderToSegmentMap -Segments @($segments) -ExcelOrder @($ExcelOrder) -ReorderedByFinalOrder $foToLine
     script:Write-CnsTourneeLog -Message ("[TOURNEE] Segments Excel={0}, OrderToSeg={1}, pages PDF={2}." -f @($segments).Count, $orderToSeg.Count, $mainPageCount) -Level 'INFO'
+    Write-PlanningTourneeStep5UiLog '🔄 Indexation des ODM...'
 
     $blocks = @(Build-PlanningTourneeCoverBlocks -SortedGsPairs $SortedGsPairs -FinalOrderToLine $foToLine -ExcelOrderIndexToSegmentIndex $orderToSeg)
     $blockTotal = @($blocks).Count
@@ -2020,6 +2083,10 @@ function Invoke-PlanningTourneePdfCoverComposition {
     script:Write-CnsTourneeLog -Message ("[TOURNEE] Blocs composition : {0} ({1})." -f $blockTotal, (($blocks | ForEach-Object { '{0}:{1}-{2}' -f $_.GroupKey, $_.MainFrom1, $_.MainTo1 }) -join ', ')) -Level 'INFO'
     $script:PlanningTourneeBlockTotal = $blockTotal
     $script:PlanningTourneeGeneratedDocCount = 0
+    $totalTournees = [Math]::Max(1, $blockTotal)
+    $tourneeIndex = 0
+    Update-PlanningTourneeStep5Progress -SubRatio 0 -Detail 'Analyse des segments...'
+    Update-PlanningTourneeStep5Progress -SubRatio 0.05 -Detail ("Segments detectes : {0} tournee(s)" -f $totalTournees)
 
     $frag = [System.Collections.Generic.List[string]]::new()
     $runId = [Guid]::NewGuid().ToString('N')
@@ -2031,6 +2098,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
 
         Write-CnsStep5ConsoleProgress -Message "`n[PROGRESS] STEP 5 : Composition des pages de garde..." -ForegroundColor Cyan
         Write-CnsStep5ConsoleProgress -Message '[PROGRESS]   - Creation des pages de garde globales...' -ForegroundColor Gray
+        Update-PlanningTourneeStep5Progress -SubRatio 0.10 -Detail 'Page de garde globale...'
 
         $globalCov = Join-Path $tmpDir 'cover_global.pdf'
 
@@ -2040,6 +2108,9 @@ function Invoke-PlanningTourneePdfCoverComposition {
         $coverS1 = -1
         $coverS2 = -1
         $coverS3 = -1
+        $odmSearchTotalWos = @($WorkOrders).Count
+        if ($odmSearchTotalWos -lt 1) { $odmSearchTotalWos = 1 }
+        Update-PlanningTourneeStep5OdmSearchProgress -WoIndex 0 -TotalWos $odmSearchTotalWos
         if (Get-Command Build-PlanningOdmMismatchThreeSectionCoverLines -ErrorAction SilentlyContinue) {
             try {
                 $missingList = @()
@@ -2060,12 +2131,19 @@ function Invoke-PlanningTourneePdfCoverComposition {
                 if (-not $coverAllMatched -and $null -ne $coverReport.Elements) {
                     $coverElements = @($coverReport.Elements)
                 }
+                if ($coverAllMatched) {
+                    Update-PlanningTourneeStep5Progress -SubRatio 0.15 -Detail '🔍 Recherche des ODM sans correspondance... — ✅ Tous les ODM ont été matchés'
+                }
+                else {
+                    Update-PlanningTourneeStep5Progress -SubRatio 0.15 -Detail ("🔍 Recherche des ODM sans correspondance... — ✅ Analyse terminée - Section1:$coverS1 Section2:$coverS2 Section3:$coverS3")
+                }
             }
             catch {
                 Write-Warning ("[TOURNEE] Diagnostic ODM non matches indisponible : {0}" -f $_.Exception.Message)
             }
         }
         Write-CnsStep5ConsoleProgress -Message '[PROGRESS]   - Page de garde globale...' -ForegroundColor Gray
+        Write-PlanningTourneeStep5UiLog '🎨 Création de la page de synthèse (Ghostscript)...'
         $gcOk = (New-CnsGlobalMismatchCoverPdf -OutPdfPath $globalCov `
                 -TotalOdmCount $totalODM `
                 -UnmatchedOdmCount $unmatchedCount `
@@ -2079,6 +2157,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
         }
         [void]$frag.Add($globalCov)
         script:Write-CnsTourneeLog -Message '[TOURNEE] Page de garde globale OK.' -Level 'INFO'
+        Write-PlanningTourneeStep5UiLog '💾 Sauvegarde de la page de garde...'
 
         $seenSegments = @{}
         $prefaceAlreadyAdded = $false
@@ -2113,8 +2192,14 @@ function Invoke-PlanningTourneePdfCoverComposition {
                 }
             }
             if ([string]::IsNullOrWhiteSpace($tourHeaderDetail)) { $tourHeaderDetail = 'Operation en cours' }
+            $tourneeIndex = $fi
+            Write-PlanningTourneeStep5UiLog ("🚩 Tournée {0}/{1} - Préparation..." -f $tourneeIndex, $totalTournees)
             Write-CnsStep5ConsoleProgress -Message ("`n[PROGRESS]   - Tournee {0}/{1} : {2}" -f $fi, $blockTotal, $tourHeaderDetail) -ForegroundColor Yellow
-            Write-TourneeCompositionTourStart -ProgressCallback $ProgressCallback -Detail ("{0}/{1}" -f $fi, $blockTotal)
+            $tourRatioStart = 0.15 + (($tourneeIndex - 1) * (0.80 / $totalTournees))
+            $tourRatioEnd = 0.15 + ($tourneeIndex * (0.80 / $totalTournees))
+            Update-PlanningTourneeStep5Progress -SubRatio $tourRatioStart `
+                -Detail ("Tournée {0}/{1} - Debut" -f $tourneeIndex, $totalTournees)
+            Write-TourneeCompositionTourStart -ProgressCallback $ProgressCallback -Detail ("{0}/{1}" -f $fi, $blockTotal) -SubRatio $tourRatioStart
             Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
                 -Detail ("{0}Tournee {1}/{2} : {3}" -f $tBranchCore, $fi, $blockTotal, $tourHeaderDetail)
 
@@ -2160,10 +2245,12 @@ function Invoke-PlanningTourneePdfCoverComposition {
                             $inc = $true
                             try { $inc = -not [bool]$seg.TourneeComplete } catch { $inc = $true }
                             Write-Host ("[TOURNEE-COVER] Segment={0} Incomplete={1} Date={2} Collecteur={3} Vehicule={4} PagesBloc={5}" -f $n, $inc, $jj, ([string]$seg.Collecteur), ([string]$seg.Vehicule), (1 + $blk.MainTo1 - $blk.MainFrom1)) -ForegroundColor Cyan
+                            Write-PlanningTourneeStep5UiLog ("🔎 Tournée {0}/{1} - Analyse des prestations..." -f $tourneeIndex, $totalTournees)
                             $metierMemos = @(Get-CnsTourneeMetierMemoLinesForBlock -MainFrom1 ([int]$blk.MainFrom1) -MainTo1 ([int]$blk.MainTo1) `
                                 -SortedGsPairs $sortedPairsArr -FinalOrderToLine $foToLine -WorkOrders $WorkOrders -PdfEntities @($PdfEntities) `
                                 -ExcelOrder @($ExcelOrder) -Segments @($segments) -ExcelOrderIndexToSegmentIndex $orderToSeg)
                             Write-Host ("[STEP5-METIER] Segment {0} : {1} memo(s) garde tournée (source PDF ODM)." -f $n, $metierMemos.Count) -ForegroundColor DarkCyan
+                            Write-PlanningTourneeStep5UiLog ("🎨 Tournée {0}/{1} - Création page de garde..." -f $tourneeIndex, $totalTournees)
                             if (New-CnsTourneeHeaderCoverPdf -OutPdfPath $coverPath -DateJJMMAAAA $jj -Collecteur ([string]$seg.Collecteur) -Vehicule ([string]$seg.Vehicule) -TourneeIncomplete:$inc -MetierMemoLines $metierMemos) {
                                 [void]$frag.Add($coverPath)
                                 $coverCreated = $true
@@ -2206,6 +2293,9 @@ function Invoke-PlanningTourneePdfCoverComposition {
             for ($pn = [int]$blk.MainFrom1; $pn -le [int]$blk.MainTo1; $pn++) {
                 $sliceIx++
                 $odmIdx++
+                if ($odmTotal -gt 0 -and ($odmIdx % 5 -eq 0 -or $odmIdx -eq $odmTotal)) {
+                    Write-PlanningTourneeStep5UiLog ("📄 Tournée {0}/{1} - Extraction des pages ({2}/{3})..." -f $tourneeIndex, $totalTournees, $odmIdx, $odmTotal)
+                }
                 if ($odmTotal -gt 0 -and $odmIdx % 10 -eq 0) {
                     Write-CnsStep5ConsoleProgress -Message ("[PROGRESS]       -> Traitement ODM {0}/{1}..." -f $odmIdx, $odmTotal) -ForegroundColor Gray
                 }
@@ -2262,10 +2352,12 @@ function Invoke-PlanningTourneePdfCoverComposition {
                         $woKeyProbe = Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage
                         if (-not [string]::IsNullOrWhiteSpace($woKeyProbe) -and -not $certInjectedForWo.Contains($woKeyProbe)) {
                             $willCert = $true
+                            Write-PlanningTourneeStep5UiLog ("📜 Tournée {0}/{1} - Génération certificat..." -f $tourneeIndex, $totalTournees)
                         }
                     }
                     if ($requiresCeaPage -and $rawPnPage -gt 0 -and -not $ceaInjectedForPage.Contains($rawPnPage)) {
                         $willCea = $true
+                        Write-PlanningTourneeStep5UiLog ("🔬 Tournée {0}/{1} - Génération document CEA..." -f $tourneeIndex, $totalTournees)
                     }
 
                     if ($isDupTarget) {
@@ -2382,6 +2474,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                 if (-not $bilanInjectedForSeg.ContainsKey($segNumBilan)) {
                     $bilanInjectedForSeg[$segNumBilan] = $true
                     if (Get-Command New-CnsBilanCollectePdfFromOdsTemplate -ErrorAction SilentlyContinue) {
+                        Write-PlanningTourneeStep5UiLog ("📊 Tournée {0}/{1} - Génération bilan collecte..." -f $tourneeIndex, $totalTournees)
                         $segBilan = ($segments | Where-Object { [int]$_.SegmentIndex -eq $segNumBilan } | Select-Object -First 1)
                         $phBilan = @{}
                         foreach ($entry in (Get-CnsBilanCollectePlaceholders -SegmentMeta $segBilan -VisitDate $VisitDate).GetEnumerator()) {
@@ -2409,10 +2502,16 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     }
                 }
             }
+            Update-PlanningTourneeStep5Progress -SubRatio $tourRatioEnd `
+                -Detail ("Tournée {0}/{1} - Terminee" -f $tourneeIndex, $totalTournees)
+            Write-PlanningTourneeStep5UiLog ("✅ Tournée {0}/{1} - Terminée" -f $tourneeIndex, $totalTournees)
             Write-TourneeCompositionTourEnd -ProgressCallback $ProgressCallback
         }
 
-        Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback -Detail 'Phase 3 : Assemblage final'
+        $totalFragments = @($frag).Count
+        Write-PlanningTourneeStep5UiLog ("🔗 Fusion des {0} documents..." -f $totalFragments)
+        Update-PlanningTourneeStep5Progress -SubRatio 0.95 -Detail 'Fusion finale des documents...'
+        Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback -SubRatio 0.95 -Detail 'Phase 3 : Assemblage final'
         Write-CnsStep5ConsoleProgress -Message '[PROGRESS]   - Fusion des documents...' -ForegroundColor Gray
         $fragCount = @($frag).Count
         $mergeMsg = "Fusion des {0} elements PDF... [OK]" -f $fragCount
@@ -2423,8 +2522,10 @@ function Invoke-PlanningTourneePdfCoverComposition {
             throw '[TOURNEE] Fusion Ghostscript (couvertures + corps) echouee.'
         }
         Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback -Detail ("├── {0}" -f $mergeMsg)
+        Update-PlanningTourneeStep5Progress -SubRatio 1.0 -Status 'OK' -Detail 'Traitement termine'
 
         Copy-Item -LiteralPath $outFinal -Destination $mainAbs -Force
+        Write-PlanningTourneeStep5UiLog '💾 Sauvegarde du PDF final...'
         $nCoverSheets = 1 + @($blocks).Count
         $tourneeMsg = "[TOURNEE] PDF final compose : {0} garde(s) + {1} page(s) corps reorder (Ghostscript reorder inchange)." -f $nCoverSheets, $mainPageCount
         script:Write-CnsTourneeLog -Message $tourneeMsg -Level 'INFO'
@@ -2449,6 +2550,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
     }
     finally {
         if ([string]::IsNullOrWhiteSpace($tmpDir) -eq $false -and (Test-Path -LiteralPath $tmpDir)) {
+            Write-PlanningTourneeStep5UiLog '🧹 Nettoyage des fichiers temporaires...'
             Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
                 -Detail '└── Nettoyage des fichiers temporaires... [OK]'
             Remove-Item -LiteralPath $tmpDir -Recurse -Force -ErrorAction SilentlyContinue

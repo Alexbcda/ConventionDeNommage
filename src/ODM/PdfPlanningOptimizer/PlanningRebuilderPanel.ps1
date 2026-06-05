@@ -387,12 +387,14 @@ function Start-PlanningRebuildJob {
         if ($ui.TxtDebug) { $ui.TxtDebug.Clear() }
         if ($ui.ProgressBar) { $ui.ProgressBar.Value = 0 }
         $ui.LblStepProgress.Text = 'Traitement en cours...'
+        $script:PlanningRebuildStepUiStartTime = $null
+        $script:PlanningRebuildStepUiLastIndex = 0
     }
 
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
     try {
-        $result = Start-PlanningRebuild -PdfPath $PdfPath -ExcelPath $ExcelPath -ProgressCallback $null
+        $result = Start-PlanningRebuild -PdfPath $PdfPath -ExcelPath $ExcelPath -ProgressCallback $script:InvokePlanningRebuildProgressUi
 
         $sw.Stop()
         $elapsed = [math]::Round($sw.Elapsed.TotalSeconds, 1)
@@ -491,7 +493,8 @@ function Set-PlanningControlText {
 
 $script:InvokePlanningRebuildProgressUi = {
     param(
-        [hashtable]$Event = $null,
+        [Parameter(Position = 0)]
+        $Event = $null,
         [int]$StepIndex = 0,
         [int]$StepCount = 0,
         [string]$Label = '',
@@ -504,22 +507,35 @@ $script:InvokePlanningRebuildProgressUi = {
         [string]$TreePrefix = $null,
         [string]$OutputPath = $null
     )
-    if (-not [string]::IsNullOrWhiteSpace($Status) -and $Status -eq 'Log') { return }
+    if ($Event -is [hashtable]) {
+        $h = $Event
+        if ($h.ContainsKey('StepIndex')) { $StepIndex = [int]$h.StepIndex }
+        if ($h.ContainsKey('StepCount')) { $StepCount = [int]$h.StepCount }
+        if ($h.ContainsKey('Label')) { $Label = [string]$h.Label }
+        if ($h.ContainsKey('Status')) { $Status = [string]$h.Status }
+        if ($h.ContainsKey('Detail')) { $Detail = [string]$h.Detail }
+        if ($h.ContainsKey('Percent')) { $Percent = [int]$h.Percent }
+        if ($h.ContainsKey('SubStep')) { $SubStep = [string]$h.SubStep }
+        if ($h.ContainsKey('SubStepIndex')) { $SubStepIndex = [int]$h.SubStepIndex }
+        if ($h.ContainsKey('SubStepCount')) { $SubStepCount = [int]$h.SubStepCount }
+        if ($h.ContainsKey('TreePrefix')) { $TreePrefix = [string]$h.TreePrefix }
+        if ($h.ContainsKey('OutputPath')) { $OutputPath = [string]$h.OutputPath }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Status) -and $Status -eq 'Log') {
+        $ctxLog = $script:PlanningRebuilderPanelContext
+        if ($null -eq $ctxLog -or $null -eq $ctxLog.Panel -or $null -eq $ctxLog.Ui) { return }
+        if ([string]::IsNullOrWhiteSpace($Detail)) { return }
+        Safe-UpdateUIControl -Control $ctxLog.Panel -UpdateAction {
+            $uiLog = $script:PlanningRebuilderPanelContext.Ui
+            $script:PlanningStepHadSubLines = $true
+            Add-PlanningRebuildDebugLogLine -DebugBox $uiLog.TxtDebug -Line ('  {0}' -f $Detail)
+        }
+        return
+    }
     $ctx = $script:PlanningRebuilderPanelContext
     if ($null -eq $ctx -or $null -eq $ctx.Panel -or $null -eq $ctx.Ui) { return }
     Safe-UpdateUIControl -Control $ctx.Panel -UpdateAction {
         $ui = $script:PlanningRebuilderPanelContext.Ui
-        if ($null -ne $Event) {
-            $h = $Event
-            $st = [string]$h.Status
-            if ($st -eq 'Log') { return }
-            Update-PlanningRebuildDebugProgress -DebugBox $ui.TxtDebug -ProgressBar $ui.ProgressBar `
-                -StepIndex ([int]$h.StepIndex) -StepCount ([int]$h.StepCount) -Label ([string]$h.Label) `
-                -Status $st -Detail ([string]$h.Detail) -Percent $(if ($h.ContainsKey('Percent')) { [int]$h.Percent } else { -1 }) `
-                -TreePrefix ([string]$h.TreePrefix) -OutputPath $(if ($h.ContainsKey('OutputPath')) { [string]$h.OutputPath } else { $null }) `
-                -StepLabel $ui.LblStepProgress -OutputLabel $ui.LblOutputPdf -PercentLabel $ui.LblPercent
-            return
-        }
         Update-PlanningRebuildDebugProgress -DebugBox $ui.TxtDebug -ProgressBar $ui.ProgressBar `
             -StepIndex $StepIndex -StepCount $StepCount -Label $Label -Status $Status -Detail $Detail `
             -Percent $Percent -SubStep $SubStep -SubStepIndex $SubStepIndex -SubStepCount $SubStepCount `
@@ -613,6 +629,8 @@ $script:PlanningStepHadSubLines = $false
 $script:PlanningCurrentStepIndex = 0
 $script:PlanningProgressHadError = $false
 $script:PlanningExcelSubStepProgressStart = 0
+$script:PlanningRebuildStepUiStartTime = $null
+$script:PlanningRebuildStepUiLastIndex = 0
 $script:PlanningStep2ActivityTimer = $null
 $script:PlanningStep2ActivityLabel = $null
 $script:PlanningStep2EllipsisPhase = 0
@@ -1008,6 +1026,19 @@ function Reset-PlanningRebuildProgressUiState {
     $script:PlanningLastTourHeaderIndex = 0
     $script:PlanningStepHadSubLines = $false
     $script:PlanningExcelSubStepProgressStart = 0
+    $script:PlanningRebuildStepUiStartTime = $null
+    $script:PlanningRebuildStepUiLastIndex = 0
+}
+
+function Get-PlanningRebuildStepElapsedLabelSuffix {
+    param([int]$StepIndex)
+    if ($StepIndex -lt 1) { return '' }
+    if ($StepIndex -ne $script:PlanningRebuildStepUiLastIndex -or $null -eq $script:PlanningRebuildStepUiStartTime) {
+        $script:PlanningRebuildStepUiStartTime = Get-Date
+        $script:PlanningRebuildStepUiLastIndex = $StepIndex
+    }
+    $elapsedSeconds = [math]::Round(((Get-Date) - $script:PlanningRebuildStepUiStartTime).TotalSeconds, 1)
+    return (' ({0} s)' -f $elapsedSeconds)
 }
 
 function Get-PlanningRebuildOutputFileSizeLabel {
@@ -1151,6 +1182,31 @@ function Update-PlanningRebuildDebugProgress {
         return
     }
 
+    if ($StepIndex -eq 5 -and $Status -eq 'Running' -and -not [string]::IsNullOrWhiteSpace($Detail)) {
+        $script:PlanningCurrentStepIndex = 5
+        $script:PlanningActiveStepIndex = 5
+        $newLine = ('[{0}/{1}] {2}... {3}' -f $StepIndex, $StepCount, $Label, $Detail)
+        if ($null -ne $script:PlanningCurrentProgressLine -and $script:PlanningActiveStepIndex -eq $StepIndex -and $DebugBox.Text.Length -ge $script:PlanningProgressTextStart) {
+            $DebugBox.Text = $DebugBox.Text.Substring(0, $script:PlanningProgressTextStart)
+        }
+        elseif ($DebugBox.Text.Length -gt 0 -and -not $DebugBox.Text.EndsWith([Environment]::NewLine)) {
+            [void]$DebugBox.AppendText([Environment]::NewLine)
+            $script:PlanningProgressTextStart = $DebugBox.Text.Length
+        }
+        else {
+            $script:PlanningProgressTextStart = $DebugBox.Text.Length
+        }
+        [void]$DebugBox.AppendText($newLine)
+        $script:PlanningCurrentProgressLine = $newLine
+        if ($null -ne $ProgressBar -and $Percent -ge 0) {
+            $clamped = [Math]::Min(100, [Math]::Max($ProgressBar.Minimum, $Percent))
+            if ($ProgressBar.Value -ne $clamped) { $ProgressBar.Value = $clamped }
+        }
+        if ($null -ne $PercentLabel -and $Percent -ge 0) { $PercentLabel.Text = ('{0}%' -f [Math]::Min(100, $Percent)) }
+        Scroll-PlanningRebuildDebugToEnd -DebugBox $DebugBox
+        return
+    }
+
     if ($StepIndex -eq 5 -and $Status -eq 'TourneeProgress' -and -not [string]::IsNullOrWhiteSpace($Detail)) {
         $script:PlanningStepHadSubLines = $true
         [void]$DebugBox.AppendText(('  {0}{1}' -f $Detail, [Environment]::NewLine))
@@ -1158,6 +1214,7 @@ function Update-PlanningRebuildDebugProgress {
             $clamped = [Math]::Min(100, [Math]::Max($ProgressBar.Minimum, $Percent))
             if ($ProgressBar.Value -ne $clamped) { $ProgressBar.Value = $clamped }
         }
+        if ($null -ne $PercentLabel -and $Percent -ge 0) { $PercentLabel.Text = ('{0}%' -f [Math]::Min(100, $Percent)) }
         Scroll-PlanningRebuildDebugToEnd -DebugBox $DebugBox
         return
     }
@@ -1406,9 +1463,13 @@ function Update-PlanningRebuildDebugProgress {
     }
 
     if ($null -ne $StepLabel -and $StepIndex -gt 0 -and $StepCount -gt 0 -and $Status -notin @('Complete', 'Log')) {
-        $stepText = ('Etape {0}/{1} : {2}' -f $StepIndex, $StepCount, $Label)
+        $elapsedSuffix = Get-PlanningRebuildStepElapsedLabelSuffix -StepIndex $StepIndex
+        $stepText = ('Etape {0}/{1} : {2}{3}' -f $StepIndex, $StepCount, $Label, $elapsedSuffix)
         if (-not [string]::IsNullOrWhiteSpace($SubStep)) {
             $stepText = ('{0} - {1}' -f $stepText, $SubStep)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($Detail) -and $Status -in @('Running', 'SubStepProgress', 'TourneeProgress')) {
+            $stepText = ('{0} — {1}' -f $stepText, $Detail)
         }
         $StepLabel.Text = $stepText
     }
