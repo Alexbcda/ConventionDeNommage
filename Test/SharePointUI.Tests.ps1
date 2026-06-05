@@ -99,8 +99,9 @@ Describe 'Planning rebuild stop' {
 Describe 'Planning progress percent' {
 
     It 'T7 - Get-PlanningRebuildStepPercent calcule le pourcentage global' {
-        Get-PlanningRebuildStepPercent -StepIndex 1 -StepCount 5 -SubRatio 0.5 | Should Be 10
-        Get-PlanningRebuildStepPercent -StepIndex 2 -StepCount 5 -SubRatio 0 | Should Be 20
+        Get-PlanningRebuildStepPercent -StepIndex 1 -StepCount 5 -SubRatio 0.5 | Should Be 8
+        Get-PlanningRebuildStepPercent -StepIndex 2 -StepCount 5 -SubRatio 0 | Should Be 15
+        Get-PlanningRebuildStepPercent -StepIndex 4 -StepCount 5 -SubRatio 1 | Should Be 65
         Get-PlanningRebuildStepPercent -StepIndex 5 -StepCount 5 -SubRatio 1 | Should Be 100
     }
 }

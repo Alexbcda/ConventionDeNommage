@@ -1602,6 +1602,15 @@ function script:Get-SimilarityPercent {
     return [int][Math]::Round($pct)
 }
 
+function script:Test-PlanningExcelSlotHasValidOrderIndex {
+    param([AllowNull()] $Slot)
+    if ($null -eq $Slot) { return $false }
+    if (script:Is-ExcelLabelKeyless -Label ([string]$Slot.Label)) { return $false }
+    if (-not $Slot.PSObject.Properties['OrderIndex']) { return $false }
+    if ($null -eq $Slot.OrderIndex) { return $false }
+    try { return ([int]$Slot.OrderIndex -ge 1) } catch { return $false }
+}
+
 function script:Is-ExcelLabelKeyless {
     param([string]$Label)
     if ([string]::IsNullOrWhiteSpace($Label)) { return $true }
@@ -2296,9 +2305,17 @@ function Build-PlanningOdmMismatchThreeSectionCoverLines {
 
     $section2Entries = [System.Collections.Generic.List[object]]::new()
     $section3Entries = [System.Collections.Generic.List[object]]::new()
-    $orphanWos = @(Get-PlanningUnmatchedPdfWorkOrders -WorkOrders $WorkOrders -MatchResult $MatchResult)
-    foreach ($wo in @($orphanWos)) {
+    $matchedKeys = Get-PlanningMatchedWorkOrderKeys -MatchResult $MatchResult
+    $totalWos = @($WorkOrders).Count
+    $woIndex = 0
+    foreach ($wo in @($WorkOrders)) {
+        $woIndex++
+        if (Get-Command Update-PlanningTourneeStep5OdmSearchProgress -ErrorAction SilentlyContinue) {
+            Update-PlanningTourneeStep5OdmSearchProgress -WoIndex $woIndex -TotalWos $totalWos
+        }
         if ($null -eq $wo) { continue }
+        $k = Get-PlanningWorkOrderMatchKey -WorkOrder $wo
+        if (-not [string]::IsNullOrWhiteSpace($k) -and $matchedKeys.Contains($k)) { continue }
         $pdfName = ([string]$wo.ClientName).Trim()
         if ([string]::IsNullOrWhiteSpace($pdfName)) { $pdfName = ([string]$wo.WorkOrder).Trim() }
         if ([string]::IsNullOrWhiteSpace($pdfName)) { $pdfName = 'ODM PDF' }
@@ -2717,12 +2734,8 @@ function Match-WorkOrderToExcelOrderSmart {
                 Write-Warning '[MATCH-MISSING] slot null (aucun WorkOrder PDF), ignore'
                 continue
             }
-            $orderIdxNone = 0
-            try { $orderIdxNone = [int]$s.OrderIndex } catch { $orderIdxNone = 0 }
-            if ($orderIdxNone -lt 1) {
-                Write-Warning '[MATCH-MISSING] OrderIndex invalide (aucun WorkOrder PDF), slot ignore'
-                continue
-            }
+            if (-not (script:Test-PlanningExcelSlotHasValidOrderIndex -Slot $s)) { continue }
+            $orderIdxNone = [int]$s.OrderIndex
             [void]$missingAll.Add([pscustomobject]@{
                 ExcelOrder = $orderIdxNone
                 Label      = $s.Label
@@ -2829,15 +2842,8 @@ function Match-WorkOrderToExcelOrderSmart {
         if ($exactMatchedAny) {
             $script:ClientIdMatcherStatus = 'PASS'
         }
-        else {
-            $orderIdxPending = 0
-            try { $orderIdxPending = [int]$slot.OrderIndex } catch { $orderIdxPending = 0 }
-            if ($orderIdxPending -lt 1) {
-                Write-Warning '[MATCH-MISSING] OrderIndex invalide, non ajoute a pendingFuzzy'
-            }
-            else {
-                [void]$pendingFuzzy.Add($slot)
-            }
+        elseif (script:Test-PlanningExcelSlotHasValidOrderIndex -Slot $slot) {
+            [void]$pendingFuzzy.Add($slot)
         }
     }
 
@@ -3052,12 +3058,8 @@ function Match-WorkOrderToExcelOrderSmart {
                 Write-Warning '[MATCH-MISSING] slot null, non ajoute a Missing'
                 continue
             }
-            $orderIdxMiss = 0
-            try { $orderIdxMiss = [int]$slot.OrderIndex } catch { $orderIdxMiss = 0 }
-            if ($orderIdxMiss -lt 1) {
-                Write-Warning '[MATCH-MISSING] OrderIndex invalide, non ajoute a Missing'
-                continue
-            }
+            if (-not (script:Test-PlanningExcelSlotHasValidOrderIndex -Slot $slot)) { continue }
+            $orderIdxMiss = [int]$slot.OrderIndex
             Write-Host ("[MATCH-RESULT] Type=NONE ExcelClientID={0} PDFClientID=" -f $excelIdNorm)
             [void]$missing.Add([pscustomobject]@{
                 ExcelOrder = $orderIdxMiss
@@ -3270,7 +3272,17 @@ function Extract-ExcelOrder {
     Write-Host "[EXCEL-REBUILD] Clients reconstruits: $($clients.Count)"
     Write-PlanningRebuildUiLog ("[EXCEL-REBUILD] Clients reconstruits: {0}" -f $clients.Count)
 
-    foreach ($client in @($clients.ToArray())) {
+    $clientArr = @($clients.ToArray())
+    $clientTotal = [Math]::Max(1, $clientArr.Count)
+    $clientNum = 0
+    foreach ($client in $clientArr) {
+        $clientNum++
+        $reportEvery = if ($clientTotal -le 40) { 1 } elseif ($clientTotal -le 200) { 5 } else { 10 }
+        if ($clientNum -eq 1 -or $clientNum -eq $clientTotal -or ($clientNum % $reportEvery) -eq 0) {
+            Write-PlanningExcelSubStep -SubStepIndex 4 -Status 'SubStepProgress' `
+                -Detail ("Clients extraits : {0}/{1}" -f $clientNum, $clientTotal) `
+                -SubRatio (0.35 + (0.10 * ($clientNum / $clientTotal)))
+        }
         if ($rank -eq 1) { script:Write-PlanningArithOpProbe -Location 'Extract-ExcelOrder:excelRow' -Op 'add' -Left $client.ExcelRow -Right 0 }
         [void](Trace-ObjectArrayLeak -Value $rank -Name "OrderIndex" -Location "Extract-ExcelOrder.loop")
         [void]$items.Add([pscustomobject]@{
@@ -3513,8 +3525,16 @@ function Get-PlanningRebuildStepPercent {
     )
     if ($StepCount -lt 1) { $StepCount = 5 }
     if ($StepIndex -lt 1) { return 0 }
-    $base = (($StepIndex - 1) * 100.0) / $StepCount
-    $span = 100.0 / $StepCount
+    # Poids globaux (total 100) : STEP 1=15, 2=20, 3=5, 4=25, 5=35
+    $stepWeights = @(15, 20, 5, 25, 35)
+    if ($StepIndex -gt $stepWeights.Count) {
+        $StepIndex = $stepWeights.Count
+    }
+    $base = 0.0
+    for ($wi = 0; $wi -lt ($StepIndex - 1); $wi++) {
+        $base += [double]$stepWeights[$wi]
+    }
+    $span = [double]$stepWeights[$StepIndex - 1]
     $ratio = [Math]::Max(0.0, [Math]::Min(1.0, $SubRatio))
     return [int][Math]::Min(100, [Math]::Max(0, [Math]::Round($base + ($ratio * $span))))
 }
@@ -3543,6 +3563,11 @@ function Write-PlanningExcelSubStep {
     )
     if ($null -eq $script:PlanningRebuildProgressCallback) { return }
     $subStepTitle = if (-not [string]::IsNullOrWhiteSpace($Title)) { $Title.TrimEnd('.') } else { $null }
+    if ($Status -in @('SubStepProgress', 'SubStepEnd') -and (Get-Command Update-PlanningRebuildStepProgress -ErrorAction SilentlyContinue)) {
+        $runDetail = if (-not [string]::IsNullOrWhiteSpace($Detail)) { [string]$Detail } else { $subStepTitle }
+        Update-PlanningRebuildStepProgress -StepIndex 2 -StepCount 5 -Label 'Lecture Excel + matching' `
+            -Status 'Running' -Detail $runDetail -SubRatio $SubRatio
+    }
     Write-PlanningRebuildProgress -ProgressCallback $script:PlanningRebuildProgressCallback `
         -StepIndex 2 -StepCount 5 -Label 'Lecture Excel + matching' -Status $Status `
         -SubStep $subStepTitle -Detail $Detail -SubStepIndex $SubStepIndex -SubStepCount 8 `
@@ -3588,7 +3613,19 @@ function Write-PlanningRebuildProgress {
     )
     if ($null -eq $ProgressCallback) { return }
     try {
-        & $ProgressCallback $StepIndex $StepCount $Label $Status $Detail $Percent $SubStep $SubStepIndex $SubStepCount $TreePrefix $OutputPath
+        & $ProgressCallback @{
+            StepIndex     = $StepIndex
+            StepCount     = $StepCount
+            Label         = $Label
+            Status        = $Status
+            Detail        = $Detail
+            Percent       = $Percent
+            SubStep       = $SubStep
+            SubStepIndex  = $SubStepIndex
+            SubStepCount  = $SubStepCount
+            TreePrefix    = $TreePrefix
+            OutputPath    = $OutputPath
+        }
     }
     catch {
         Write-Warning ("[PLANNING-UI] ProgressCallback echoue : {0}" -f $_.Exception.Message)
@@ -3766,17 +3803,17 @@ function Start-PlanningRebuild {
         }
         Write-PlanningExcelSubStep -SubStepIndex 1 -Title 'Verification du fichier Excel' -Status 'SubStepEnd' -SubRatio 0.1
 
-        Write-PlanningExcelSubStep -SubStepIndex 2 -Title 'Ouverture du classeur' -Status 'SubStepStart' -SubRatio 0.12
+        Write-PlanningExcelSubStep -SubStepIndex 2 -Title 'Ouverture du classeur' -Status 'SubStepStart' -SubRatio 0.08
         $excelData = Import-PlanningExcel -ExcelPath $ExcelPath
-        Write-PlanningExcelSubStep -SubStepIndex 2 -Title 'Ouverture du classeur' -Status 'SubStepEnd' -SubRatio 0.2
+        Write-PlanningExcelSubStep -SubStepIndex 2 -Title 'Ouverture du classeur' -Status 'SubStepEnd' -SubRatio 0.10
 
-        Write-PlanningExcelSubStep -SubStepIndex 3 -Title 'Recherche de la colonne date' -Status 'SubStepStart' -SubRatio 0.22
+        Write-PlanningExcelSubStep -SubStepIndex 3 -Title 'Recherche de la colonne date' -Status 'SubStepStart' -SubRatio 0.15
         $column = Find-ExcelColumnFromDate -ExcelData $excelData -VisitDate $visitDate -ExcelPath $ExcelPath
         $colLetter = ConvertTo-PlanningExcelColumnLetter -ColumnIndexOneBased ([int]$column.ColumnIndex)
         $colHeader = [string]$column.HeaderText
         if ([string]::IsNullOrWhiteSpace($colHeader)) { $colHeader = '(sans en-tete)' }
         Write-PlanningExcelSubStep -SubStepIndex 3 -Title 'Recherche de la colonne date' -Status 'SubStepEnd' `
-            -Detail ('(colonne {0}, en-tete "{1}")' -f $colLetter, $colHeader) -SubRatio 0.32
+            -Detail ('(colonne {0}, en-tete "{1}")' -f $colLetter, $colHeader) -SubRatio 0.20
 
         Write-PlanningExcelSubStep -SubStepIndex 4 -Title 'Extraction des lignes clients' -Status 'SubStepStart' -SubRatio 0.35
         $excelOrder = Extract-ExcelOrder -ExcelData $excelData -ColumnInfo $column
@@ -3842,6 +3879,8 @@ function Start-PlanningRebuild {
         }
     }
     $matchMissing = if ($null -ne $match) { @($match.Missing).Count } else { 0 }
+    Write-PlanningExcelSubStep -SubStepIndex 8 -Title 'Finalisation' -Status 'SubStepEnd' `
+        -Detail ("({0} match exacts, {1} flous, {2} non-matches)" -f $matchExact, $matchFuzzy, $matchMissing) -SubRatio 1.0
     Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 2 -StepCount $planningStepTotal -Label 'Lecture Excel + matching' -Status 'OK' `
         -Detail ("({0} match exacts, {1} flous, {2} non-matches)" -f $matchExact, $matchFuzzy, $matchMissing) `
         -Percent (Get-PlanningRebuildStepPercent -StepIndex 2 -StepCount $planningStepTotal -SubRatio 1.0)
@@ -3869,6 +3908,8 @@ function Start-PlanningRebuild {
     if (Test-PlanningRebuildStopRequested) { return $null }
     Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 3 -StepCount $planningStepTotal -Label 'Reordonnancement planning' -Status 'Running' `
         -Percent (Get-PlanningRebuildStepPercent -StepIndex 3 -StepCount $planningStepTotal -SubRatio 0)
+    Update-PlanningRebuildStepProgress -StepIndex 3 -StepCount $planningStepTotal -Label 'Reordonnancement planning' -Status 'Running' `
+        -Detail 'Construction lignes planning' -SubRatio 0.33
     if ($null -ne $woValidation) {
         Write-PlanningRebuildUiLog ("[WO-SUMMARY] TotalWorkOrders={0} OK={1} WARN={2} ERROR={3}" -f $woValidation.TotalWorkOrders, $woValidation.OK, $woValidation.WARN, $woValidation.ERROR)
     }
@@ -3885,9 +3926,8 @@ function Start-PlanningRebuild {
         Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 3 -StepCount $planningStepTotal -Label 'Reordonnancement planning' -Status 'Error'
         throw
     }
-    Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 3 -StepCount $planningStepTotal -Label 'Reordonnancement planning' -Status 'OK' `
-        -Detail ("({0} groupes ODM crees)" -f @($workOrders).Count) `
-        -Percent (Get-PlanningRebuildStepPercent -StepIndex 3 -StepCount $planningStepTotal -SubRatio 1.0)
+    Update-PlanningRebuildStepProgress -StepIndex 3 -StepCount $planningStepTotal -Label 'Reordonnancement planning' -Status 'Running' `
+        -Detail 'Preparation mapping pages' -SubRatio 0.66
     if (Test-PlanningRebuildStopRequested) { return $null }
     Trace-DeepObjectLeak -Value $reordered -Name "ordered" -Location "Start-PlanningRebuild.afterBuildReorderedPlanning"
     Write-Host "[REORDERED-SNAPSHOT] Count=$($reordered.Count) NullCount=$(@($reordered | Where-Object { $_ -eq $null }).Count)"
@@ -4002,9 +4042,16 @@ function Start-PlanningRebuild {
             })
     }
 
+    Update-PlanningRebuildStepProgress -StepIndex 3 -StepCount $planningStepTotal -Label 'Reordonnancement planning' -Status 'Running' `
+        -Detail 'Tri final' -SubRatio 1.0
     $sortedGsPairs = Sort-SafeTripleInt -InputObject @($mergedForSort.ToArray()) -P1 FinalOrder -P2 Ordinal -P3 RawPageNum
     $orderedPhysicalForGs = @($sortedGsPairs | ForEach-Object { [int]$_.RawPageNum })
     Trace-DeepObjectLeak -Value $orderedPhysicalForGs -Name "rows" -Location "Start-PlanningRebuild.afterForEach.orderedGs"
+
+    Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 3 -StepCount $planningStepTotal -Label 'Reordonnancement planning' -Status 'OK' `
+        -Detail ("({0} groupes ODM, {1} pages sequence)" -f @($workOrders).Count, @($sortedGsPairs).Count) `
+        -Percent (Get-PlanningRebuildStepPercent -StepIndex 3 -StepCount $planningStepTotal -SubRatio 1.0)
+    if (Test-PlanningRebuildStopRequested) { return $null }
 
     Write-Host ("[VALIDATION] PDF reel pages: {0}" -f $pdfRealPageCount)
     Write-Host ("[VALIDATION] Lignes reorder (avec doublons): {0}" -f @($sanitizeRowsReorder).Count)
@@ -4271,7 +4318,7 @@ function Start-PlanningRebuild {
             ("({0} tournees traitees, {1} documents generes)" -f $script:PlanningTourneeBlockTotal, [int]$script:PlanningTourneeGeneratedDocCount)
         } else { $null }
         Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 5 -StepCount $planningStepTotal -Label 'Composition pages de garde' -Status 'OK' `
-            -Detail $tourneeDoneDetail -Percent 100
+            -Detail $tourneeDoneDetail -Percent (Get-PlanningRebuildStepPercent -StepIndex 5 -StepCount $planningStepTotal -SubRatio 1.0)
         Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 0 -StepCount 0 -Label 'Complete' -Status 'Complete' `
             -OutputPath $outputPdfPath -Percent 100
         Write-PlanningRebuildUiLog 'Traitement termine.'

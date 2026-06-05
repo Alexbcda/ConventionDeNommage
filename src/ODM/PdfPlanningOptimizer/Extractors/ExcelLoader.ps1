@@ -108,6 +108,16 @@ function Test-ExcelFileIntegrity {
     return $result
 }
 
+function script:Write-PlanningExcelLoadUiLog {
+    param([Parameter(Mandatory = $true)][string]$Message)
+    if (Get-Command Write-PlanningRebuildUiLog -ErrorAction SilentlyContinue) {
+        Write-PlanningRebuildUiLog $Message
+    }
+    else {
+        Write-Host $Message -ForegroundColor DarkGray
+    }
+}
+
 function script:Import-ExcelWorkbookToGrids {
     <#
     .SYNOPSIS
@@ -118,13 +128,19 @@ function script:Import-ExcelWorkbookToGrids {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Path,
-        [string]$Password = $null
+        [string]$Password = $null,
+        [scriptblock]$ReportProgress = $null
     )
     $resolved = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
     if (-not (Test-Path -LiteralPath $resolved)) { throw "Fichier introuvable: $Path" }
     $ext = [System.IO.Path]::GetExtension($resolved).ToLowerInvariant()
     if ($ext -eq '.xls' -or $ext -eq '.xlsb') {
         throw "[ExcelLoader] Le format binaire '$ext' n'est pas géré. Enregistrez le fichier au format .xlsx ou .xlsm, ou utilisez un export CSV en secours."
+    }
+
+    script:Write-PlanningExcelLoadUiLog '[EXCEL] Decompression du fichier Excel...'
+    if ($null -ne $ReportProgress) {
+        & $ReportProgress 0.07 'Decompression du fichier...'
     }
 
     $package = $null
@@ -150,8 +166,24 @@ function script:Import-ExcelWorkbookToGrids {
 
     try {
         $sheets = [System.Collections.Generic.List[object]]::new()
+        $totalSheets = @($package.Workbook.Worksheets).Count
+        if ($totalSheets -lt 1) { $totalSheets = 1 }
+        $sheetIndex = 0
+        script:Write-PlanningExcelLoadUiLog ("[EXCEL] Analyse des feuilles ({0} feuille(s))..." -f $totalSheets)
+        if ($null -ne $ReportProgress) {
+            & $ReportProgress 0.075 ("Analyse des feuilles ({0} feuille(s))..." -f $totalSheets)
+        }
+
         foreach ($ws in $package.Workbook.Worksheets) {
+            $sheetIndex++
             $name = [string]$ws.Name
+            $sheetDetail = ("Lecture feuille {0}/{1} : '{2}'" -f $sheetIndex, $totalSheets, $name)
+            $sheetSubRatio = 0.08 + (($sheetIndex / [double]$totalSheets) * 0.10)
+            script:Write-PlanningExcelLoadUiLog ("[EXCEL] Lecture de la feuille {0}/{1} : '{2}'" -f $sheetIndex, $totalSheets, $name)
+            if ($null -ne $ReportProgress) {
+                & $ReportProgress $sheetSubRatio $sheetDetail
+            }
+
             $dim = $ws.Dimension
             if ($null -eq $dim) {
                 [void]$sheets.Add([pscustomobject]@{
@@ -272,10 +304,24 @@ function Import-PlanningExcel {
         throw "Import-PlanningExcel: fichier introuvable: $ExcelPath"
     }
 
+    $reportExcelOpenProgress = {
+        param([double]$SubRatio, [string]$Detail)
+        if (Get-Command Update-PlanningRebuildStepProgress -ErrorAction SilentlyContinue) {
+            Update-PlanningRebuildStepProgress -StepIndex 2 -StepCount 5 -Label 'Lecture Excel + matching' `
+                -Status 'Running' -Detail $Detail -SubRatio $SubRatio
+        }
+        if (Get-Command Write-PlanningExcelSubStep -ErrorAction SilentlyContinue) {
+            Write-PlanningExcelSubStep -SubStepIndex 2 -Status 'SubStepProgress' -Detail $Detail -SubRatio $SubRatio
+        }
+    }
+    & $reportExcelOpenProgress 0.06 'Ouverture du fichier Excel...'
+
     $ext = [System.IO.Path]::GetExtension($ExcelPath).ToLowerInvariant()
     if ($ext -in @('.csv', '.tsv', '.txt')) {
         if ($ext -eq '.tsv' -or $ext -eq '.txt') { Write-Warning "[ExcelLoader] Fichier texte/TSV: traitement en CSV simple (délimiteur détecté par Import-Csv)." }
-        return (Import-PlanningFromCsv -Path $ExcelPath)
+        $csvData = Import-PlanningFromCsv -Path $ExcelPath
+        & $reportExcelOpenProgress 0.10 'Fichier charge — lecture des donnees...'
+        return $csvData
     }
 
     $integrity = Test-ExcelFileIntegrity -Path $ExcelPath
@@ -286,9 +332,16 @@ function Import-PlanningExcel {
     }
     Write-Host ("[EXCEL-INTEGRITY-CHECK] OK — MagicBytes=PK ZIP=OK Worksheets=OK Size={0}" -f $integrity.FileSizeBytes) -ForegroundColor DarkGray
 
+    script:Write-PlanningExcelLoadUiLog '[EXCEL] Chargement du module ImportExcel...'
+    & $reportExcelOpenProgress 0.065 'Chargement du module ImportExcel...'
     Ensure-ImportExcelModule
+    $workbook = $null
     if ($PSBoundParameters.ContainsKey('Password') -and -not [string]::IsNullOrEmpty($Password)) {
-        return (Import-ExcelWorkbookToGrids -Path $ExcelPath -Password $Password)
+        $workbook = Import-ExcelWorkbookToGrids -Path $ExcelPath -Password $Password -ReportProgress $reportExcelOpenProgress
     }
-    return (Import-ExcelWorkbookToGrids -Path $ExcelPath)
+    else {
+        $workbook = Import-ExcelWorkbookToGrids -Path $ExcelPath -ReportProgress $reportExcelOpenProgress
+    }
+    & $reportExcelOpenProgress 0.10 'Traitement des donnees termine'
+    return $workbook
 }
