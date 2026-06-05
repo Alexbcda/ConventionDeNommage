@@ -1212,20 +1212,24 @@ function script:Test-PlanningExcelSheetNameMatchesIsoWeek {
     return ($SheetName -match ("(?i)S0?{0}(?:\D|$)" -f $weekToken))
 }
 
-function script:Get-PlanningExcelSheetForIsoWeek {
+function Get-PlanningExcelSheetNameForIsoWeek {
+    <#
+    .SYNOPSIS
+        Résout le nom d’onglet pour une semaine ISO à partir de la liste des feuilles (sans charger les grilles).
+    #>
+    [CmdletBinding()]
     param(
-        [object]$ExcelData,
+        [Parameter(Mandatory = $true)]
+        [string[]]$SheetNames,
+        [Parameter(Mandatory = $true)]
         [int]$Week
     )
-    if ($null -eq $ExcelData -or $null -eq $ExcelData.Sheets) { return $null }
-
-    foreach ($sheet in @($ExcelData.Sheets)) {
-        if (script:Test-PlanningExcelSheetNameMatchesIsoWeek -SheetName ([string]$sheet.Name) -Week $Week) {
-            Write-Host ("[EXCEL] Onglet trouve (recherche flexible) : '{0}' (semaine {1})" -f $sheet.Name, $Week) -ForegroundColor Green
-            return $sheet
+    foreach ($name in @($SheetNames)) {
+        if (script:Test-PlanningExcelSheetNameMatchesIsoWeek -SheetName $name -Week $Week) {
+            Write-Host ("[EXCEL] Onglet cible (recherche flexible) : '{0}' (semaine {1})" -f $name, $Week) -ForegroundColor Green
+            return $name
         }
     }
-
     $weekStrPadded = '{0:D2}' -f $Week
     $candidates = @(
         ("S$weekStrPadded (à faire)"),
@@ -1233,14 +1237,25 @@ function script:Get-PlanningExcelSheetForIsoWeek {
         ("S$weekStrPadded"),
         ("S$Week")
     )
-    foreach ($name in $candidates) {
-        $sheet = @($ExcelData.Sheets | Where-Object { $_.Name -eq $name } | Select-Object -First 1)[0]
-        if ($null -ne $sheet) {
-            Write-Host ("[EXCEL] Onglet trouve (recherche exacte) : '{0}'" -f $name) -ForegroundColor Green
-            return $sheet
+    foreach ($cand in $candidates) {
+        if ($cand -in @($SheetNames)) {
+            Write-Host ("[EXCEL] Onglet cible (recherche exacte) : '{0}'" -f $cand) -ForegroundColor Green
+            return $cand
         }
     }
     return $null
+}
+
+function script:Get-PlanningExcelSheetForIsoWeek {
+    param(
+        [object]$ExcelData,
+        [int]$Week
+    )
+    if ($null -eq $ExcelData -or $null -eq $ExcelData.Sheets) { return $null }
+
+    $sheetName = Get-PlanningExcelSheetNameForIsoWeek -SheetNames @($ExcelData.Sheets | ForEach-Object { [string]$_.Name }) -Week $Week
+    if ([string]::IsNullOrWhiteSpace($sheetName)) { return $null }
+    return @($ExcelData.Sheets | Where-Object { [string]$_.Name -eq $sheetName } | Select-Object -First 1)[0]
 }
 
 function script:Get-PlanningExcelFixedColumnFromVisitDate {
@@ -1317,27 +1332,14 @@ function Find-ExcelColumnFromDateFixed {
 
     $column = script:Get-PlanningExcelFixedColumnFromVisitDate -VisitDate $VisitDate
     if ($null -eq $column) { return $null }
+    if ($null -eq $ExcelData -or $null -eq $ExcelData.Sheets -or @($ExcelData.Sheets).Count -lt 1) { return $null }
 
-    $week = Get-Iso8601WeekOfYear -Date $VisitDate
-    $preferredSheet = Get-PlanningExcelSheetForIsoWeek -ExcelData $ExcelData -Week $week
-    if ($null -ne $preferredSheet) {
-        $preferredResult = script:Find-ExcelColumnOnSheetForVisitDateFixed -Sheet $preferredSheet -VisitDate $VisitDate -Column $column -Source 'Fixed'
-        if ($null -ne $preferredResult) {
-            Write-Host ("[EXCEL] Date trouvee dans l'onglet '{0}' colonne {1}" -f $preferredResult.SheetName, $column) -ForegroundColor Green
-            return $preferredResult
-        }
+    $sheet = @($ExcelData.Sheets)[0]
+    $result = script:Find-ExcelColumnOnSheetForVisitDateFixed -Sheet $sheet -VisitDate $VisitDate -Column $column -Source 'Fixed'
+    if ($null -ne $result) {
+        Write-Host ("[EXCEL] Date trouvee dans l'onglet '{0}' colonne {1}" -f $result.SheetName, $column) -ForegroundColor Green
     }
-
-    foreach ($sheet in @($ExcelData.Sheets)) {
-        if ($null -ne $preferredSheet -and $sheet.Name -eq $preferredSheet.Name) { continue }
-        $flexResult = script:Find-ExcelColumnOnSheetForVisitDateFixed -Sheet $sheet -VisitDate $VisitDate -Column $column -Source 'Flexible'
-        if ($null -ne $flexResult) {
-            Write-Host ("[EXCEL] Date trouvee dans l'onglet '{0}' colonne {1} (nom personnalise)" -f $flexResult.SheetName, $column) -ForegroundColor Green
-            return $flexResult
-        }
-    }
-
-    return $null
+    return $result
 }
 
 function Find-ExcelColumnFromDateLegacy {
@@ -3804,7 +3806,20 @@ function Start-PlanningRebuild {
         Write-PlanningExcelSubStep -SubStepIndex 1 -Title 'Verification du fichier Excel' -Status 'SubStepEnd' -SubRatio 0.1
 
         Write-PlanningExcelSubStep -SubStepIndex 2 -Title 'Ouverture du classeur' -Status 'SubStepStart' -SubRatio 0.08
-        $excelData = Import-PlanningExcel -ExcelPath $ExcelPath
+        $excelExt = [System.IO.Path]::GetExtension($ExcelPath).ToLowerInvariant()
+        if ($excelExt -in @('.csv', '.tsv', '.txt')) {
+            $excelData = Import-PlanningExcel -ExcelPath $ExcelPath
+        }
+        else {
+            $targetWeek = Get-Iso8601WeekOfYear -Date $visitDate
+            $sheetNames = @(Get-ExcelSheetNames -ExcelPath $ExcelPath)
+            $targetSheetName = Get-PlanningExcelSheetNameForIsoWeek -SheetNames $sheetNames -Week $targetWeek
+            if ([string]::IsNullOrWhiteSpace($targetSheetName)) {
+                throw ("[EXCEL] Onglet semaine S{0} non trouve dans le fichier Excel ({1} feuille(s))." -f $targetWeek, @($sheetNames).Count)
+            }
+            Write-Host ("[EXCEL] Semaine cible S{0} — chargement onglet '{1}' uniquement" -f $targetWeek, $targetSheetName) -ForegroundColor Green
+            $excelData = Import-PlanningExcelSheet -ExcelPath $ExcelPath -SheetName $targetSheetName
+        }
         Write-PlanningExcelSubStep -SubStepIndex 2 -Title 'Ouverture du classeur' -Status 'SubStepEnd' -SubRatio 0.10
 
         Write-PlanningExcelSubStep -SubStepIndex 3 -Title 'Recherche de la colonne date' -Status 'SubStepStart' -SubRatio 0.15

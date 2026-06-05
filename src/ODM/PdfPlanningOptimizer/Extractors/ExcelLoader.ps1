@@ -194,25 +194,8 @@ function script:Import-ExcelWorkbookToGrids {
                 })
                 continue
             }
-            $endRow = [int]$dim.End.Row
-            $endCol = [int]$dim.End.Column
-            $rowCount = $endRow
-            $colCount = $endCol
-            $grid = [System.Collections.Generic.List[object[]]]::new()
-            for ($r = 1; $r -le $endRow; $r++) {
-                $rowValues = [System.Collections.Generic.List[string]]::new()
-                for ($c = 1; $c -le $endCol; $c++) {
-                    $cell = $ws.Cells[$r, $c]
-                    [void]$rowValues.Add((Get-CellDisplayText -Cell $cell))
-                }
-                [void]$grid.Add($rowValues.ToArray())
-            }
-            [void]$sheets.Add([pscustomobject]@{
-                Name     = $name
-                RowCount = $rowCount
-                ColCount = $colCount
-                Grid     = @($grid.ToArray())
-            })
+            $sheetGrid = script:Import-ExcelWorksheetToGrid -Worksheet $ws
+            [void]$sheets.Add($sheetGrid)
         }
         return [pscustomobject]@{
             Path   = $Path
@@ -282,6 +265,164 @@ function script:Import-PlanningFromCsv {
             ColCount = $colCount
             Grid     = $grid
         })
+    }
+}
+
+function Get-ExcelSheetNames {
+    <#
+    .SYNOPSIS
+        Liste les noms de feuilles sans charger les cellules (ouverture rapide EPPlus).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ExcelPath,
+        [string]$Password = $null
+    )
+    if (-not (Test-Path -LiteralPath $ExcelPath)) {
+        throw "Get-ExcelSheetNames: fichier introuvable: $ExcelPath"
+    }
+    $ext = [System.IO.Path]::GetExtension($ExcelPath).ToLowerInvariant()
+    if ($ext -in @('.csv', '.tsv', '.txt')) {
+        return @('CSV')
+    }
+
+    script:Ensure-ImportExcelModule
+    $resolved = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ExcelPath)
+    $package = $null
+    try {
+        if ([string]::IsNullOrEmpty($Password)) {
+            $package = Open-ExcelPackage -Path $resolved
+        }
+        else {
+            $package = Open-ExcelPackage -Path $resolved -Password $Password
+        }
+        if ($null -eq $package) {
+            throw '[ExcelLoader] Open-ExcelPackage a retourne une valeur nulle.'
+        }
+        return @($package.Workbook.Worksheets | ForEach-Object { [string]$_.Name })
+    }
+    finally {
+        if ($null -ne $package) {
+            try {
+                if (Get-Command Close-ExcelPackage -ErrorAction SilentlyContinue) {
+                    Close-ExcelPackage -NoSave $package
+                }
+            }
+            catch { }
+        }
+    }
+}
+
+function script:Import-ExcelWorksheetToGrid {
+    param(
+        [Parameter(Mandatory = $true)]$Worksheet
+    )
+    $name = [string]$Worksheet.Name
+    $dim = $Worksheet.Dimension
+    if ($null -eq $dim) {
+        return [pscustomobject]@{
+            Name     = $name
+            RowCount = 0
+            ColCount = 0
+            Grid     = @()
+        }
+    }
+    $endRow = [int]$dim.End.Row
+    $endCol = [int]$dim.End.Column
+    $grid = [System.Collections.Generic.List[object[]]]::new()
+    for ($r = 1; $r -le $endRow; $r++) {
+        $rowValues = [System.Collections.Generic.List[string]]::new()
+        for ($c = 1; $c -le $endCol; $c++) {
+            $cell = $Worksheet.Cells[$r, $c]
+            [void]$rowValues.Add((script:Get-CellDisplayText -Cell $cell))
+        }
+        [void]$grid.Add($rowValues.ToArray())
+    }
+    return [pscustomobject]@{
+        Name     = $name
+        RowCount = $endRow
+        ColCount = $endCol
+        Grid     = @($grid.ToArray())
+    }
+}
+
+function Import-PlanningExcelSheet {
+    <#
+    .SYNOPSIS
+        Charge une seule feuille d’un planning au format Grille (0-based).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ExcelPath,
+        [Parameter(Mandatory = $true)]
+        [string]$SheetName,
+        [string]$Password = $null
+    )
+    if (-not (Test-Path -LiteralPath $ExcelPath)) {
+        throw "Import-PlanningExcelSheet: fichier introuvable: $ExcelPath"
+    }
+
+    $reportExcelOpenProgress = {
+        param([double]$SubRatio, [string]$Detail)
+        if (Get-Command Update-PlanningRebuildStepProgress -ErrorAction SilentlyContinue) {
+            Update-PlanningRebuildStepProgress -StepIndex 2 -StepCount 5 -Label 'Lecture Excel + matching' `
+                -Status 'Running' -Detail $Detail -SubRatio $SubRatio
+        }
+        if (Get-Command Write-PlanningExcelSubStep -ErrorAction SilentlyContinue) {
+            Write-PlanningExcelSubStep -SubStepIndex 2 -Status 'SubStepProgress' -Detail $Detail -SubRatio $SubRatio
+        }
+    }
+
+    $ext = [System.IO.Path]::GetExtension($ExcelPath).ToLowerInvariant()
+    if ($ext -in @('.csv', '.tsv', '.txt')) {
+        return (Import-PlanningExcel -ExcelPath $ExcelPath -Password $Password)
+    }
+
+    $integrity = Test-ExcelFileIntegrity -Path $ExcelPath
+    if (-not $integrity.IsValid) {
+        $detail = if ($null -ne $integrity.Error) { $integrity.Error } else { 'verification echouee' }
+        throw "[ExcelLoader] Fichier structurellement invalide: $detail"
+    }
+
+    script:Ensure-ImportExcelModule
+    & $reportExcelOpenProgress 0.07 ("Ouverture de la feuille '{0}'..." -f $SheetName)
+    script:Write-PlanningExcelLoadUiLog ("[EXCEL] Chargement feuille unique : '{0}'" -f $SheetName)
+
+    $resolved = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ExcelPath)
+    $package = $null
+    try {
+        if ([string]::IsNullOrEmpty($Password)) {
+            $package = Open-ExcelPackage -Path $resolved
+        }
+        else {
+            $package = Open-ExcelPackage -Path $resolved -Password $Password
+        }
+        if ($null -eq $package) {
+            throw '[ExcelLoader] Open-ExcelPackage a retourne une valeur nulle.'
+        }
+        $ws = $package.Workbook.Worksheets[$SheetName]
+        if ($null -eq $ws) {
+            throw "Import-PlanningExcelSheet: feuille '$SheetName' introuvable."
+        }
+        & $reportExcelOpenProgress 0.09 ("Lecture feuille '{0}'..." -f $SheetName)
+        $sheetGrid = script:Import-ExcelWorksheetToGrid -Worksheet $ws
+        & $reportExcelOpenProgress 0.10 'Traitement des donnees termine'
+        return [pscustomobject]@{
+            Path   = $ExcelPath
+            Sheets = @($sheetGrid)
+        }
+    }
+    finally {
+        if ($null -ne $package) {
+            try {
+                if (Get-Command Close-ExcelPackage -ErrorAction SilentlyContinue) {
+                    Close-ExcelPackage -NoSave $package
+                }
+            }
+            catch { }
+        }
     }
 }
 
