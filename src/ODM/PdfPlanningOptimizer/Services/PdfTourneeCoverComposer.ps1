@@ -2117,13 +2117,33 @@ function Invoke-PlanningTourneePdfCoverComposition {
                 if ($null -ne $MatchResult -and $null -ne $MatchResult.Missing) {
                     $missingList = @($MatchResult.Missing)
                 }
-                $coverReport = Build-PlanningOdmMismatchThreeSectionCoverLines `
-                    -Missing $missingList `
-                    -WorkOrders @($WorkOrders) `
-                    -ExcelOrder @($ExcelOrder) `
-                    -MatchResult $MatchResult `
-                    -TourSegments @($segments) `
-                    -MaxEntriesPerSection 20
+                $orphanWorkOrders = @()
+                if (Get-Command Get-PlanningUnmatchedPdfWorkOrders -ErrorAction SilentlyContinue) {
+                    $orphanWorkOrders = @(Get-PlanningUnmatchedPdfWorkOrders -WorkOrders $WorkOrders -MatchResult $MatchResult)
+                }
+                $hasMissingOrphans = ($missingList.Count -gt 0) -or ($orphanWorkOrders.Count -gt 0)
+
+                if (-not $hasMissingOrphans) {
+                    Write-PlanningTourneeStep5UiLog '🔍 Tous les ODM sont matchés - synthèse simplifiée'
+                    $coverReport = [pscustomobject]@{
+                        Elements       = @()
+                        Lines          = @()
+                        Section1Count  = 0
+                        Section2Count  = 0
+                        Section3Count  = 0
+                        AllMatched     = $true
+                    }
+                }
+                else {
+                    Write-PlanningTourneeStep5UiLog ("🔍 Analyse des ODM sans correspondance ($($missingList.Count) Excel sans ODM, $($orphanWorkOrders.Count) ODM sans Excel)")
+                    $coverReport = Build-PlanningOdmMismatchThreeSectionCoverLines `
+                        -Missing $missingList `
+                        -WorkOrders @($orphanWorkOrders) `
+                        -ExcelOrder @($ExcelOrder) `
+                        -MatchResult $MatchResult `
+                        -TourSegments @($segments) `
+                        -MaxEntriesPerSection 20
+                }
                 $coverAllMatched = [bool]$coverReport.AllMatched
                 $coverS1 = [int]$coverReport.Section1Count
                 $coverS2 = [int]$coverReport.Section2Count
