@@ -2,6 +2,9 @@
 . (Join-Path $PSScriptRoot '..\..\Common\Styles.ps1')
 . (Join-Path $PSScriptRoot '..\..\Common\CnsSharePointConnector.ps1')
 . (Join-Path $PSScriptRoot '..\..\Common\CnsSharePointUI.ps1')
+if (-not (Get-Command Get-PlanningRebuildSetting -ErrorAction SilentlyContinue)) {
+    . (Join-Path $PSScriptRoot '..\..\Database\Database.ps1')
+}
 
 if (-not (Get-Command Update-SharePointUI -ErrorAction SilentlyContinue)) {
     throw 'PlanningRebuilderPanel.ps1 : Update-SharePointUI introuvable — verifier le dot-sourcing de CnsSharePointUI.ps1.'
@@ -17,6 +20,7 @@ $script:PlanningFormClosingRegistered = $false
 $script:PlanningHostRunspace = $null
 $script:PlanningRebuildJob = $null
 $script:PlanningRebuildJobTimer = $null
+$script:PlanningRebuildVideoTimer = $null
 $script:PlanningProgressTimer = $null
 $script:PlanningJobProgressFile = $null
 $script:PlanningJobProgressLastLine = $null
@@ -157,6 +161,166 @@ function Get-PlanningRebuildJobErrorMessage {
         }
     }
     return $FallbackMessage
+}
+
+function Resolve-PlanningRebuildVideoPath {
+    param([AllowNull()][AllowEmptyString()][string]$ConfiguredPath)
+    if (Get-Command Get-PlanningRebuildTutorialVideoResolvedPath -ErrorAction SilentlyContinue) {
+        return (Get-PlanningRebuildTutorialVideoResolvedPath -ConfiguredPath $ConfiguredPath)
+    }
+    return $null
+}
+
+function Write-PlanningRebuildVideoDebugLog {
+    param([string]$Message)
+    if ([string]::IsNullOrWhiteSpace($Message)) { return }
+    $line = "[VIDEO] $Message"
+    $ui = $null
+    if ($null -ne $script:PlanningRebuilderPanelContext) {
+        $ui = $script:PlanningRebuilderPanelContext.Ui
+    }
+    if ($null -ne $ui -and $null -ne $ui.TxtDebug) {
+        Add-PlanningRebuildDebugLogLine -DebugBox $ui.TxtDebug -Line $line
+    }
+    if (Get-Command Write-PlanningRebuildUiLog -ErrorAction SilentlyContinue) {
+        Write-PlanningRebuildUiLog $line
+    }
+}
+
+function Stop-PlanningRebuildPendingVideoTimer {
+    if ($null -eq $script:PlanningRebuildVideoTimer) { return }
+    try {
+        $script:PlanningRebuildVideoTimer.Stop()
+        $script:PlanningRebuildVideoTimer.Dispose()
+    }
+    catch { }
+    $script:PlanningRebuildVideoTimer = $null
+}
+
+function Test-PlanningRebuildVideoEnabledInSettings {
+    if (-not (Get-Command Get-PlanningRebuildSetting -ErrorAction SilentlyContinue)) { return $false }
+    return (([string](Get-PlanningRebuildSetting -Key 'play_video_after_treatment')).Trim() -eq '1')
+}
+
+function Find-PlanningWinFormsControlByName {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Forms.Control]$Root,
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+    if ([string]$Root.Name -eq $Name) { return $Root }
+    foreach ($child in @($Root.Controls)) {
+        if ($null -eq $child) { continue }
+        $found = Find-PlanningWinFormsControlByName -Root $child -Name $Name
+        if ($null -ne $found) { return $found }
+    }
+    return $null
+}
+
+function Sync-OutilsPanelPlayVideoCheckbox {
+    param([bool]$Checked)
+    try {
+        foreach ($frm in @([System.Windows.Forms.Application]::OpenForms)) {
+            if ($null -eq $frm) { continue }
+            $tabs = @($frm.Controls | Where-Object { $_ -is [System.Windows.Forms.TabControl] } | Select-Object -First 1)
+            if ($tabs.Count -lt 1) { continue }
+            $tabOutils = $tabs[0].TabPages['TabOutils']
+            if ($null -eq $tabOutils) { continue }
+            $chk = Find-PlanningWinFormsControlByName -Root $tabOutils -Name 'chkPlayVideo'
+            if ($null -ne $chk -and $chk -is [System.Windows.Forms.CheckBox]) {
+                $chk.Checked = $Checked
+                return
+            }
+        }
+    }
+    catch { }
+}
+
+function Reset-PlanningRebuildVideoSettingAfterTreatment {
+    Stop-PlanningRebuildPendingVideoTimer
+    if (Get-Command Set-PlanningRebuildSetting -ErrorAction SilentlyContinue) {
+        Set-PlanningRebuildSetting -Key 'play_video_after_treatment' -Value '0'
+    }
+    Write-PlanningRebuildVideoDebugLog 'Parametre reinitialise a 0 (fin de traitement).'
+    Sync-OutilsPanelPlayVideoCheckbox -Checked $false
+}
+
+function Start-PlanningRebuildTutorialVideoProcess {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$VideoPath
+    )
+    if (-not (Test-PlanningRebuildVideoEnabledInSettings)) {
+        Write-PlanningRebuildVideoDebugLog 'Lancement annule : play_video_after_treatment != 1.'
+        return
+    }
+    try {
+        Start-Process -FilePath $VideoPath -WindowStyle Normal -ErrorAction Stop
+        Write-PlanningRebuildVideoDebugLog 'Video lancee avec succes.'
+    }
+    catch {
+        Write-PlanningRebuildVideoDebugLog ("Echec Start-Process : {0}" -f $_.Exception.Message)
+    }
+}
+
+function Invoke-PlanningRebuildPlayVideo {
+    Stop-PlanningRebuildPendingVideoTimer
+
+    if (-not (Get-Command Get-PlanningRebuildSetting -ErrorAction SilentlyContinue)) {
+        Write-PlanningRebuildVideoDebugLog 'Module BDD settings introuvable — lancement annule.'
+        return
+    }
+
+    $playVideo = ([string](Get-PlanningRebuildSetting -Key 'play_video_after_treatment')).Trim()
+    Write-PlanningRebuildVideoDebugLog ("parametre play_video_after_treatment = '{0}'" -f $playVideo)
+    if ($playVideo -ne '1') {
+        Write-PlanningRebuildVideoDebugLog 'Video desactivee (cochez dans Onglet Outils puis Sauvegarder).'
+        return
+    }
+
+    $delaySeconds = 0
+    $delayRaw = Get-PlanningRebuildSetting -Key 'video_delay_seconds'
+    if ($null -ne $delayRaw -and -not [string]::IsNullOrWhiteSpace([string]$delayRaw)) {
+        try { $delaySeconds = [Math]::Max(0, [int]$delayRaw) } catch { $delaySeconds = 0 }
+    }
+
+    $configuredPath = [string](Get-PlanningRebuildSetting -Key 'video_path')
+    $videoPath = Resolve-PlanningRebuildVideoPath -ConfiguredPath $configuredPath
+    if ([string]::IsNullOrWhiteSpace($videoPath)) {
+        Write-PlanningRebuildVideoDebugLog ("Video introuvable (config='{0}')." -f $configuredPath)
+        return
+    }
+
+    if ($delaySeconds -le 0) {
+        Write-PlanningRebuildVideoDebugLog ("Lancement immediat : {0}" -f $videoPath)
+        Start-PlanningRebuildTutorialVideoProcess -VideoPath $videoPath
+        return
+    }
+
+    Write-PlanningRebuildVideoDebugLog ("Programmation du lancement dans {0} seconde(s) (asynchrone) : {1}" -f $delaySeconds, $videoPath)
+    $playTimer = New-Object System.Windows.Forms.Timer
+    $playTimer.Interval = [Math]::Max(1, $delaySeconds) * 1000
+    $playTimer.Tag = $videoPath
+    $playTimer.Add_Tick({
+        param($sender, $e)
+        $sender.Stop()
+        $path = [string]$sender.Tag
+        try { $sender.Dispose() } catch { }
+        if ($script:PlanningRebuildVideoTimer -eq $sender) { $script:PlanningRebuildVideoTimer = $null }
+        if ([string]::IsNullOrWhiteSpace($path)) {
+            Write-PlanningRebuildVideoDebugLog 'Timer video : chemin vide — lancement annule.'
+            return
+        }
+        if (-not (Test-PlanningRebuildVideoEnabledInSettings)) {
+            Write-PlanningRebuildVideoDebugLog 'Timer video annule : parametre desactive depuis la programmation.'
+            return
+        }
+        Write-PlanningRebuildVideoDebugLog ("Fin du delai — lancement : {0}" -f $path)
+        Start-PlanningRebuildTutorialVideoProcess -VideoPath $path
+    })
+    $script:PlanningRebuildVideoTimer = $playTimer
+    $playTimer.Start()
 }
 
 function Complete-PlanningRebuildJobUi {
@@ -650,6 +814,7 @@ function Reset-PlanningPdfImportSelection {
 }
 
 function Reset-PlanningAfterTreatment {
+    Reset-PlanningRebuildVideoSettingAfterTreatment
     Reset-PlanningPdfImportSelection
     if ($script:CurrentUIMode -eq 'Local') {
         $script:ManualExcelPath = $null
@@ -929,6 +1094,7 @@ function Start-PlanningSharePointSync {
                 -and $null -ne $e.Result -and $e.Result.Status -eq 'Connected' `
                 -and -not $script:PlanningRebuildUiBusy -and -not [string]::IsNullOrWhiteSpace($script:PlanningPdfPath)) {
                 $script:PlanningPendingAutoRun = $false
+                Invoke-PlanningRebuildPlayVideo
                 $rebuildHandler = $script:PlanningRebuilderPanelContext.RebuildRunHandler
                 if ($null -ne $rebuildHandler) {
                     & $rebuildHandler
@@ -1826,6 +1992,8 @@ function Show-PlanningRebuilderPanel {
     })
 
     $btnLancer.Add_Click({
+        Invoke-PlanningRebuildPlayVideo
+
         if ($script:PlanningRebuildUiBusy) { return }
         $rebuildHandler = $script:PlanningRebuilderPanelContext.RebuildRunHandler
         if ($null -ne $rebuildHandler) {
@@ -1900,6 +2068,15 @@ function Show-PlanningRebuilderPanel {
         Write-Host "GroupBox grpSharePoint NON TROUVE"
     }
     Write-Host '=================================' -ForegroundColor Cyan
+
+    $tutorialVideoPath = Resolve-PlanningRebuildVideoPath -ConfiguredPath $(if (Get-Command Get-PlanningRebuildSetting -ErrorAction SilentlyContinue) { Get-PlanningRebuildSetting -Key 'video_path' } else { $null })
+    $playVideoOnLoad = if (Get-Command Get-PlanningRebuildSetting -ErrorAction SilentlyContinue) { [string](Get-PlanningRebuildSetting -Key 'play_video_after_treatment') } else { '?' }
+    if (-not [string]::IsNullOrWhiteSpace($tutorialVideoPath)) {
+        [void]$txtDebug.AppendText(("Video tutoriel presente : {0} (play_video={1})" -f (Split-Path -Leaf $tutorialVideoPath), $playVideoOnLoad) + [Environment]::NewLine)
+    }
+    else {
+        [void]$txtDebug.AppendText(("Video tutoriel non trouvee (play_video={0})." -f $playVideoOnLoad) + [Environment]::NewLine)
+    }
 
     return $panel
 }

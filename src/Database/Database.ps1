@@ -431,6 +431,26 @@ WHERE numero_parc IS NULL OR TRIM(numero_parc) = ''
         $cmdIdx6 = $conn.CreateCommand()
         $cmdIdx6.CommandText = "CREATE INDEX IF NOT EXISTS idx_agent_actif ON Agent(actif)"
         $null = $cmdIdx6.ExecuteNonQuery()
+
+        $cmdSettings = $conn.CreateCommand()
+        $cmdSettings.CommandText = @"
+CREATE TABLE IF NOT EXISTS settings (
+    cle TEXT PRIMARY KEY,
+    valeur TEXT,
+    description TEXT,
+    date_modification DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+"@
+        $null = $cmdSettings.ExecuteNonQuery()
+
+        $cmdSettingsDefaults = $conn.CreateCommand()
+        $cmdSettingsDefaults.CommandText = @"
+INSERT OR IGNORE INTO settings (cle, valeur, description) VALUES
+    ('play_video_after_treatment', '0', 'Lancer la video apres le traitement'),
+    ('video_path', 'media/videos/tutoriel_convention_nommage.mp4', 'Chemin vers la video tutoriel'),
+    ('video_delay_seconds', '5', 'Delai avant lancement de la video (secondes)');
+"@
+        $null = $cmdSettingsDefaults.ExecuteNonQuery()
     } finally {
         Close-Connection $conn
     }
@@ -472,6 +492,68 @@ function Close-Connection {
         $c.Close()
         $c.Dispose()
     }
+}
+
+function Get-PlanningRebuildSetting {
+    param([Parameter(Mandatory = $true)][string]$Key)
+    if ([string]::IsNullOrWhiteSpace($Key)) { return $null }
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = 'SELECT valeur FROM settings WHERE cle = @key'
+        $null = $cmd.Parameters.AddWithValue('@key', $Key)
+        $result = $cmd.ExecuteScalar()
+        if ($null -eq $result -or $result -is [System.DBNull]) { return $null }
+        return [string]$result
+    }
+    finally {
+        Close-Connection $conn
+    }
+}
+
+function Set-PlanningRebuildSetting {
+    param(
+        [Parameter(Mandatory = $true)][string]$Key,
+        [AllowNull()][string]$Value = ''
+    )
+    if ([string]::IsNullOrWhiteSpace($Key)) { return }
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+INSERT OR REPLACE INTO settings (cle, valeur, date_modification)
+VALUES (@key, @value, CURRENT_TIMESTAMP)
+"@
+        $null = $cmd.Parameters.AddWithValue('@key', $Key)
+        $null = $cmd.Parameters.AddWithValue('@value', $(if ($null -eq $Value) { '' } else { [string]$Value }))
+        $null = $cmd.ExecuteNonQuery()
+    }
+    finally {
+        Close-Connection $conn
+    }
+}
+
+function Get-PlanningRebuildTutorialVideoResolvedPath {
+    param([AllowNull()][AllowEmptyString()][string]$ConfiguredPath)
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+    $defaultRel = 'media\videos\tutoriel_convention_nommage.mp4'
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    if (-not [string]::IsNullOrWhiteSpace($ConfiguredPath)) {
+        $cfg = ([string]$ConfiguredPath).Trim()
+        if ([System.IO.Path]::IsPathRooted($cfg)) {
+            [void]$candidates.Add($cfg)
+        }
+        else {
+            [void]$candidates.Add((Join-Path $repoRoot ($cfg -replace '/', '\')))
+        }
+    }
+    [void]$candidates.Add((Join-Path $repoRoot $defaultRel))
+    foreach ($path in @($candidates)) {
+        if (-not [string]::IsNullOrWhiteSpace($path) -and (Test-Path -LiteralPath $path)) {
+            return ([System.IO.Path]::GetFullPath($path))
+        }
+    }
+    return $null
 }
 
 # ============================================================

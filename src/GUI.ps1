@@ -42,7 +42,7 @@ function Start-GUI {
     . "$PSScriptRoot\ODM\Agents\AgentRepository.ps1"
     . "$PSScriptRoot\ODM\Vehicules\VehiculesPanel.ps1"
     . "$PSScriptRoot\ODM\Vehicules\VehiculesRepository.ps1"
-        
+
     $form = [System.Windows.Forms.Form]::new()
     $form.Text = "Convention de nommage"
     $form.Size = [System.Drawing.Size]::new(1400, 800)
@@ -112,6 +112,49 @@ function Start-GUI {
         $tabPlanning.Controls.Add($planningPanel)
     }
     $tabControl.TabPages.Add($tabPlanning)
+
+    # ONGLET 5 : Outils
+    $tabOutils = [System.Windows.Forms.TabPage]::new()
+    $tabOutils.Name = 'TabOutils'
+    $tabOutils.Text = 'Outils'
+    $tabOutils.BackColor = $script:CouleurGrisFond
+
+    $outilsScript = Join-Path $PSScriptRoot 'ODM\Outils\OutilsPanel.ps1'
+    if (-not (Test-Path -LiteralPath $outilsScript)) {
+        throw ("OutilsPanel.ps1 introuvable : {0}" -f $outilsScript)
+    }
+    if (-not (Get-Command Show-OutilsPanel -ErrorAction SilentlyContinue)) {
+        . $outilsScript
+    }
+
+    $outilsPanel = Show-OutilsPanel
+    if ($outilsPanel) {
+        $outilsPanel.Dock = 'Fill'
+        $tabOutils.Controls.Add($outilsPanel)
+    }
+    $tabControl.TabPages.Add($tabOutils)
+
+    $script:GuiPreviousTabName = if ($tabControl.SelectedTab) { [string]$tabControl.SelectedTab.Name } else { $null }
+    $tabControl.Add_SelectedIndexChanged({
+        param($sender, $e)
+        $tabs = $sender
+        if ($null -eq $tabs -or $tabs -isnot [System.Windows.Forms.TabControl]) { return }
+        $newTab = $tabs.SelectedTab
+        $newName = if ($null -ne $newTab) { [string]$newTab.Name } else { $null }
+        if ($script:GuiPreviousTabName -eq 'TabOutils' -and $newName -ne 'TabOutils') {
+            if ($null -ne $outilsPanel -and $null -ne $outilsPanel.Tag -and (Get-Command Save-OutilsPlanningRebuildSettings -ErrorAction SilentlyContinue)) {
+                $ctx = $outilsPanel.Tag
+                if ($null -ne $ctx.ChkPlayVideo -and $null -ne $ctx.TxtVideoPath -and $null -ne $ctx.NumDelay) {
+                    Save-OutilsPlanningRebuildSettings `
+                        -ChkPlayVideo $ctx.ChkPlayVideo `
+                        -TxtVideoPath $ctx.TxtVideoPath `
+                        -NumDelay $ctx.NumDelay `
+                        -Reason 'changement_onglet' | Out-Null
+                }
+            }
+        }
+        $script:GuiPreviousTabName = $newName
+    })
 
     $form.Controls.Add($tabControl)
     Update-WinFormsTreeUiTexts -RootControl $form
