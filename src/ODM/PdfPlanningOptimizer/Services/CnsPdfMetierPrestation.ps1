@@ -285,6 +285,7 @@ function Repair-CnsClientDisplayNameForCover {
     if (Get-Command Repair-CnsClientNumeroSignText -ErrorAction SilentlyContinue) {
         $t = Repair-CnsClientNumeroSignText -Text $t
     }
+    $t = $t -replace '&apos;', "'"
     return $t
 }
 

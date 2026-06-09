@@ -33,6 +33,7 @@ function ConvertTo-CnsDestructionCertificatePlaceholderValue {
     }
     if ($plain -match '^(A|A)\s*COMPL') { return '' }
     if ($plain -match 'COMPLETER') { return '' }
+    $t = $t -replace '&apos;', "'"
     return $t
 }
 

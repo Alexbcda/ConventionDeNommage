@@ -19,7 +19,10 @@ function Get-CnsLibreOfficeSofficePath {
 function script:Escape-CnsOdsXmlText {
     param([AllowNull()][string]$Text)
     if ($null -eq $Text) { return '' }
-    return [System.Security.SecurityElement]::Escape([string]$Text)
+    $escaped = [System.Security.SecurityElement]::Escape([string]$Text)
+    # Apostrophe : pas d'entite XML requise dans content.xml ODS/Excel.
+    $escaped = $escaped -replace '&apos;', "'"
+    return $escaped
 }
 
 function script:Replace-CnsOdsPlaceholderTokensInText {
