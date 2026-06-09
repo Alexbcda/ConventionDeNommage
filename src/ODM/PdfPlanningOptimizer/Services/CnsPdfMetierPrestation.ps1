@@ -398,16 +398,16 @@ function Get-CnsPonctuellePrestationDisplayLabelFromServiceType {
     $norm = ConvertTo-CnsMetierMatchNormalizedText -Text $raw
     if ([string]::IsNullOrWhiteSpace($norm)) { return $null }
 
-    if ($norm -match 'traitement\s+filiere\s+de\s+valorisation') { return $null }
-    if ($norm -match '^\d{1,2}/\d{1,2}/\d{2,4}') { return $null }
-    if ($norm -match '^\d{5}\b') { return $null }
-
-    $m = [regex]::Match($raw, '(?i)\b(Collecte|D[eéè]pose|Livraison)\s+Ponctuel\b.*$')
+    $m = [regex]::Match($raw, '(?i)\b(Collecte|D[eéè]pose|Livraison|Fourniture)\s+Ponctuel\b.*$')
     if (-not $m.Success) { return $null }
 
     $label = $m.Value.Trim()
+    $label = [regex]::Replace($label, '(?i)\bSac\s+\d+L[^/]*(?=/\d|\s+(?:Bouteilles|Canettes|Essuie|Verre|Multi|Papier|Carton))', '')
+    $label = [regex]::Replace($label, '(?i)\s*/\d+\s*kg\s*', ' ')
+    $label = [regex]::Replace($label, '\s+', ' ').Trim()
+
     $labelNorm = ConvertTo-CnsMetierMatchNormalizedText -Text $label
-    if (-not ($labelNorm -match '^(collecte|depose|livraison)\s+ponctuel')) { return $null }
+    if (-not ($labelNorm -match '^(collecte|depose|livraison|fourniture)\s+ponctuel')) { return $null }
     if ($labelNorm -match 'traitement\s+filiere\s+de\s+valorisation') { return $null }
     if ($labelNorm -match '\d{1,2}/\d{1,2}/\d{2,4}') { return $null }
     if ($labelNorm -match '\b\d{5}\b') { return $null }

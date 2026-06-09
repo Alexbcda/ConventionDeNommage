@@ -1262,7 +1262,7 @@ function script:Test-EntityExtractorLineOpensNewCarrierBlock {
     if ([string]::IsNullOrWhiteSpace($Line)) { return $false }
     [string]$ln = $Line.Trim()
     # Accents usuels ADV + ASCII — début « mot » après espaces début ligne
-    if ($ln -match '(?i)^(?:Collecte|Destruction|Ramassage|Enlèvement|Enlevement|Tri|Piles|Récupération|Recuperation|r[ée]cup[ée]ration)\b') {
+    if ($ln -match '(?i)^(?:Collecte|Fourniture|Livraison|Destruction|Ramassage|Enlèvement|Enlevement|Tri|Piles|Récupération|Recuperation|r[ée]cup[ée]ration)\b') {
         return $true
     }
     return $false
