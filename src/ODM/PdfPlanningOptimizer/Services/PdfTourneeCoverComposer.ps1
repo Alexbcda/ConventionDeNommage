@@ -841,6 +841,7 @@ function Build-CnsTourneeHeaderCoverPostScriptBody {
         [Parameter(Mandatory = $true)][string]$DateTitle,
         [Parameter(Mandatory = $true)][string]$Collecteur,
         [Parameter(Mandatory = $true)][string]$Vehicule,
+        [AllowNull()][AllowEmptyString()][string]$VehiculeImmatriculation = $null,
         [AllowEmptyCollection()][string[]]$MetierMemoLines = @(),
         [AllowNull()][AllowEmptyString()][string]$IncompleteBanner = $null
     )
@@ -849,6 +850,9 @@ function Build-CnsTourneeHeaderCoverPostScriptBody {
     $litDate = ConvertTo-CnsPsHelveticaParenBody -Text $DateTitle
     [string]$prenom = Get-CnsTourneeCoverCollecteurPrenomDisplay -Collecteur $Collecteur
     [string]$vehText = if ([string]::IsNullOrWhiteSpace($Vehicule)) { '' } else { ([string]$Vehicule).Trim() }
+    if (-not [string]::IsNullOrWhiteSpace($vehText) -and -not [string]::IsNullOrWhiteSpace($VehiculeImmatriculation)) {
+        $vehText = ('{0} ({1})' -f $vehText, ([string]$VehiculeImmatriculation).Trim())
+    }
 
     $headerFontSize = 18
 
@@ -1148,6 +1152,7 @@ function New-CnsTourneeHeaderCoverPdf {
         [string]$Collecteur,
         [Parameter(Mandatory = $true)]
         [string]$Vehicule,
+        [AllowNull()][AllowEmptyString()][string]$VehiculeImmatriculation = $null,
         [Parameter()]
         [bool]$TourneeIncomplete = $false,
         [Parameter()]
@@ -1166,7 +1171,8 @@ function New-CnsTourneeHeaderCoverPdf {
     }
     $dateTitle = Format-CnsTourneeCoverGardeDateTitle -DateJJMMAAAA $DateJJMMAAAA
     $banner = if ($TourneeIncomplete) { 'TOURNEE NON MATCHEE' } else { $null }
-    $body = Build-CnsTourneeHeaderCoverPostScriptBody -DateTitle $dateTitle -Collecteur $Collecteur -Vehicule $Vehicule -MetierMemoLines @($MetierMemoLines) -IncompleteBanner $banner
+    $body = Build-CnsTourneeHeaderCoverPostScriptBody -DateTitle $dateTitle -Collecteur $Collecteur -Vehicule $Vehicule `
+        -VehiculeImmatriculation $VehiculeImmatriculation -MetierMemoLines @($MetierMemoLines) -IncompleteBanner $banner
     return (Write-CnsPostScriptPdfPage -PsBodySansShowpage $body -OutPdfPath $OutPdfPath)
 }
 
@@ -2271,7 +2277,13 @@ function Invoke-PlanningTourneePdfCoverComposition {
                                 -ExcelOrder @($ExcelOrder) -Segments @($segments) -ExcelOrderIndexToSegmentIndex $orderToSeg)
                             Write-Host ("[STEP5-METIER] Segment {0} : {1} memo(s) garde tournée (source PDF ODM)." -f $n, $metierMemos.Count) -ForegroundColor DarkCyan
                             Write-PlanningTourneeStep5UiLog ("🎨 Tournée {0}/{1} - Création page de garde..." -f $tourneeIndex, $totalTournees)
-                            if (New-CnsTourneeHeaderCoverPdf -OutPdfPath $coverPath -DateJJMMAAAA $jj -Collecteur ([string]$seg.Collecteur) -Vehicule ([string]$seg.Vehicule) -TourneeIncomplete:$inc -MetierMemoLines $metierMemos) {
+                            $vehiculeImmat = $null
+                            $vehiculeNumeroParc = [string]$seg.Vehicule
+                            if (-not [string]::IsNullOrWhiteSpace($vehiculeNumeroParc)) {
+                                $vehiculeImmat = Get-CnsVehiculeImmatriculationByNumeroParc -NumeroParc $vehiculeNumeroParc
+                            }
+                            if (New-CnsTourneeHeaderCoverPdf -OutPdfPath $coverPath -DateJJMMAAAA $jj -Collecteur ([string]$seg.Collecteur) `
+                                -Vehicule $vehiculeNumeroParc -VehiculeImmatriculation $vehiculeImmat -TourneeIncomplete:$inc -MetierMemoLines $metierMemos) {
                                 [void]$frag.Add($coverPath)
                                 $coverCreated = $true
                             }
