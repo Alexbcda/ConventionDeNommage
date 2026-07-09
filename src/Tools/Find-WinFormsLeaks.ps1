@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Scanner statique : usages WinForms / Drawing suspects dans les scripts .ps1.
 .DESCRIPTION

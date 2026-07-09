@@ -1,0 +1,297 @@
+{
+  "version": "1.0.19-complete",
+  "startedAt": "2026-07-01T23:40:45.5941556+02:00",
+  "finishedAt": "2026-07-01T23:43:00.1499838+02:00",
+  "durationSec": 135,
+  "buildOrder": [
+    "Core",
+    "Database",
+    "Common",
+    "Services",
+    "Agents",
+    "Vehicules",
+    "Convention",
+    "Planning",
+    "Outils",
+    "GUI",
+    "Main"
+  ],
+  "failed": [],
+  "modules": [
+    {
+      "name": "Core",
+      "built": true,
+      "tested": true,
+      "durationSec": 0,
+      "error": "",
+      "sources": [
+        "src/Core",
+        "src/Bootstrap.ps1"
+      ],
+      "dependsOn": null
+    },
+    {
+      "name": "Database",
+      "built": true,
+      "tested": true,
+      "durationSec": 0,
+      "error": "",
+      "sources": [
+        "src/Database"
+      ],
+      "dependsOn": "Core"
+    },
+    {
+      "name": "Common",
+      "built": true,
+      "tested": true,
+      "durationSec": 0,
+      "error": "",
+      "sources": [
+        "src/Common",
+        "src/Diagnostics",
+        "src/SharePoint"
+      ],
+      "dependsOn": "Core"
+    },
+    {
+      "name": "Services",
+      "built": true,
+      "tested": true,
+      "durationSec": 0,
+      "error": "",
+      "sources": [
+        "src/Services"
+      ],
+      "dependsOn": [
+        "Database",
+        "Common"
+      ]
+    },
+    {
+      "name": "Agents",
+      "built": true,
+      "tested": true,
+      "durationSec": 0,
+      "error": "",
+      "sources": [
+        "src/ODM/Agents"
+      ],
+      "dependsOn": [
+        "Services",
+        "Common"
+      ]
+    },
+    {
+      "name": "Vehicules",
+      "built": true,
+      "tested": true,
+      "durationSec": 0,
+      "error": "",
+      "sources": [
+        "src/ODM/Vehicules"
+      ],
+      "dependsOn": [
+        "Services",
+        "Common"
+      ]
+    },
+    {
+      "name": "Convention",
+      "built": true,
+      "tested": true,
+      "durationSec": 3,
+      "error": "",
+      "sources": [
+        "src/ODM/ConventionNommage"
+      ],
+      "dependsOn": [
+        "Core",
+        "Common",
+        "Services"
+      ]
+    },
+    {
+      "name": "Planning",
+      "built": true,
+      "tested": true,
+      "durationSec": 2,
+      "error": "",
+      "sources": [
+        "src/ODM/PdfPlanningOptimizer"
+      ],
+      "dependsOn": [
+        "Core",
+        "Common",
+        "Database"
+      ]
+    },
+    {
+      "name": "Outils",
+      "built": true,
+      "tested": true,
+      "durationSec": 0,
+      "error": "",
+      "sources": [
+        "src/ODM/Outils"
+      ],
+      "dependsOn": [
+        "Core",
+        "Common",
+        "Database"
+      ]
+    },
+    {
+      "name": "GUI",
+      "built": true,
+      "tested": true,
+      "durationSec": 0,
+      "error": "",
+      "sources": [
+        "src/GUI.ps1"
+      ],
+      "dependsOn": [
+        "Agents",
+        "Vehicules",
+        "Convention",
+        "Planning",
+        "Outils",
+        "Common",
+        "Services",
+        "Database",
+        "Core"
+      ]
+    },
+    {
+      "name": "Main",
+      "built": true,
+      "tested": [
+        {
+          "pageHeaderEntry": null,
+          "pageFooterEntry": null,
+          "autosizeInfo": {
+            "objectCount": 0,
+            "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "a27f094f0eec4d64845801a4c06a32ae"
+          },
+          "shapeInfo": {
+            "hideHeader": false,
+            "repeatHeader": false,
+            "tableColumnInfoList": [
+              "Microsoft.PowerShell.Commands.Internal.Format.TableColumnInfo",
+              "Microsoft.PowerShell.Commands.Internal.Format.TableColumnInfo",
+              "Microsoft.PowerShell.Commands.Internal.Format.TableColumnInfo"
+            ],
+            "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "e3b7a39c089845d388b2e84c5d38f5dd"
+          },
+          "groupingEntry": null,
+          "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "033ecb2bc07a4d43b5ef94ed5a35d280"
+        },
+        {
+          "shapeInfo": null,
+          "groupingEntry": null,
+          "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "9e210fe47d09416682b841769c78b8a3"
+        },
+        {
+          "formatEntryInfo": {
+            "formatPropertyFieldList": [
+              "Microsoft.PowerShell.Commands.Internal.Format.FormatPropertyField",
+              "Microsoft.PowerShell.Commands.Internal.Format.FormatPropertyField",
+              "Microsoft.PowerShell.Commands.Internal.Format.FormatPropertyField"
+            ],
+            "multiLine": false,
+            "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "0e59526e2dd441aa91e7fc952caf4a36"
+          },
+          "outOfBand": false,
+          "writeStream": 0,
+          "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "27c87ef9bbda4f709f6b4002fa4af63c"
+        },
+        {
+          "formatEntryInfo": {
+            "formatPropertyFieldList": [
+              "Microsoft.PowerShell.Commands.Internal.Format.FormatPropertyField",
+              "Microsoft.PowerShell.Commands.Internal.Format.FormatPropertyField",
+              "Microsoft.PowerShell.Commands.Internal.Format.FormatPropertyField"
+            ],
+            "multiLine": false,
+            "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "0e59526e2dd441aa91e7fc952caf4a36"
+          },
+          "outOfBand": false,
+          "writeStream": 0,
+          "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "27c87ef9bbda4f709f6b4002fa4af63c"
+        },
+        {
+          "formatEntryInfo": {
+            "formatPropertyFieldList": [
+              "Microsoft.PowerShell.Commands.Internal.Format.FormatPropertyField",
+              "Microsoft.PowerShell.Commands.Internal.Format.FormatPropertyField",
+              "Microsoft.PowerShell.Commands.Internal.Format.FormatPropertyField"
+            ],
+            "multiLine": false,
+            "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "0e59526e2dd441aa91e7fc952caf4a36"
+          },
+          "outOfBand": false,
+          "writeStream": 0,
+          "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "27c87ef9bbda4f709f6b4002fa4af63c"
+        },
+        {
+          "formatEntryInfo": {
+            "formatPropertyFieldList": [
+              "Microsoft.PowerShell.Commands.Internal.Format.FormatPropertyField",
+              "Microsoft.PowerShell.Commands.Internal.Format.FormatPropertyField",
+              "Microsoft.PowerShell.Commands.Internal.Format.FormatPropertyField"
+            ],
+            "multiLine": false,
+            "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "0e59526e2dd441aa91e7fc952caf4a36"
+          },
+          "outOfBand": false,
+          "writeStream": 0,
+          "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "27c87ef9bbda4f709f6b4002fa4af63c"
+        },
+        {
+          "formatEntryInfo": {
+            "formatPropertyFieldList": [
+              "Microsoft.PowerShell.Commands.Internal.Format.FormatPropertyField",
+              "Microsoft.PowerShell.Commands.Internal.Format.FormatPropertyField",
+              "Microsoft.PowerShell.Commands.Internal.Format.FormatPropertyField"
+            ],
+            "multiLine": false,
+            "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "0e59526e2dd441aa91e7fc952caf4a36"
+          },
+          "outOfBand": false,
+          "writeStream": 0,
+          "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "27c87ef9bbda4f709f6b4002fa4af63c"
+        },
+        {
+          "groupingEntry": null,
+          "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "4ec4f0187cb04f4cb6973460dfe252df"
+        },
+        {
+          "groupingEntry": null,
+          "ClassId2e4f51ef21dd47e99d3c952918aff9cd": "cf522b78d86c486691226b40aa69e95c"
+        },
+        true
+      ],
+      "durationSec": 127,
+      "error": "",
+      "sources": [
+        "src/Main.ps1",
+        "src/LaunchAssistant.ps1",
+        "src/Config.ps1"
+      ],
+      "dependsOn": [
+        "Core",
+        "Database",
+        "Common",
+        "Services",
+        "Agents",
+        "Vehicules",
+        "Convention",
+        "Planning",
+        "Outils",
+        "GUI"
+      ]
+    }
+  ],
+  "logFile": "C:\\Users\\alexa\\Documents\\ConventionDeNommage\\build\\build_20260701_234045.log",
+  "stagingRoot": "C:\\Users\\alexa\\Documents\\ConventionDeNommage\\build\\staging"
+}

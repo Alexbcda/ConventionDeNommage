@@ -1,9 +1,12 @@
 # Logs
 Logs/
+Logs/*.log
+Logs/*.old
 *.log
 
 # Base de données (contenu, pas structure)
 Data/gestion.db
+Data/quality-monitor-history.jsonl
 Data/odm_config.json
 
 # DLLs
@@ -13,7 +16,18 @@ lib/*.dll
 # Fichiers temporaires
 *.tmp
 *.bak
+*.bak_*
 Test-*.ps1
+
+# Compilation
+output/
+*.exe
+*.exe.config
+!lib/**/*.exe
+!runtime/**/*.exe
+
+# Backups mise a jour
+Backup_*/
 
 # Dossiers système
 .DS_Store
@@ -29,3 +43,12 @@ Projet_Export.txt
 structure.txt
 ordre_de_missions.txt
 planning_*.txt
+package/runtime/Graph/
+package_graph_test2/
+package/runtime/Graph/
+package_graph_test2/
+package/runtime/Graph/
+package_graph_test2/
+package/runtime/Graph/
+package_graph_test2/
+package_graph_test2/

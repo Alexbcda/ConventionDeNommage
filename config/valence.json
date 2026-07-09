@@ -1,0 +1,13 @@
+{
+  "id": "valence",
+  "name": "Valence",
+  "sharePointApiUrl": "https://graph.microsoft.com/v1.0/sites/naevaelisealpes.sharepoint.com:/sites/EliseAlpesValence/drive/root:/Planning%20VALENCE%202026.xlsm:/content",
+  "planningFileName": "Planning VALENCE 2026.xlsm",
+  "displayName": "Elise Alpes - Valence",
+  "timezone": "Europe/Paris",
+  "features": {
+    "autoUpdate": true,
+    "certificateGeneration": true,
+    "ceaExport": true
+  }
+}

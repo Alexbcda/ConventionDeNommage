@@ -1,0 +1,13 @@
+{
+  "id": "bourg-en-bresse",
+  "name": "Bourg-en-Bresse",
+  "sharePointApiUrl": "https://graph.microsoft.com/v1.0/sites/naevaelisealpes.sharepoint.com:/sites/EliseAlpesBourg/drive/root:/Planning%20BOURG%202026.xlsm:/content",
+  "planningFileName": "Planning BOURG 2026.xlsm",
+  "displayName": "Elise Alpes - Bourg-en-Bresse",
+  "timezone": "Europe/Paris",
+  "features": {
+    "autoUpdate": true,
+    "certificateGeneration": true,
+    "ceaExport": true
+  }
+}
