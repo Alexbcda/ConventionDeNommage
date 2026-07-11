@@ -1,0 +1,13 @@
+{
+  "id": "argonay",
+  "name": "Argonay",
+  "sharePointApiUrl": "https://graph.microsoft.com/v1.0/sites/naevaelisealpes.sharepoint.com:/sites/EliseAlpesArgonay/drive/root:/Planning%20ARGONAY%202026.xlsm:/content",
+  "planningFileName": "Planning ARGONAY 2026.xlsm",
+  "displayName": "Elise Alpes - Argonay",
+  "timezone": "Europe/Paris",
+  "features": {
+    "autoUpdate": true,
+    "certificateGeneration": true,
+    "ceaExport": true
+  }
+}

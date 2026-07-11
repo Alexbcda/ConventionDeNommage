@@ -1,0 +1,25 @@
+{
+  "templates": [
+    {
+      "id": "certificat",
+      "name": "CERTIFICAT (N° / UTF-8)",
+      "format": "Certificat de Destruction-{text}-du {date}",
+      "dateFormat": "dd.MM.yyyy",
+      "enabled": true
+    },
+    {
+      "id": "planner",
+      "name": "PLANNER",
+      "format": "{date}-{text}",
+      "dateFormat": "yyyyMMdd",
+      "enabled": true
+    },
+    {
+      "id": "france-travail",
+      "name": "FRANCE TRAVAIL",
+      "format": "{date}-{text}",
+      "dateFormat": "yyyyMMdd",
+      "enabled": true
+    }
+  ]
+}

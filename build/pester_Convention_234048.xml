@@ -1,0 +1,76 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="31" errors="0" failures="0" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0" date="2026-07-01" time="23:40:50">
+  <environment platform="Microsoft Windows 11 Professionnel|C:\WINDOWS|\Device\Harddisk0\Partition4" clr-version="" machine-name="ALEX" cwd="C:\Users\alexa\Documents\ConventionDeNommage" user="alexa" user-domain="ALEX" os-version="10.0.26200" nunit-version="2.5.8.0" />
+  <culture-info current-culture="fr-FR" current-uiculture="fr-FR" />
+  <test-suite type="Powershell" name="Pester" executed="True" result="Success" success="True" time="1.6356" asserts="0">
+    <results>
+      <test-suite type="TestFixture" name="Chemins longs (Windows)" executed="True" result="Success" success="True" time="0.0846" asserts="0" description="Chemins longs (Windows)">
+        <results>
+          <test-case description="renomme via logique longue si le chemin complet dépasse 260 caractères" name="Chemins longs (Windows).renomme via logique longue si le chemin complet dépasse 260 caractères" time="0.0846" asserts="0" success="True" result="Success" executed="True" />
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="Classification IOException (Win32)" executed="True" result="Success" success="True" time="0.0328" asserts="0" description="Classification IOException (Win32)">
+        <results>
+          <test-case description="Test-IsFileCollisionException est vrai pour ERROR_FILE_EXISTS (80)" name="Classification IOException (Win32).Test-IsFileCollisionException est vrai pour ERROR_FILE_EXISTS (80)" time="0.0288" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="Test-IsFatalSystemIOException est vrai pour ERROR_DISK_FULL (112)" name="Classification IOException (Win32).Test-IsFatalSystemIOException est vrai pour ERROR_DISK_FULL (112)" time="0.0039" asserts="0" success="True" result="Success" executed="True" />
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="Convert-ToUiText (UI normalization)" executed="True" result="Success" success="True" time="0.1149" asserts="0" description="Convert-ToUiText (UI normalization)">
+        <results>
+          <test-case description="repairs degree and e-acute mojibake fragments" name="Convert-ToUiText (UI normalization).repairs degree and e-acute mojibake fragments" time="0.1149" asserts="0" success="True" result="Success" executed="True" />
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="Get-CNValidatedTemplates" executed="True" result="Success" success="True" time="0.2104" asserts="0" description="Get-CNValidatedTemplates">
+        <results>
+          <test-case description="rejette un format avec accolades non autorisées" name="Get-CNValidatedTemplates.rejette un format avec accolades non autorisées" time="0.1317" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="rejette un dateFormat invalide (HHmm)" name="Get-CNValidatedTemplates.rejette un dateFormat invalide (HHmm)" time="0.04" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="accepte un JSON UTF-8 mal décodé (mojibake) après réparation" name="Get-CNValidatedTemplates.accepte un JSON UTF-8 mal décodé (mojibake) après réparation" time="0.0387" asserts="0" success="True" result="Success" executed="True" />
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="Invoke-CNRenameAction (nommage)" executed="True" result="Success" success="True" time="0.2068" asserts="0" description="Invoke-CNRenameAction (nommage)">
+        <results>
+          <test-case description="produit un nom CERTIFICAT conforme au template" name="Invoke-CNRenameAction (nommage).produit un nom CERTIFICAT conforme au template" time="0.1049" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="produit un nom PLANNER yyyyMMdd-texte" name="Invoke-CNRenameAction (nommage).produit un nom PLANNER yyyyMMdd-texte" time="0.0374" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="produit un nom FRANCE TRAVAIL identique au format PLANNER" name="Invoke-CNRenameAction (nommage).produit un nom FRANCE TRAVAIL identique au format PLANNER" time="0.025" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="déplace un fichier existant avec le même nom puis renomme la source" name="Invoke-CNRenameAction (nommage).déplace un fichier existant avec le même nom puis renomme la source" time="0.0394" asserts="0" success="True" result="Success" executed="True" />
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="Resolve-FileNameCollision" executed="True" result="Success" success="True" time="0.4" asserts="0" description="Resolve-FileNameCollision">
+        <results>
+          <test-case description="renomme fichier.pdf existant en fichier(1).pdf" name="Resolve-FileNameCollision.renomme fichier.pdf existant en fichier(1).pdf" time="0.0649" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="choisit fichier(2).pdf si fichier(1).pdf existe déjà" name="Resolve-FileNameCollision.choisit fichier(2).pdf si fichier(1).pdf existe déjà" time="0.0326" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="gère les noms avec espaces" name="Resolve-FileNameCollision.gère les noms avec espaces" time="0.0147" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="gère un nom de fichier Unicode" name="Resolve-FileNameCollision.gère un nom de fichier Unicode" time="0.0274" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="incrémente si beaucoup de fichiers (1) à (100) existent" name="Resolve-FileNameCollision.incrémente si beaucoup de fichiers (1) à (100) existent" time="0.2605" asserts="0" success="True" result="Success" executed="True" />
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="Sanitize-PointDeCollecte" executed="True" result="Success" success="True" time="0.4425" asserts="0" description="Sanitize-PointDeCollecte">
+        <results>
+          <test-case description="rejette une chaîne vide ou blanche" name="Sanitize-PointDeCollecte.rejette une chaîne vide ou blanche" time="0.2907" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="supprime les caractères interdits Windows" name="Sanitize-PointDeCollecte.supprime les caractères interdits Windows" time="0.0721" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="neutralise le path traversal .." name="Sanitize-PointDeCollecte.neutralise le path traversal .." time="0.0157" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="supprime les séquences type injection PowerShell" name="Sanitize-PointDeCollecte.supprime les séquences type injection PowerShell" time="0.0047" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="tronque à 100 caractères max" name="Sanitize-PointDeCollecte.tronque à 100 caractères max" time="0.0131" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="normalise les accents (NFD)" name="Sanitize-PointDeCollecte.normalise les accents (NFD)" time="0.0059" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="évite les noms réservés Windows (CON) par préfixe sûr" name="Sanitize-PointDeCollecte.évite les noms réservés Windows (CON) par préfixe sûr" time="0.004" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="rejette une entrée brute trop longue (DoS)" name="Sanitize-PointDeCollecte.rejette une entrée brute trop longue (DoS)" time="0.0046" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="supprime les caractères Unicode invisibles (Cf)" name="Sanitize-PointDeCollecte.supprime les caractères Unicode invisibles (Cf)" time="0.0047" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="est idempotent" name="Sanitize-PointDeCollecte.est idempotent" time="0.0231" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="supprime les points en début et fin" name="Sanitize-PointDeCollecte.supprime les points en début et fin" time="0.004" asserts="0" success="True" result="Success" executed="True" />
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="Test-CNDateFormat" executed="True" result="Success" success="True" time="0.0353" asserts="0" description="Test-CNDateFormat">
+        <results>
+          <test-case description="accepte yyyyMMdd et dd.MM.yyyy" name="Test-CNDateFormat.accepte yyyyMMdd et dd.MM.yyyy" time="0.0318" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="refuse HHmm et les motifs hors yyyy MM dd" name="Test-CNDateFormat.refuse HHmm et les motifs hors yyyy MM dd" time="0.0034" asserts="0" success="True" result="Success" executed="True" />
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="TextEncoding (Fix-Encoding, mojibake)" executed="True" result="Success" success="True" time="0.1084" asserts="0" description="TextEncoding (Fix-Encoding, mojibake)">
+        <results>
+          <test-case description="Fix-Encoding maps Latin-1 mojibake back to UTF-8 code points" name="TextEncoding (Fix-Encoding, mojibake).Fix-Encoding maps Latin-1 mojibake back to UTF-8 code points" time="0.0491" asserts="0" success="True" result="Success" executed="True" />
+          <test-case description="Test-TextLikelyUtf8Mojibake detects typical patterns" name="TextEncoding (Fix-Encoding, mojibake).Test-TextLikelyUtf8Mojibake detects typical patterns" time="0.0593" asserts="0" success="True" result="Success" executed="True" />
+        </results>
+      </test-suite>
+    </results>
+  </test-suite>
+</test-results>
