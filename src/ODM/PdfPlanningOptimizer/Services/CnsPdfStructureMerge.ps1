@@ -126,7 +126,7 @@ function Test-CnsPdfPathIsBilanCollecteFragment {
     param([AllowNull()][string]$Path)
     if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
     $leaf = [System.IO.Path]::GetFileName($Path)
-    return ($leaf -match '(?i)^bilan_seg_.*\.pdf$')
+    return ($leaf -match '(?i)^bilan_(seg|sb)_.*\.pdf$')
 }
 
 function Test-CnsPdfPathIsFtCollecteFragment {

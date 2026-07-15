@@ -837,6 +837,95 @@ Describe 'PdfPlanningOptimizer - tournee cover (prestations speciales ODM)' {
         $ps | Should Not Match 'findfont 12 scalefont'
     }
 
+    It 'Build-CnsTourneeHeaderCoverPostScriptBody : CenteredText SB remplace les memo prestations' {
+        $ps = Build-CnsTourneeHeaderCoverPostScriptBody -DateTitle 'Mercredi 15 juillet 2026' -Collecteur 'Jean DUPONT' `
+            -Vehicule '44' -VehiculeImmatriculation 'EF 456 RT' -MetierMemoLines @('Collecte DEEE - CLIENT') -CenteredText 'SB'
+        $ps | Should Match 'Mercredi 15 juillet 2026'
+        $ps | Should Match 'Camion 44'
+        $ps | Should Match 'EF 456 RT'
+        $ps | Should Match '595 exch sub 2 div 730 moveto'
+        $ps | Should Match '\(SB\) dup stringwidth'
+        $ps | Should Not Match 'Collecte DEEE'
+    }
+
+    It 'New-CnsPostScriptCenteredTextShowBlock : centre horizontalement' {
+        $block = New-CnsPostScriptCenteredTextShowBlock -Text 'SB' -FontName 'Helvetica' -FontSize 12 -Y 730 -PageWidth 595
+        $block | Should Match '595 exch sub 2 div 730 moveto'
+        $block | Should Match '\(SB\)'
+    }
+
+    It 'Add-CnsExcelSbTourneeCandidates : detecte collecteur + vehicule sans client (geometrie reelle)' {
+        $grid = New-Object object[] 20
+        for ($i = 0; $i -lt 20; $i++) {
+            $grid[$i] = @('', '', '')
+        }
+        # Col0 = meta gauche, Col1 = DATE — comme Excel : collecteur puis Camion, secteur optionnel en DATE
+        $grid[4] = @('Sens de la tournee', 'mercredi 15/07', '')
+        $grid[5] = @('Andre', 'St Egreve / Pays Voironnais / Grenoble', '')
+        $grid[6] = @('Camion 44', '', '')
+        $grid[7] = @('', '', '')
+        $grid[8] = @('', '', '')
+        $sheet = [pscustomobject]@{
+            Name     = 'Planning'
+            RowCount = 20
+            ColCount = 3
+            Grid     = $grid
+        }
+        $sbList = New-Object System.Collections.Generic.List[object]
+        Add-CnsExcelSbTourneeCandidates -Sheet $sheet -StartZero 0 -MaxZ 19 `
+            -ColZeroDate 1 -ColLeftMeta 0 -SheetColCount 3 `
+            -FallbackVisitDate (Get-Date '2026-07-15') -ExistingTourStarts @() -SbStarts $sbList
+        $sbList.Count | Should Be 1
+        $sbList[0].IsSbTour | Should Be $true
+        $sbList[0].Collecteur | Should Be 'Andre'
+        $sbList[0].Vehicule | Should Be 'Camion 44'
+        $sbList[0].DisplayDateJM | Should Be '15/07/2026'
+    }
+
+    It 'Add-CnsExcelSbTourneeCandidates : ignore en-tete suivi d un client' {
+        $grid = New-Object object[] 20
+        for ($i = 0; $i -lt 20; $i++) {
+            $grid[$i] = @('', '', '')
+        }
+        $grid[5] = @('Raphael', 'Meylan 1/2', '')
+        $grid[6] = @('Camion 11', '', '')
+        $grid[7] = @('', '(9804) CLIENT TEST', '')
+        $sheet = [pscustomobject]@{
+            Name     = 'Planning'
+            RowCount = 20
+            ColCount = 3
+            Grid     = $grid
+        }
+        $sbList = New-Object System.Collections.Generic.List[object]
+        Add-CnsExcelSbTourneeCandidates -Sheet $sheet -StartZero 0 -MaxZ 19 `
+            -ColZeroDate 1 -ColLeftMeta 0 -SheetColCount 3 `
+            -FallbackVisitDate (Get-Date '2026-07-15') -ExistingTourStarts @() -SbStarts $sbList
+        $sbList.Count | Should Be 0
+    }
+
+    It 'Add-CnsExcelSbTourneeCandidates : fixture 1507sansodm detecte Andre SB' {
+        $excelLoaderPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Extractors\ExcelLoader.ps1' | Resolve-Path
+        . ([string]$excelLoaderPath)
+        $fixture = Join-Path $PSScriptRoot 'Fixtures\PdfPlanningOptimizer\1507sansodm.xlsx'
+        if (-not (Test-Path -LiteralPath $fixture)) {
+            Set-ItResult -Inconclusive -Because 'Fixture 1507sansodm.xlsx absente'
+            return
+        }
+        $excelData = Import-PlanningExcel -ExcelPath $fixture
+        $sheet = @($excelData.Sheets)[0]
+        $colZeroDate = 47   # AV (mercredi 15/07)
+        $colLeftMeta = 46   # AU
+        $sbList = New-Object System.Collections.Generic.List[object]
+        Add-CnsExcelSbTourneeCandidates -Sheet $sheet -StartZero 0 -MaxZ ([int]$sheet.RowCount - 1) `
+            -ColZeroDate $colZeroDate -ColLeftMeta $colLeftMeta -SheetColCount ([int]$sheet.ColCount) `
+            -FallbackVisitDate (Get-Date '2026-07-15') -ExistingTourStarts @() -SbStarts $sbList
+        $andre = @($sbList | Where-Object { $_.Collecteur -match '(?i)andr' })
+        $andre.Count | Should BeGreaterThan 0
+        $andre[0].IsSbTour | Should Be $true
+        $andre[0].Vehicule | Should Match '(?i)camion\s*44'
+        ($sbList | Where-Object { $_.Collecteur -match '(?i)rapha' }).Count | Should Be 0
+    }
+
     It 'Get-CnsPdfPageMetierAnalysis : destruction cert + memo client' {
         $wo = [pscustomobject]@{
             ClientName = 'EUROFINS LABAZUR'
@@ -1132,8 +1221,9 @@ Describe 'PdfPlanningOptimizer - fusion PDF certificat (structure-preserving)' {
         (Test-CnsPdfPathIsDestructionCertificateFragment -Path 'C:\tmp\main_slice_001.pdf') | Should Be $false
     }
 
-    It 'Test-CnsPdfPathIsBilanCollecteFragment : detecte bilan_seg_*.pdf' {
+    It 'Test-CnsPdfPathIsBilanCollecteFragment : detecte bilan_seg_*.pdf et bilan_sb_*.pdf' {
         (Test-CnsPdfPathIsBilanCollecteFragment -Path 'C:\tmp\bilan_seg_001.pdf') | Should Be $true
+        (Test-CnsPdfPathIsBilanCollecteFragment -Path 'C:\tmp\bilan_sb_001.pdf') | Should Be $true
         (Test-CnsPdfPathIsBilanCollecteFragment -Path 'C:\tmp\cert_dest_001.pdf') | Should Be $false
     }
 

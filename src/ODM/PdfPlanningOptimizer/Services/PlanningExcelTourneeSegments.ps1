@@ -1,7 +1,10 @@
 ﻿# Segments tournée (pages de garde) :
 # - Colonne DATE : clients (regex identique Extract-ExcelOrder). Début de tournée = premier client après rupture (>=2 lignes DATE vides).
-# - Collecteur / véhicule : colonne à gauche de DATE, lignes 1 et 2 au-dessus du premier client de la tournée.
+# - Collecteur / véhicule : colonne à gauche de DATE, lignes 1 et 2 au-dessus du premier client de la tournée
+#   (collecteur = premier client - 2, véhicule = premier client - 1).
 # - Date affichée : première date reconnue au-dessus du bloc si présente, sinon FallbackVisitDate (pas de découpe par date seule).
+# - Tournées SB (sans bénéficiaire) : même géométrie d'en-tête (collecteur puis véhicule à gauche), sans ligne client
+#   ensuite jusqu'à rupture (>=2 DATE vides). La cellule DATE sous le collecteur peut contenir un secteur (texte non-client).
 
 function NormalizeText {
     <#
@@ -117,6 +120,150 @@ function Convert-CnsTourSegJJMMAAAAToDatetime {
     return $t
 }
 
+function Test-CnsExcelTourneeMetaIsSentinel {
+    param([AllowNull()][AllowEmptyString()][string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $true }
+    $plain = ([string]$Text).Trim().ToUpperInvariant()
+    foreach ($s in @('INCONNU', 'NON SPECIFIE', 'NON SPECIFIEE', '-', 'N/A', 'NA', 'ND')) {
+        if ($plain -eq $s) { return $true }
+    }
+    return $false
+}
+
+function Test-CnsExcelTourneeMetaLooksLikeVehicule {
+    <#
+    .SYNOPSIS
+        True si le texte ressemble a une ligne vehicule/parc (ex. "Camion 44"), pas a un collecteur.
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+    $t = (NormalizeText -TextIn $Text).Trim()
+    if ($t -match '(?i)^\s*camion\b') { return $true }
+    if ($t -match '(?i)^\s*v[eé]hicule\b') { return $true }
+    if ($t -match '(?i)^\s*parc\b') { return $true }
+    return $false
+}
+
+function Get-CnsExcelSbTourneeDisplayDate {
+    <#
+    .SYNOPSIS
+        Date affichee pour une tournee SB : premiere jj/mm/aaaa vers le haut en colonne DATE, sinon FallbackVisitDate.
+    #>
+    param(
+        $Sheet,
+        [int]$CollecteurRowZero,
+        [int]$StartZero,
+        [int]$ColZeroDate,
+        [int]$SheetColCount,
+        [datetime]$FallbackVisitDate
+    )
+    [string]$dateDisp = ($FallbackVisitDate.Date.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture))
+    [datetime]$tourDate = $FallbackVisitDate.Date
+    for ($u = $CollecteurRowZero; $u -ge $StartZero; $u--) {
+        $up = Get-PlanningGridCellRaw -Sheet $Sheet -RowZeroBased $u -ColZeroBased $ColZeroDate -SheetColCount $SheetColCount
+        $dj = Get-PlanningExcelDateCellJJMMAAAAOrNull -CellRaw $up
+        if ($null -ne $dj) {
+            $dateDisp = [string]$dj
+            $tourDate = Convert-CnsTourSegJJMMAAAAToDatetime -DisplayJM $dateDisp -FallbackVisit $FallbackVisitDate
+            break
+        }
+    }
+    return [pscustomobject]@{
+        DisplayDateJM = [string]$dateDisp
+        TourDate      = $tourDate
+    }
+}
+
+function Add-CnsExcelSbTourneeCandidates {
+    <#
+    .SYNOPSIS
+        Detecte les en-tetes de tournee sans client : collecteur (L) + vehicule (L+1) en colonne gauche,
+        meme geometrie que les tournees avec clients, sans ligne (id) Nom ensuite.
+    #>
+    param(
+        $Sheet,
+        [int]$StartZero,
+        [int]$MaxZ,
+        [int]$ColZeroDate,
+        [int]$ColLeftMeta,
+        [int]$SheetColCount,
+        [datetime]$FallbackVisitDate,
+        [AllowEmptyCollection()][object[]]$ExistingTourStarts = @(),
+        [System.Collections.Generic.List[object]]$SbStarts
+    )
+    if ($null -eq $SbStarts) { return }
+
+    $claimed = [System.Collections.Generic.HashSet[int]]::new()
+    foreach ($ts in @($ExistingTourStarts)) {
+        if ($null -eq $ts) { continue }
+        try {
+            [int]$lo = [int]$ts.FirstClientRowOneBased - 1
+            [int]$hi = [int]$ts.LastClientRowOneBased - 1
+            for ($z = [Math]::Max(0, $lo - 2); $z -le $hi; $z++) {
+                [void]$claimed.Add($z)
+            }
+        }
+        catch { }
+    }
+
+    for ($r = [int]$StartZero; $r -le ([int]$MaxZ - 1); $r++) {
+        if ($claimed.Contains($r) -or $claimed.Contains($r + 1)) { continue }
+
+        $rawCol = [string](Get-PlanningGridCellRaw -Sheet $Sheet -RowZeroBased $r -ColZeroBased $ColLeftMeta -SheetColCount $SheetColCount)
+        $rawVeh = [string](Get-PlanningGridCellRaw -Sheet $Sheet -RowZeroBased ($r + 1) -ColZeroBased $ColLeftMeta -SheetColCount $SheetColCount)
+        $collecteurNorm = (NormalizeText -TextIn $rawCol).Trim()
+        $vehiculeNorm = (NormalizeText -TextIn $rawVeh).Trim()
+        if (Test-CnsExcelTourneeMetaIsSentinel -Text $collecteurNorm) { continue }
+        if (Test-CnsExcelTourneeMetaIsSentinel -Text $vehiculeNorm) { continue }
+        # Collecteur puis vehicule (aligne Add-CnsExcelTourneeFromClientWindow) ; refuse les en-tetes "Sens de la tournee".
+        if (Test-CnsExcelTourneeMetaLooksLikeVehicule -Text $collecteurNorm) { continue }
+        if (-not (Test-CnsExcelTourneeMetaLooksLikeVehicule -Text $vehiculeNorm)) { continue }
+
+        $dateCell = Get-PlanningGridCellRaw -Sheet $Sheet -RowZeroBased $r -ColZeroBased $ColZeroDate -SheetColCount $SheetColCount
+        $dateBelow1 = Get-PlanningGridCellRaw -Sheet $Sheet -RowZeroBased ($r + 1) -ColZeroBased $ColZeroDate -SheetColCount $SheetColCount
+        if (Test-PlanningExcelDateColumnHasClientLine -CellRaw $dateCell) { continue }
+        if (Test-PlanningExcelDateColumnHasClientLine -CellRaw $dateBelow1) { continue }
+
+        # Pas de client jusqu'a rupture (>=2 DATE vides) ou fin de feuille (scan depuis la ligne apres le vehicule).
+        [bool]$hasClientAfter = $false
+        [int]$emptyStreak = 0
+        for ($u = $r + 2; $u -le [int]$MaxZ; $u++) {
+            $cellU = Get-PlanningGridCellRaw -Sheet $Sheet -RowZeroBased $u -ColZeroBased $ColZeroDate -SheetColCount $SheetColCount
+            $trimU = (NormalizeText -TextIn $cellU).Trim()
+            if ([string]::IsNullOrWhiteSpace($trimU)) {
+                $emptyStreak++
+                if ($emptyStreak -ge 2) { break }
+                continue
+            }
+            $emptyStreak = 0
+            if (Test-PlanningExcelDateColumnHasClientLine -CellRaw $cellU) {
+                $hasClientAfter = $true
+                break
+            }
+        }
+        if ($hasClientAfter) { continue }
+
+        $dateInfo = Get-CnsExcelSbTourneeDisplayDate -Sheet $Sheet -CollecteurRowZero $r -StartZero $StartZero `
+            -ColZeroDate $ColZeroDate -SheetColCount $SheetColCount -FallbackVisitDate $FallbackVisitDate
+        $dateDisp = [string]$dateInfo.DisplayDateJM
+        $tourDate = $dateInfo.TourDate
+        Write-Host ("[SB] En-tete sans client detecte L{0}-L{1} Date={2} Collecteur={3} Vehicule={4}" -f ($r + 1), ($r + 2), $dateDisp, $collecteurNorm, $vehiculeNorm) -ForegroundColor DarkCyan
+        [void]$SbStarts.Add([pscustomobject]@{
+                SortRowOneBased        = [int]($r + 1)
+                FirstClientRowOneBased = [int]($r + 1)
+                LastClientRowOneBased  = [int]($r + 2)
+                DisplayDateJM          = [string]$dateDisp
+                TourDate               = $tourDate
+                Collecteur             = $collecteurNorm
+                Vehicule               = $vehiculeNorm
+                TourneeComplete        = $true
+                IsSbTour               = $true
+            })
+        [void]$claimed.Add($r)
+        [void]$claimed.Add($r + 1)
+    }
+}
+
 function Add-CnsExcelTourneeFromClientWindow {
     param(
         $Sheet,
@@ -164,6 +311,7 @@ function Add-CnsExcelTourneeFromClientWindow {
 
     Write-Host ("[EXCEL-PARSE] Tour client L{0}-L{1} DateAff={2} Collecteur={3} Vehicule={4}" -f ($fcZ + 1), ($lcZ + 1), $dateDisp, $collecteur, $vehicule) -ForegroundColor Cyan
     [void]$TourStarts.Add([pscustomobject]@{
+        SortRowOneBased        = [int]($fcZ + 1)
         FirstClientRowOneBased = [int]($fcZ + 1)
         LastClientRowOneBased  = [int]($lcZ + 1)
         DisplayDateJM          = [string]$dateDisp
@@ -171,6 +319,7 @@ function Add-CnsExcelTourneeFromClientWindow {
         Collecteur             = $collecteur
         Vehicule               = $vehicule
         TourneeComplete        = [bool]$structOk
+        IsSbTour               = $false
     })
 }
 
@@ -479,44 +628,67 @@ function Get-PlanningExcelTourneeCoverSegments {
             -FallbackVisitDate $FallbackVisitDate -TourStarts $tourStarts
     }
 
+    $sbStarts = [System.Collections.Generic.List[object]]::new()
+    Add-CnsExcelSbTourneeCandidates -Sheet $sheet -StartZero $startZero -MaxZ $maxZ `
+        -ColZeroDate $colZeroDate -ColLeftMeta $colLeftMeta -SheetColCount $sheetColCount `
+        -FallbackVisitDate $FallbackVisitDate -ExistingTourStarts @($tourStarts.ToArray()) -SbStarts $sbStarts
+
+    $mergedStarts = [System.Collections.Generic.List[object]]::new()
+    foreach ($ts in @($tourStarts)) { if ($null -ne $ts) { [void]$mergedStarts.Add($ts) } }
+    foreach ($sb in @($sbStarts)) { if ($null -ne $sb) { [void]$mergedStarts.Add($sb) } }
+    $orderedStarts = @($mergedStarts | Sort-Object {
+            try { [int]$_.SortRowOneBased } catch {
+                try { [int]$_.FirstClientRowOneBased } catch { 0 }
+            }
+        }, {
+            try { [int]$_.FirstClientRowOneBased } catch { 0 }
+        })
+
     $segments = New-Object System.Collections.Generic.List[object]
-    $cap = $tourStarts.Count
+    $cap = @($orderedStarts).Count
 
     for ($ti = 0; $ti -lt $cap; $ti++) {
-        $ts = $tourStarts[$ti]
+        $ts = $orderedStarts[$ti]
+        [bool]$isSb = $false
+        try { $isSb = [bool]$ts.IsSbTour } catch { $isSb = $false }
         [int]$lo1 = [int]$ts.FirstClientRowOneBased
         [int]$hi1 = [int]$ts.LastClientRowOneBased
 
         $orderIdx = [System.Collections.Generic.HashSet[int]]::new()
-        foreach ($ex in @($ExcelOrder)) {
-            if ($null -eq $ex) { continue }
-            try { [int]$oi = [int]$ex.OrderIndex } catch { continue }
-            try { [int]$er = [int]$ex.ExcelRow } catch { continue }
-            if ($er -ge $lo1 -and $er -le $hi1) {
-                [void]$orderIdx.Add($oi)
-            }
-        }
-
-        $orderList = @($orderIdx | Sort-Object)
-        if ($orderList.Count -eq 0 -and @($ExcelOrder).Count -gt 0) {
+        if (-not $isSb) {
             foreach ($ex in @($ExcelOrder)) {
                 if ($null -eq $ex) { continue }
-                try {
-                    [int]$er = [int]$ex.ExcelRow
-                    if ($er -ge $lo1 -and $er -le $hi1) {
-                        [void]$orderIdx.Add([int]$ex.OrderIndex)
-                    }
+                try { [int]$oi = [int]$ex.OrderIndex } catch { continue }
+                try { [int]$er = [int]$ex.ExcelRow } catch { continue }
+                if ($er -ge $lo1 -and $er -le $hi1) {
+                    [void]$orderIdx.Add($oi)
                 }
-                catch { }
             }
+
             $orderList = @($orderIdx | Sort-Object)
+            if ($orderList.Count -eq 0 -and @($ExcelOrder).Count -gt 0) {
+                foreach ($ex in @($ExcelOrder)) {
+                    if ($null -eq $ex) { continue }
+                    try {
+                        [int]$er = [int]$ex.ExcelRow
+                        if ($er -ge $lo1 -and $er -le $hi1) {
+                            [void]$orderIdx.Add([int]$ex.OrderIndex)
+                        }
+                    }
+                    catch { }
+                }
+                $orderList = @($orderIdx | Sort-Object)
+            }
+            if ($orderList.Count -eq 0 -and ($cap -eq 1) -and @($ExcelOrder).Count -gt 0) {
+                foreach ($ex in @($ExcelOrder)) {
+                    if ($null -eq $ex) { continue }
+                    try { [void]$orderIdx.Add([int]$ex.OrderIndex) } catch { }
+                }
+                $orderList = @($orderIdx | Sort-Object)
+            }
         }
-        if ($orderList.Count -eq 0 -and $cap -eq 1 -and @($ExcelOrder).Count -gt 0) {
-            foreach ($ex in @($ExcelOrder)) {
-                if ($null -eq $ex) { continue }
-                try { [void]$orderIdx.Add([int]$ex.OrderIndex) } catch { }
-            }
-            $orderList = @($orderIdx | Sort-Object)
+        else {
+            $orderList = @()
         }
 
         [string]$collecteurSeg = [string]$ts.Collecteur
@@ -524,7 +696,7 @@ function Get-PlanningExcelTourneeCoverSegments {
 
         $specialAgg = [System.Collections.Generic.List[hashtable]]::new()
         $specialSeen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-        if ($null -ne $OrderToWorkOrder) {
+        if (-not $isSb -and $null -ne $OrderToWorkOrder) {
             foreach ($oi in $orderList) {
                 try { [int]$oiK = [int]$oi } catch { continue }
                 $woEnt = $OrderToWorkOrder[$oiK]
@@ -536,7 +708,12 @@ function Get-PlanningExcelTourneeCoverSegments {
             }
         }
 
-        Write-Host ("[TOURNEE-CREATE] Segment={0} Clients L{1}-L{2} Complete={3} OrderCount={4}" -f ($segments.Count + 1), $lo1, $hi1, $ts.TourneeComplete, $orderList.Count) -ForegroundColor Magenta
+        if ($isSb) {
+            Write-Host ("[TOURNEE-CREATE] Segment={0} SB (sans ODM) L{1} Complete={2} Collecteur={3} Vehicule={4}" -f ($segments.Count + 1), $lo1, $ts.TourneeComplete, $collecteurSeg, $vehiculeSeg) -ForegroundColor Magenta
+        }
+        else {
+            Write-Host ("[TOURNEE-CREATE] Segment={0} Clients L{1}-L{2} Complete={3} OrderCount={4}" -f ($segments.Count + 1), $lo1, $hi1, $ts.TourneeComplete, $orderList.Count) -ForegroundColor Magenta
+        }
 
         [void]$segments.Add([pscustomobject]@{
             SegmentIndex    = ($segments.Count + 1)
@@ -547,6 +724,8 @@ function Get-PlanningExcelTourneeCoverSegments {
             OrderIndices      = $orderList
             TourneeComplete   = [bool]$ts.TourneeComplete
             SpecialFlags      = @($specialAgg.ToArray())
+            IsSbTour          = [bool]$isSb
+            SortRowOneBased   = $(try { [int]$ts.SortRowOneBased } catch { $lo1 })
         })
     }
 
@@ -591,6 +770,8 @@ function Get-PlanningExcelTourneeCoverSegments {
             OrderIndices      = $allOrders
             TourneeComplete   = $false
             SpecialFlags      = @($specialFb.ToArray())
+            IsSbTour          = $false
+            SortRowOneBased   = 0
         })
     }
 
