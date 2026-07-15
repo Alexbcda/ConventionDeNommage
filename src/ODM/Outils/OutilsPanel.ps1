@@ -91,8 +91,15 @@ function Show-OutilsPanel {
     $grpSharePoint.Name = 'grpSharePointConfig'
     $grpSharePoint.Text = 'Configuration SharePoint'
     $grpSharePoint.Location = [System.Drawing.Point]::new(0, 60)
-    $grpSharePoint.Size = [System.Drawing.Size]::new(700, 100)
+    $grpSharePoint.Size = [System.Drawing.Size]::new(700, 150)
     $grpSharePoint.Font = $script:PoliceTitre3
+
+    $configManagerScript = Join-Path $PSScriptRoot '..\..\Core\ConfigManager.ps1'
+    if (Test-Path -LiteralPath $configManagerScript) {
+        if (-not (Get-Command Show-ConfigureCentreDialog -ErrorAction SilentlyContinue)) {
+            . $configManagerScript
+        }
+    }
 
     $lblSharePointInfo = [System.Windows.Forms.Label]::new()
     $lblSharePointInfo.Text = "Changer l'adresse SharePoint"
@@ -151,6 +158,50 @@ function Show-OutilsPanel {
         }
     })
     $grpSharePoint.Controls.Add($btnChangeUrl)
+
+    $btnConfigureCentre = [System.Windows.Forms.Button]::new()
+    $btnConfigureCentre.Name = 'btnConfigureCentre'
+    $btnConfigureCentre.Text = 'Configurer le centre'
+    $btnConfigureCentre.Size = [System.Drawing.Size]::new(260, 40)
+    $btnConfigureCentre.Location = [System.Drawing.Point]::new(290, 55)
+    $btnConfigureCentre.BackColor = $script:CouleurOrange
+    $btnConfigureCentre.ForeColor = $script:CouleurBlanc
+    $btnConfigureCentre.FlatStyle = 'Flat'
+    $btnConfigureCentre.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnConfigureCentre.Font = $script:PoliceBouton
+    $btnConfigureCentre.Add_Click({
+        try {
+            if (-not (Get-Command Show-ConfigureCentreDialog -ErrorAction SilentlyContinue)) {
+                throw 'ConfigManager non charge correctement'
+            }
+            $configured = Show-ConfigureCentreDialog
+            if ($configured) {
+                if (Get-Command Restart-Application -ErrorAction SilentlyContinue) {
+                    Restart-Application
+                }
+                else {
+                    [System.Windows.Forms.MessageBox]::Show(
+                        'Centre enregistre. Veuillez redemarrer l''application manuellement.',
+                        'Redemarrage requis',
+                        [System.Windows.Forms.MessageBoxButtons]::OK,
+                        [System.Windows.Forms.MessageBoxIcon]::Information
+                    ) | Out-Null
+                }
+            }
+        }
+        catch {
+            if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+                Write-Log '[Outils] Erreur configuration centre' 'ERROR' @{ message = $_.Exception.Message }
+            }
+            [System.Windows.Forms.MessageBox]::Show(
+                ("Erreur : {0}" -f $_.Exception.Message),
+                'Erreur',
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+        }
+    })
+    $grpSharePoint.Controls.Add($btnConfigureCentre)
     $panel.Controls.Add($grpSharePoint)
 
     $showSuperviseurOutils = $false
@@ -268,7 +319,7 @@ function Show-OutilsPanel {
         $panel.Controls.Add($grpSuperviseur)
     }
 
-    $grpVideoY = if ($showSuperviseurOutils) { 280 } else { 170 }
+    $grpVideoY = if ($showSuperviseurOutils) { 280 } else { 220 }
     $grpVideo = [System.Windows.Forms.GroupBox]::new()
     $grpVideo.Name = 'grpVideo'
     $grpVideo.Text = 'Video de demonstration'

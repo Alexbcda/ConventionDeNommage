@@ -148,7 +148,21 @@ if (Test-Path -LiteralPath $configManagerScript) {
     . $configManagerScript
     $script:ActiveCentre = Initialize-CentreFromAppConfig
     if ($script:ActiveCentre) {
-        Write-AppHost ("[MAIN] Centre actif : {0}" -f $script:ActiveCentre.name) -ForegroundColor Green
+        if ([string]$script:ActiveCentre.id -eq 'custom') {
+            Write-AppHost '[Centre] Centre non reconnu — verifiez config\centres.json ou reinstallez avec -Centre <nom>' -ForegroundColor Yellow
+            Write-AppHost '[Centre] Onglet Outils : bouton « Configurer le centre » pour corriger sans reinstallation' -ForegroundColor Yellow
+            if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+                Write-Log '[MAIN] Centre non reconnu au demarrage' 'WARN' @{
+                    sharePointUrl = $script:ActiveCentre.sharePointApiUrl
+                }
+            }
+        }
+        else {
+            Write-AppHost ("[MAIN] Centre actif : {0}" -f $script:ActiveCentre.name) -ForegroundColor Green
+        }
+    }
+    elseif (-not (Test-CentreAppConfigurationComplete)) {
+        Write-AppHost '[Centre] Configuration centre incomplete en BDD (CentreId/CentreName/SharePointApiUrl)' -ForegroundColor Yellow
     }
 }
 Write-AssistantStartupMark -Phase 'database_init'

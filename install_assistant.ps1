@@ -554,7 +554,7 @@ $centres = @($centresData.centres)
 
 if ([string]::IsNullOrWhiteSpace($Centre)) {
     if ($Quiet) {
-        throw 'Mode silencieux : parametre -Centre obligatoire (argonay, fontaine, bourg-en-bresse, valence)'
+        throw 'Mode silencieux : parametre -Centre obligatoire (fontaine, grenoble, valence, bourg-en-bresse, argonay)'
     }
     else {
         Write-Host ''
@@ -677,12 +677,17 @@ if ($Fresh) {
 Write-InstallStep ("Configuration du centre {0}..." -f $selectedCentre.name)
 $dbScript = Join-Path $InstallDir 'src\Database\Database.ps1'
 . $dbScript
+$configManagerScript = Join-Path $InstallDir 'src\Core\ConfigManager.ps1'
+if (-not (Test-Path -LiteralPath $configManagerScript)) {
+    throw "ConfigManager.ps1 introuvable : $configManagerScript"
+}
+. $configManagerScript
 $null = Initialize-Database
-Set-AppConfig -Key 'SharePointApiUrl' -Value ([string]$selectedCentre.sharePointApiUrl)
-Set-AppConfig -Key 'CentreId' -Value ([string]$selectedCentre.id)
-Set-AppConfig -Key 'CentreName' -Value ([string]$selectedCentre.name)
-if (-not [string]::IsNullOrWhiteSpace([string]$selectedCentre.planningFileName)) {
-    Set-AppConfig -Key 'PlanningFileName' -Value ([string]$selectedCentre.planningFileName)
+if (-not (Set-CurrentCentre -CentreId ([string]$selectedCentre.id))) {
+    throw ("Echec configuration centre {0} en base de donnees" -f $selectedCentre.name)
+}
+if (-not (Test-CentreAppConfigurationComplete)) {
+    throw 'Verification post-installation : CentreId, CentreName ou SharePointApiUrl manquant en BDD'
 }
 $versionFile = Join-Path $InstallDir 'version.txt'
 if (Test-Path -LiteralPath $versionFile) {

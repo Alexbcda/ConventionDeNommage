@@ -683,6 +683,87 @@ Describe 'PdfPlanningOptimizer - tournee cover (prestations speciales ODM)' {
         ($a.TrackDechetEntries[0].Detail) | Should Be 'Collecte DEEE'
     }
 
+    It 'Get-CnsPdfPageMetierAnalysis : cartouches encre conserve libelle track' {
+        $wo = [pscustomobject]@{
+            ClientName = 'APLIM CHAMBERY - N°24415'
+            Services   = @(@{ Type = 'Collecte cartouches encre'; ODM = '1234567-1' })
+        }
+        $a = Get-CnsPdfPageMetierAnalysis -PageEntity $null -WorkOrderEntity $wo
+        ($a.TrackDechetEntries[0].Detail) | Should Be 'Collecte cartouches encre'
+    }
+
+    It 'Get-CnsPdfPageMetierAnalysis : neons tubes conserve libelle track' {
+        $wo = [pscustomobject]@{
+            ClientName = 'CFP GRENOBLE'
+            Services   = @(@{ Type = 'Collecte Néons / tubes'; ODM = '1234567-1' })
+        }
+        $a = Get-CnsPdfPageMetierAnalysis -PageEntity $null -WorkOrderEntity $wo
+        ($a.TrackDechetEntries[0].Detail) | Should Be 'Collecte Néons / tubes'
+    }
+
+    It 'ConvertTo-CnsCoverClientDisplayLabel : supprime crochets et suffixe' {
+        ConvertTo-CnsCoverClientDisplayLabel -Name 'CFP GRENOBLE RHIN ET DANUBE [9804] - N°60214' |
+            Should Be 'CFP GRENOBLE RHIN ET DANUBE'
+    }
+
+    It 'Get-CnsPonctuellePrestationDisplayLabelFromServiceType : vrac neons -> Collecte DEEE' {
+        Get-CnsPonctuellePrestationDisplayLabelFromServiceType -Type 'Collecte Ponctuel de Vrac Neons en Alveoles' |
+            Should Be 'Collecte DEEE'
+    }
+
+    It 'Remove-CnsCoverPrestationVehiculeSuffix : retire suffixe immat des libelles' {
+        Remove-CnsCoverPrestationVehiculeSuffix -Detail 'Collecte DEEE (véhicule AB-123-CD)' |
+            Should Be 'Collecte DEEE'
+    }
+
+    It 'Format-CnsCoverGardePrestationMemoLine : ligne track sans suffixe vehicule' {
+        Format-CnsCoverGardePrestationMemoLine `
+            -Detail 'Collecte DEEE' `
+            -Client 'CFP GRENOBLE RHIN ET DANUBE [9804] - N°60214 (véhicule AB-123-CD)' |
+            Should Be 'Collecte DEEE - CFP GRENOBLE RHIN ET DANUBE'
+    }
+
+    It 'Get-CnsTourneeMetierMemoLinesForBlock : track dechet sans suffixe vehicule' {
+        $wo = [pscustomobject]@{
+            ClientName = 'CFP GRENOBLE RHIN ET DANUBE [9804] - N°60214'
+            Services   = @(@{ Type = 'Collecte cartouches encre'; ODM = '1234567-1' })
+            Pages      = @(1)
+        }
+        $pairs = @([pscustomobject]@{ FinalOrder = 1; RawPageNum = 1 })
+        $foToLine = @{ 1 = [pscustomobject]@{ FinalOrder = 1; Source = 'ExcelOrder'; ExcelSourceOrder = 1 } }
+        $memos = @(Get-CnsTourneeMetierMemoLinesForBlock -MainFrom1 1 -MainTo1 1 -SortedGsPairs $pairs -FinalOrderToLine $foToLine -WorkOrders @($wo) -PdfEntities @())
+        $memos.Count | Should BeGreaterThan 0
+        $memos[0] | Should Be 'Collecte cartouches encre - CFP GRENOBLE RHIN ET DANUBE'
+        ($memos -join '|') | Should Not Match 'véhicule'
+    }
+
+    It 'Get-CnsTourneeMetierMemoLinesForBlock : libelles track distincts et dedup meme prestation client' {
+        $client = 'CFP GRENOBLE RHIN ET DANUBE [9804] - N°60214'
+        $wo1 = [pscustomobject]@{
+            ClientName = $client
+            WorkOrder  = '1111111'
+            Services   = @(@{ Type = 'Collecte cartouches encre'; ODM = '1111111-1' })
+            Pages      = @(1)
+        }
+        $wo2 = [pscustomobject]@{
+            ClientName = $client
+            WorkOrder  = '2222222'
+            Services   = @(@{ Type = 'Collecte cartouches encre'; ODM = '2222222-1' })
+            Pages      = @(2)
+        }
+        $pairs = @(
+            [pscustomobject]@{ FinalOrder = 1; RawPageNum = 1 },
+            [pscustomobject]@{ FinalOrder = 2; RawPageNum = 2 }
+        )
+        $foToLine = @{
+            1 = [pscustomobject]@{ FinalOrder = 1; Source = 'ExcelOrder'; ExcelSourceOrder = 1 }
+            2 = [pscustomobject]@{ FinalOrder = 2; Source = 'ExcelOrder'; ExcelSourceOrder = 2 }
+        }
+        $memos = @(Get-CnsTourneeMetierMemoLinesForBlock -MainFrom1 1 -MainTo1 2 -SortedGsPairs $pairs -FinalOrderToLine $foToLine -WorkOrders @($wo1, $wo2) -PdfEntities @())
+        $memos.Count | Should Be 1
+        $memos[0] | Should Be 'Collecte cartouches encre - CFP GRENOBLE RHIN ET DANUBE'
+    }
+
     It 'Get-CnsPdfPageClientDisplayName : page bbox avant WorkOrder fusionne' {
         $entityExtractorPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Extractors\EntityExtractor.ps1' | Resolve-Path
         . ([string]$entityExtractorPath)
@@ -735,6 +816,25 @@ Describe 'PdfPlanningOptimizer - tournee cover (prestations speciales ODM)' {
     It 'ConvertTo-CnsPsHelveticaParenBody : N° en WinAnsi \260' {
         $body = ConvertTo-CnsPsHelveticaParenBody -Text 'APLIM CHAMBERY - N°24415'
         $body | Should Match 'N\\26024415'
+    }
+
+    It 'Build-CnsTourneeHeaderCoverPostScriptBody : Camion parc et immat ligne separee' {
+        $ps = Build-CnsTourneeHeaderCoverPostScriptBody -DateTitle 'Lundi 1 janvier 2026' -Collecteur 'Jean DUPONT' `
+            -Vehicule '44' -VehiculeImmatriculation 'EF 456 TY' -MetierMemoLines @('Collecte DEEE - CLIENT')
+        $ps | Should Match 'Camion 44'
+        $ps | Should Match 'EF 456 TY'
+        $ps | Should Match 'findfont 18 scalefont'
+        $ps | Should Match 'findfont 12 scalefont'
+        $ps | Should Match '550 exch sub 770 moveto'
+        $ps | Should Match '520 exch sub 756 moveto'
+        $ps | Should Not Match '44 \(EF'
+    }
+
+    It 'Build-CnsTourneeHeaderCoverPostScriptBody : parc seul si immat absente' {
+        $ps = Build-CnsTourneeHeaderCoverPostScriptBody -DateTitle 'Lundi 1 janvier 2026' -Collecteur 'Jean DUPONT' `
+            -Vehicule '44' -MetierMemoLines @()
+        $ps | Should Match 'Camion 44'
+        $ps | Should Not Match 'findfont 12 scalefont'
     }
 
     It 'Get-CnsPdfPageMetierAnalysis : destruction cert + memo client' {

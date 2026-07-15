@@ -577,13 +577,13 @@ foreach ($dir in $deployDirs) {
     Write-BuildSuccess "Copie : $($dir.Name)"
 }
 
-Write-BuildStep 'Copie des templates (certificats, bilans, CEA)'
+Write-BuildStep 'Copie des templates (certificats, bilans, CEA, FT)'
 $templatesSource = Join-Path $repoRoot 'templates'
 $templatesDest = Join-Path $outputPath 'templates'
 if (Test-Path -LiteralPath $templatesSource) {
     Copy-DeployDirectory -SourceDir $templatesSource -TargetDir $templatesDest
     Write-BuildSuccess 'Copie : templates'
-    foreach ($tpl in @('CertificatDeDestruction.xlsx', 'BilanDeCollecte.xlsx', 'CeaPointsDeCollectes.xlsx')) {
+    foreach ($tpl in @('CertificatDeDestruction.xlsx', 'BilanDeCollecte.xlsx', 'CeaPointsDeCollectes.xlsx', 'FT.xlsx')) {
         $tplPath = Join-Path $templatesDest $tpl
         if (Test-Path -LiteralPath $tplPath) {
             Write-BuildSuccess $tpl

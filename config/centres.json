@@ -30,6 +30,18 @@
 
     {
 
+      "id": "grenoble",
+
+      "name": "Grenoble",
+
+      "sharePointApiUrl": "https://graph.microsoft.com/v1.0/sites/naevaelisealpes.sharepoint.com:/sites/EliseAlpes/drive/root:/Planning%20GRENOBLE%202026.xlsm:/content",
+
+      "planningFileName": "Planning GRENOBLE 2026.xlsm"
+
+    },
+
+    {
+
       "id": "bourg-en-bresse",
 
       "name": "Bourg-en-Bresse",

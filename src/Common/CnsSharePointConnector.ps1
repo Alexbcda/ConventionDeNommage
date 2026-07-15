@@ -405,6 +405,18 @@ function Save-SharePointApiUrlConfig {
         throw 'Impossible d''acceder a la base de donnees.'
     }
     Set-AppConfig -Key 'SharePointApiUrl' -Value $ApiUrl
+    $configManagerScript = Join-Path $PSScriptRoot '..\Core\ConfigManager.ps1'
+    if (Test-Path -LiteralPath $configManagerScript) {
+        if (-not (Get-Command Repair-CentreConfiguration -ErrorAction SilentlyContinue)) {
+            . $configManagerScript
+        }
+        if (Get-Command Repair-CentreConfiguration -ErrorAction SilentlyContinue) {
+            $repaired = Repair-CentreConfiguration
+            if (-not $repaired -and (Get-Command Write-Log -ErrorAction SilentlyContinue)) {
+                Write-Log '[SharePoint] URL enregistree sans centre reconnu — utiliser Outils > Configurer le centre' 'WARN' @{}
+            }
+        }
+    }
 }
 
 function Show-ChangeUrlDialog {

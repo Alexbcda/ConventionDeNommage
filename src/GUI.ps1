@@ -142,7 +142,12 @@ function Start-GUI {
         $currentCentre = $script:ActiveCentre
     }
     if ($currentCentre -and -not [string]::IsNullOrWhiteSpace([string]$currentCentre.name)) {
-        $form.Text = ('ASSISTANT - {0}' -f $currentCentre.name)
+        if ([string]$currentCentre.id -eq 'custom') {
+            $form.Text = ('ASSISTANT - {0}' -f (Get-CnsUnrecognizedCentreDisplayName))
+        }
+        else {
+            $form.Text = ('ASSISTANT - {0}' -f $currentCentre.name)
+        }
         Write-AppHost ("[Centre] Configuration : {0}" -f $currentCentre.name) -ForegroundColor Green
     }
     $form.Size = [System.Drawing.Size]::new(1400, 800)

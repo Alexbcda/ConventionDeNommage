@@ -1347,12 +1347,13 @@ function Build-CnsTourneeHeaderCoverPostScriptBody {
     $fontReg = Get-CnsCoverPostScriptFontRegularName
     $litDate = ConvertTo-CnsPsHelveticaParenBody -Text $DateTitle
     [string]$prenom = Get-CnsTourneeCoverCollecteurPrenomDisplay -Collecteur $Collecteur
-    [string]$vehText = if ([string]::IsNullOrWhiteSpace($Vehicule)) { '' } else { ([string]$Vehicule).Trim() }
-    if (-not [string]::IsNullOrWhiteSpace($vehText) -and -not [string]::IsNullOrWhiteSpace($VehiculeImmatriculation)) {
-        $vehText = ('{0} ({1})' -f $vehText, ([string]$VehiculeImmatriculation).Trim())
-    }
+    [string]$parcText = if ([string]::IsNullOrWhiteSpace($Vehicule)) { '' } else { ([string]$Vehicule).Trim() }
+    [string]$immatText = if ([string]::IsNullOrWhiteSpace($VehiculeImmatriculation)) { '' } else { ([string]$VehiculeImmatriculation).Trim() }
 
     $headerFontSize = 18
+    [int]$immatFontSize = 12
+    [int]$vehImmatLineStep = 14
+    [int]$immatRightIndent = 30
 
     if (-not [string]::IsNullOrWhiteSpace($IncompleteBanner)) {
         $line1Y = 770
@@ -1379,9 +1380,23 @@ function Build-CnsTourneeHeaderCoverPostScriptBody {
         $prenomPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $prenom -FontName $fontBlack -FontSize $headerFontSize -RightX $rightX -Y $line1Y
     }
 
-    $vehPs = ''
-    if (-not [string]::IsNullOrWhiteSpace($vehText)) {
-        $vehPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $vehText -FontName $fontBlack -FontSize $headerFontSize -RightX $rightX -Y $vehY
+    $parcPs = ''
+    if (-not [string]::IsNullOrWhiteSpace($parcText)) {
+        if ($parcText -notmatch '^(?i)camion\b') {
+            $parcLineText = ('Camion {0}' -f $parcText)
+        }
+        else {
+            $parcLineText = $parcText
+        }
+        $parcPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $parcLineText -FontName $fontBlack -FontSize $headerFontSize -RightX $rightX -Y $vehY
+    }
+
+    $immatPs = ''
+    if (-not [string]::IsNullOrWhiteSpace($immatText)) {
+        [int]$immatY = $vehY - $vehImmatLineStep
+        [int]$immatRightX = $rightX - $immatRightIndent
+        if ($immatRightX -lt 50) { $immatRightX = 50 }
+        $immatPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $immatText -FontName $fontReg -FontSize $immatFontSize -RightX $immatRightX -Y $immatY
     }
 
     $memoPs = Build-CnsCoverTextLinesPostScriptAppend -Lines @($MetierMemoLines) -StartY $memoY -LineStep 14 -MinY 72 -FontName $fontReg -FontSize 12
@@ -1392,7 +1407,8 @@ $bannerPs
 50 $line1Y moveto
 ($litDate) show
 $prenomPs
-$vehPs
+$parcPs
+$immatPs
 $memoPs
 "@
 }
@@ -2869,14 +2885,27 @@ function Invoke-PlanningTourneePdfCoverComposition {
                             Write-Host ("[TOURNEE-COVER] Segment={0} Incomplete={1} Date={2} Collecteur={3} Vehicule={4} PagesBloc={5}" -f $n, $inc, $jj, ([string]$seg.Collecteur), ([string]$seg.Vehicule), (1 + $blk.MainTo1 - $blk.MainFrom1)) -ForegroundColor Cyan
                             Write-PlanningTourneeStep5UiLog ("🔎 Tournée {0}/{1} - Analyse des prestations..." -f $tourneeIndex, $totalTournees)
                             $metierMemos = @(Get-CnsTourneeMetierMemoLinesForBlock -MainFrom1 ([int]$blk.MainFrom1) -MainTo1 ([int]$blk.MainTo1) `
-                                -SortedGsPairs $sortedPairsArr -FinalOrderToLine $foToLine -WorkOrders $WorkOrders -PdfEntities @($PdfEntities) `
-                                -ExcelOrder @($ExcelOrder) -Segments @($segments) -ExcelOrderIndexToSegmentIndex $orderToSeg)
+                                -SortedGsPairs $sortedPairsArr -FinalOrderToLine $foToLine -WorkOrders $WorkOrders -PdfEntities @($PdfEntities))
                             Write-Host ("[STEP5-METIER] Segment {0} : {1} memo(s) garde tournée (source PDF ODM)." -f $n, $metierMemos.Count) -ForegroundColor DarkCyan
                             Write-PlanningTourneeStep5UiLog ("🎨 Tournée {0}/{1} - Création page de garde..." -f $tourneeIndex, $totalTournees)
                             $vehiculeImmat = $null
                             $vehiculeNumeroParc = [string]$seg.Vehicule
                             if (-not [string]::IsNullOrWhiteSpace($vehiculeNumeroParc)) {
                                 $vehiculeImmat = Get-CnsVehiculeImmatriculationByNumeroParc -NumeroParc $vehiculeNumeroParc
+                                if ([string]::IsNullOrWhiteSpace($vehiculeImmat)) {
+                                    Write-Host ("[GARDE] Immatriculation introuvable pour le parc: {0}" -f $vehiculeNumeroParc) -ForegroundColor Yellow
+                                    $normalizedParc = ([string]$vehiculeNumeroParc).Trim()
+                                    $normalizedParc = [regex]::Replace($normalizedParc, '\s+', ' ').Trim()
+                                    if ($normalizedParc -ne $vehiculeNumeroParc.Trim()) {
+                                        $vehiculeImmat = Get-CnsVehiculeImmatriculationByNumeroParc -NumeroParc $normalizedParc
+                                        if (-not [string]::IsNullOrWhiteSpace($vehiculeImmat)) {
+                                            Write-Host ("[GARDE] Immatriculation trouvée après normalisation: {0}" -f $vehiculeImmat) -ForegroundColor Green
+                                        }
+                                    }
+                                }
+                                else {
+                                    Write-Host ("[GARDE] Immatriculation trouvée: {0}" -f $vehiculeImmat) -ForegroundColor Green
+                                }
                             }
                             if (New-CnsTourneeHeaderCoverPdf -OutPdfPath $coverPath -DateJJMMAAAA $jj -Collecteur ([string]$seg.Collecteur) `
                                 -Vehicule $vehiculeNumeroParc -VehiculeImmatriculation $vehiculeImmat -TourneeIncomplete:$inc -MetierMemoLines $metierMemos) {
