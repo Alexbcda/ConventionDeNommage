@@ -99,12 +99,6 @@ if ($env:CN_WINFORMS_TRACE -eq '1' -or $env:CN_WINFORMS_TRACE -eq 'true') {
 . (Join-Path $scriptPath 'Common\UiText.ps1')
 Initialize-ConventionAppConsoleUtf8
 
-# Planning PDF + Excel (PdfPlanningOptimizer) : lecture .xlsx/.xlsm sans Excel installe
-if (-not (Get-Module -Name ImportExcel -ListAvailable -ErrorAction SilentlyContinue)) {
-    Write-AppHost "[MAIN] Conseil: installez le module ImportExcel pour l'onglet *Edition planning* (fichiers Excel sans Microsoft Excel)." -ForegroundColor Yellow
-    Write-AppHost '      Install-Module -Name ImportExcel -Scope CurrentUser -Force' -ForegroundColor DarkGray
-}
-
 Write-AppHost 'Demarrage ASSISTANT...' -ForegroundColor Cyan
 
 $script:AssistantStartupSw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -121,6 +115,17 @@ function Write-AssistantStartupMark {
     Write-AssistantStartupTiming -Phase $Phase -ElapsedMs $elapsed -DeltaMs $delta -Detail $Detail
 }
 
+function Write-AssistantRenameOnlyLog {
+    param([Parameter(Mandatory = $true)][string]$Message)
+    $line = "[RenameOnly] $Message"
+    if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+        Write-Log $line 'INFO'
+    }
+    if (Get-Command Write-AppHost -ErrorAction SilentlyContinue) {
+        Write-AppHost $line -ForegroundColor Cyan
+    }
+}
+
 # ============================================
 # 1. CHARGEMENT DES STYLES ET CONFIGURATION
 # ============================================
@@ -131,50 +136,85 @@ function Write-AssistantStartupMark {
 Write-Log "[MAIN] Application start" "INFO" @{ scriptPath = $scriptPath; compiledExe = $script:IsCompiledExe }
 Write-AssistantStartupMark -Phase 'config_styles_logger'
 
-# ============================================
-# 2. INITIALISATION DE LA BASE SQLITE
-# ============================================
-. "$scriptPath\Database\Database.ps1"
-try {
-    $ok = Initialize-Database
-    Write-Log "[MAIN] Initialize-Database result" "INFO" @{ ok = $ok }
-} catch {
-    Write-Log "[MAIN] Initialize-Database failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
-    throw
+# Detecter le PDF tot pour activer le mode RenameOnly (clic droit) avant BDD / repos / SharePoint.
+$script:AssistantInputPdf = $null
+$rawPdfArg = if ($args.Count -gt 0) { $args[0] } elseif (-not [string]::IsNullOrWhiteSpace($env:ASSISTANT_PDF)) { $env:ASSISTANT_PDF } else { $null }
+if (-not [string]::IsNullOrWhiteSpace($env:ASSISTANT_PDF)) {
+    Remove-Item Env:ASSISTANT_PDF -ErrorAction SilentlyContinue
 }
+$script:AssistantInputPdf = Resolve-AssistantInputPdfPath -RawArgument $rawPdfArg
+$script:AssistantRenameOnly = -not [string]::IsNullOrWhiteSpace($script:AssistantInputPdf)
 
-$configManagerScript = Join-Path $scriptPath 'Core\ConfigManager.ps1'
-if (Test-Path -LiteralPath $configManagerScript) {
-    . $configManagerScript
-    $script:ActiveCentre = Initialize-CentreFromAppConfig
-    if ($script:ActiveCentre) {
-        if ([string]$script:ActiveCentre.id -eq 'custom') {
-            Write-AppHost '[Centre] Centre non reconnu — verifiez config\centres.json ou reinstallez avec -Centre <nom>' -ForegroundColor Yellow
-            Write-AppHost '[Centre] Onglet Outils : bouton « Configurer le centre » pour corriger sans reinstallation' -ForegroundColor Yellow
-            if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
-                Write-Log '[MAIN] Centre non reconnu au demarrage' 'WARN' @{
-                    sharePointUrl = $script:ActiveCentre.sharePointApiUrl
+if ($script:AssistantRenameOnly) {
+    Write-AssistantRenameOnlyLog ("Mode renommage uniquement — pdf={0}" -f $script:AssistantInputPdf)
+    Write-Log '[MAIN] Fichier PDF charge depuis le lanceur' 'INFO' @{ path = $script:AssistantInputPdf; renameOnly = $true }
+}
+else {
+    Write-Log '[MAIN] Aucun fichier PDF valide recu au lancement' 'INFO' @{ rawArgument = [string]$rawPdfArg }
+    # Planning PDF + Excel : conseil utile uniquement hors RenameOnly
+    if (-not (Get-Module -Name ImportExcel -ListAvailable -ErrorAction SilentlyContinue)) {
+        Write-AppHost "[MAIN] Conseil: installez le module ImportExcel pour l'onglet *Edition planning* (fichiers Excel sans Microsoft Excel)." -ForegroundColor Yellow
+        Write-AppHost '      Install-Module -Name ImportExcel -Scope CurrentUser -Force' -ForegroundColor DarkGray
+    }
+}
+Write-AssistantStartupMark -Phase 'pdf_detect'
+
+# ============================================
+# 2. INITIALISATION DE LA BASE SQLITE (mode normal uniquement)
+# ============================================
+if (-not $script:AssistantRenameOnly) {
+    . "$scriptPath\Database\Database.ps1"
+    try {
+        $ok = Initialize-Database
+        Write-Log "[MAIN] Initialize-Database result" "INFO" @{ ok = $ok }
+    }
+    catch {
+        Write-Log "[MAIN] Initialize-Database failed" "ERROR" @{ message = $_.Exception.Message; type = $_.Exception.GetType().FullName }
+        throw
+    }
+
+    $configManagerScript = Join-Path $scriptPath 'Core\ConfigManager.ps1'
+    if (Test-Path -LiteralPath $configManagerScript) {
+        . $configManagerScript
+        $script:ActiveCentre = Initialize-CentreFromAppConfig
+        if ($script:ActiveCentre) {
+            if ([string]$script:ActiveCentre.id -eq 'custom') {
+                Write-AppHost '[Centre] Centre non reconnu — verifiez config\centres.json ou reinstallez avec -Centre <nom>' -ForegroundColor Yellow
+                Write-AppHost '[Centre] Onglet Outils : bouton « Configurer le centre » pour corriger sans reinstallation' -ForegroundColor Yellow
+                if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+                    Write-Log '[MAIN] Centre non reconnu au demarrage' 'WARN' @{
+                        sharePointUrl = $script:ActiveCentre.sharePointApiUrl
+                    }
                 }
             }
+            else {
+                Write-AppHost ("[MAIN] Centre actif : {0}" -f $script:ActiveCentre.name) -ForegroundColor Green
+            }
         }
-        else {
-            Write-AppHost ("[MAIN] Centre actif : {0}" -f $script:ActiveCentre.name) -ForegroundColor Green
+        elseif (-not (Test-CentreAppConfigurationComplete)) {
+            Write-AppHost '[Centre] Configuration centre incomplete en BDD (CentreId/CentreName/SharePointApiUrl)' -ForegroundColor Yellow
         }
     }
-    elseif (-not (Test-CentreAppConfigurationComplete)) {
-        Write-AppHost '[Centre] Configuration centre incomplete en BDD (CentreId/CentreName/SharePointApiUrl)' -ForegroundColor Yellow
-    }
+    Write-AssistantStartupMark -Phase 'database_init'
 }
-Write-AssistantStartupMark -Phase 'database_init'
+else {
+    Write-AssistantRenameOnlyLog 'Skip Initialize-Database / ConfigManager'
+    Write-AssistantStartupMark -Phase 'database_init_skipped'
+}
 
 # ============================================
 # 3. CHARGEMENT DES MODULES METIER
 # ============================================
 . "$scriptPath\ODM\ConventionNommage\ConventionNommage.ps1"
-. "$scriptPath\ODM\Agents\AgentRepository.ps1"
-. "$scriptPath\ODM\Vehicules\VehiculesRepository.ps1"
-Write-AssistantStartupMark -Phase 'odm_repositories'
-
+if (-not $script:AssistantRenameOnly) {
+    . "$scriptPath\ODM\Agents\AgentRepository.ps1"
+    . "$scriptPath\ODM\Vehicules\VehiculesRepository.ps1"
+    Write-AssistantStartupMark -Phase 'odm_repositories'
+}
+else {
+    Write-AssistantRenameOnlyLog 'Skip AgentRepository / VehiculesRepository'
+    Write-AssistantStartupMark -Phase 'odm_repositories_skipped'
+}
 
 # ============================================
 # 4. CHARGEMENT ET LANCEMENT DE LA GUI
@@ -182,26 +222,22 @@ Write-AssistantStartupMark -Phase 'odm_repositories'
 . "$scriptPath\GUI.ps1"
 Write-AssistantStartupMark -Phase 'gui_script_loaded'
 
+# Extractors planning au scope SCRIPT (hors RenameOnly) — classes Models deja via GUI.ps1.
+if (-not $script:AssistantRenameOnly) {
+    . Import-AssistantPlanningExtractorScripts
+    Write-AssistantStartupMark -Phase 'planning_extractors_loaded'
+}
+
 # ============================================
 # 5. LANCEMENT
 # ============================================
-
-$script:AssistantInputPdf = $null
-$rawPdfArg = if ($args.Count -gt 0) { $args[0] } elseif (-not [string]::IsNullOrWhiteSpace($env:ASSISTANT_PDF)) { $env:ASSISTANT_PDF } else { $null }
-if (-not [string]::IsNullOrWhiteSpace($env:ASSISTANT_PDF)) {
-    Remove-Item Env:ASSISTANT_PDF -ErrorAction SilentlyContinue
-}
-$script:AssistantInputPdf = Resolve-AssistantInputPdfPath -RawArgument $rawPdfArg
-if ($script:AssistantInputPdf) {
-    Write-Log '[MAIN] Fichier PDF charge depuis le lanceur' 'INFO' @{ path = $script:AssistantInputPdf }
-    Write-AppHost ("[MAIN] Fichier PDF : {0}" -f $script:AssistantInputPdf) -ForegroundColor Green
-}
-else {
-    Write-Log '[MAIN] Aucun fichier PDF valide recu au lancement' 'INFO' @{ rawArgument = [string]$rawPdfArg }
-}
-
 try {
-    Start-GUI -FichierPDF $script:AssistantInputPdf
+    if ($script:AssistantRenameOnly) {
+        Start-GUI -FichierPDF $script:AssistantInputPdf -RenameOnly
+    }
+    else {
+        Start-GUI -FichierPDF $script:AssistantInputPdf
+    }
 }
 catch {
     if (Get-Command Test-AppConsoleVisible -ErrorAction SilentlyContinue) {

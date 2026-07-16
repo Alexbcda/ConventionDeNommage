@@ -1,0 +1,48 @@
+﻿{
+    "SrcRoot":  "C:\\Users\\alexa\\Documents\\ConventionDeNommage\\src",
+    "PdfPath":  "C:\\Users\\alexa\\Documents\\ConventionDeNommage\\Test\\Fixtures\\PdfPlanningOptimizer\\1507.pdf",
+    "ProcessStartUtc":  "2026-07-16T16:32:50.5527277Z",
+    "MarksMs":  {
+                    "process_start":  90,
+                    "after_bootstrap":  265,
+                    "timing_config_styles_logger":  518,
+                    "after_config":  519,
+                    "timing_database_init":  1266,
+                    "after_database":  1266,
+                    "timing_odm_repositories":  1630,
+                    "after_odm_repos":  1631,
+                    "timing_gui_script_loaded":  1734,
+                    "after_gui_script":  1735,
+                    "before_start_gui":  1762,
+                    "timing_winforms_init":  1911,
+                    "timing_sharepoint_config":  1925,
+                    "timing_convention_scripts_loaded":  1947,
+                    "timing_convention_panel_loaded":  2314,
+                    "timing_gui_built":  2438,
+                    "form_visible":  2590,
+                    "gui_form_visible":  2592,
+                    "convention_interactive":  2604,
+                    "timing_gui_shown":  3449,
+                    "all_lazy_done":  6000,
+                    "after_application_run":  6018
+                },
+    "LazyTabMs":  {
+                      "TabAgents":  1001,
+                      "TabVehicules":  644,
+                      "TabPlanning":  1090,
+                      "TabOutils":  502,
+                      "TabAgents_second":  79,
+                      "TabVehicules_second":  25,
+                      "TabPlanning_second":  14,
+                      "TabOutils_second":  26
+                  },
+    "ConventionReady":  true,
+    "ConventionInteractive":  true,
+    "Errors":  [
+
+               ],
+    "TotalMs":  6031,
+    "FormVisibleMs":  2590,
+    "PassWindowUnder2s":  false,
+    "PassWindowUnder3s":  true
+}

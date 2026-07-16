@@ -37,7 +37,7 @@ function Test-PlanningStep5Environment {
         $excelOk = Test-CnsMicrosoftExcelAvailable
     }
     if ([string]::IsNullOrWhiteSpace($lo) -and -not $excelOk) {
-        [void]$issues.Add('Aucun convertisseur XLSX→PDF (LibreOffice ou Excel requis).')
+        [void]$issues.Add('Aucun convertisseur XLSX->PDF (LibreOffice ou Excel requis).')
     }
 
     $missingTpl = [System.Collections.Generic.List[string]]::new()
