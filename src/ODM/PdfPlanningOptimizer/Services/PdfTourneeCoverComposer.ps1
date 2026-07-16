@@ -2670,6 +2670,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
         et re-extrait les pages du main dans l'ordre pour produire le PDF final au meme chemin.
     .NOTES
         Desactiver : $env:CN_SKIP_TOURNEE_COVERS = '1'
+        Desactiver analyse mismatch (page de garde globale detaillee) : $env:CN_SKIP_MISMATCH_ANALYSIS = '1'
     #>
     [CmdletBinding()]
     param(
@@ -2871,21 +2872,16 @@ function Invoke-PlanningTourneePdfCoverComposition {
         Update-PlanningTourneeStep5OdmSearchProgress -WoIndex 0 -TotalWos $odmSearchTotalWos
         if (Get-Command Build-PlanningOdmMismatchThreeSectionCoverLines -ErrorAction SilentlyContinue) {
             try {
-                $missingList = @()
-                if ($null -ne $MatchResult -and $null -ne $MatchResult.Missing) {
-                    $missingList = @($MatchResult.Missing)
-                }
-                $orphanWorkOrders = @()
-                if (Get-Command Get-PlanningUnmatchedPdfWorkOrders -ErrorAction SilentlyContinue) {
-                    $orphanWorkOrders = @(Get-PlanningUnmatchedPdfWorkOrders -WorkOrders $WorkOrders -MatchResult $MatchResult)
-                }
-                $hasMissingOrphans = ($missingList.Count -gt 0) -or ($orphanWorkOrders.Count -gt 0)
+                $skipMismatchEnv = ([string]$env:CN_SKIP_MISMATCH_ANALYSIS).Trim().ToLowerInvariant()
+                $skipMismatch = $skipMismatchEnv -in @('1', 'true', 'yes', 'on')
 
-                if (-not $hasMissingOrphans) {
-                    Write-PlanningTourneeStep5UiLog '🔍 Tous les ODM sont matchés - synthèse simplifiée'
+                if ($skipMismatch) {
+                    Write-Host '[MISMATCH] Analyse desactivee (CN_SKIP_MISMATCH_ANALYSIS) - page de garde simplifiee' -ForegroundColor Yellow
+                    script:Write-CnsTourneeLog -Message '[MISMATCH] Analyse desactivee (CN_SKIP_MISMATCH_ANALYSIS) — synthese AllMatched.' -Level 'INFO'
+                    Write-PlanningTourneeStep5UiLog '🔍 Analyse mismatch désactivée (CN_SKIP_MISMATCH_ANALYSIS) — synthèse simplifiée'
                     $coverReport = [pscustomobject]@{
                         Elements       = @()
-                        Lines          = @()
+                        Lines          = @('Tous les ODM ont ete matchés avec succes.')
                         Section1Count  = 0
                         Section2Count  = 0
                         Section3Count  = 0
@@ -2893,14 +2889,39 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     }
                 }
                 else {
-                    Write-PlanningTourneeStep5UiLog ("🔍 Analyse des ODM sans correspondance ($($missingList.Count) Excel sans ODM, $($orphanWorkOrders.Count) ODM sans Excel)")
-                    $coverReport = Build-PlanningOdmMismatchThreeSectionCoverLines `
-                        -Missing $missingList `
-                        -WorkOrders @($orphanWorkOrders) `
-                        -ExcelOrder @($ExcelOrder) `
-                        -MatchResult $MatchResult `
-                        -TourSegments @($segments) `
-                        -MaxEntriesPerSection 20
+                    $missingList = @()
+                    if ($null -ne $MatchResult -and $null -ne $MatchResult.Missing) {
+                        $missingList = @($MatchResult.Missing)
+                    }
+                    $orphanWorkOrders = @()
+                    if (Get-Command Get-PlanningUnmatchedPdfWorkOrders -ErrorAction SilentlyContinue) {
+                        $orphanWorkOrders = @(Get-PlanningUnmatchedPdfWorkOrders -WorkOrders $WorkOrders -MatchResult $MatchResult)
+                    }
+                    $hasMissingOrphans = ($missingList.Count -gt 0) -or ($orphanWorkOrders.Count -gt 0)
+
+                    if (-not $hasMissingOrphans) {
+                        Write-Host '[MISMATCH] Aucun ecart - page de garde simplifiee' -ForegroundColor Cyan
+                        Write-PlanningTourneeStep5UiLog '🔍 Tous les ODM sont matchés - synthèse simplifiée'
+                        $coverReport = [pscustomobject]@{
+                            Elements       = @()
+                            Lines          = @()
+                            Section1Count  = 0
+                            Section2Count  = 0
+                            Section3Count  = 0
+                            AllMatched     = $true
+                        }
+                    }
+                    else {
+                        Write-Host ("[MISMATCH] Analyse complete - {0} Excel sans ODM, {1} ODM sans Excel" -f $missingList.Count, $orphanWorkOrders.Count) -ForegroundColor Cyan
+                        Write-PlanningTourneeStep5UiLog ("🔍 Analyse des ODM sans correspondance ($($missingList.Count) Excel sans ODM, $($orphanWorkOrders.Count) ODM sans Excel)")
+                        $coverReport = Build-PlanningOdmMismatchThreeSectionCoverLines `
+                            -Missing $missingList `
+                            -WorkOrders @($orphanWorkOrders) `
+                            -ExcelOrder @($ExcelOrder) `
+                            -MatchResult $MatchResult `
+                            -TourSegments @($segments) `
+                            -MaxEntriesPerSection 20
+                    }
                 }
                 $coverAllMatched = [bool]$coverReport.AllMatched
                 $coverS1 = [int]$coverReport.Section1Count
