@@ -7,6 +7,19 @@ if (Test-Path -LiteralPath $script:CnsExcelLoaderPath) {
 
 $script:CnsMicrosoftExcelAvailableCache = $null
 
+# Pool Step 5 : une instance Excel COM reutilisee + profil LibreOffice prechauffe (UserInstallation).
+$script:CnsLibreOfficePoolActive = $false
+$script:CnsLibreOfficeProcess = $null
+$script:CnsLibreOfficePort = 0
+$script:CnsLibreOfficeUserInstallDir = $null
+$script:CnsExcelConversionPool = $null
+$script:CnsXlsxPdfPoolStats = @{
+    Conversions = 0
+    PoolHits    = 0
+    Fallbacks   = 0
+    TotalMs     = 0
+}
+
 function Get-CnsLibreOfficeSofficePath {
     $candidates = New-Object System.Collections.Generic.List[string]
     if (-not [string]::IsNullOrWhiteSpace($env:CN_LIBREOFFICE_SOFFICE)) {
@@ -316,6 +329,155 @@ function Set-CnsXlsxTemplatePlaceholders {
     }
 }
 
+function Convert-CnsPathToLibreOfficeUserInstallationUri {
+    param([Parameter(Mandatory = $true)][string]$DirectoryPath)
+    $full = [System.IO.Path]::GetFullPath($DirectoryPath).TrimEnd('\', '/')
+    $uriPath = ($full -replace '\\', '/')
+    if ($uriPath -match '^[A-Za-z]:') {
+        $uriPath = '/' + $uriPath
+    }
+    return ('file://{0}' -f $uriPath)
+}
+
+function script:Write-CnsXlsxPdfPerfLog {
+    param([Parameter(Mandatory = $true)][string]$Message)
+    Write-Host ("[PERF] {0}" -f $Message) -ForegroundColor Cyan
+    if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+        Write-Log ("[PERF] " + $Message) 'INFO'
+    }
+}
+
+function Start-CnsLibreOfficeListener {
+    <#
+    .SYNOPSIS
+        Prefchauffe LibreOffice (profil par defaut) pour reduire le cout des premiers --convert-to Step 5.
+        Note: un listener UNO n'accelere pas --convert-to ; on evite un UserInstallation dedie (souvent plus lent).
+    #>
+    if ($script:CnsLibreOfficePoolActive) {
+        return $true
+    }
+
+    $soffice = Get-CnsLibreOfficeSofficePath
+    if ([string]::IsNullOrWhiteSpace($soffice)) {
+        script:Write-CnsXlsxPdfPerfLog 'LibreOffice pool : soffice.exe introuvable — ignore.'
+        return $false
+    }
+
+    $script:CnsLibreOfficePort = Get-Random -Minimum 2002 -Maximum 2099
+    $script:CnsLibreOfficeUserInstallDir = $null
+
+    # Warm-up profil systeme (une fois). Les --convert-to suivants restent des process separes mais demarrent plus vite.
+    $warmArgs = @(
+        '--headless', '--nologo', '--nofirststartwizard', '--norestore',
+        '--terminate_after_init'
+    )
+    $swWarm = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        $warmProc = Start-Process -FilePath $soffice -ArgumentList $warmArgs -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
+        $swWarm.Stop()
+        script:Write-CnsXlsxPdfPerfLog ("LibreOffice warm-up en {0} ms (exit={1})" -f `
+                $swWarm.ElapsedMilliseconds, $(if ($null -eq $warmProc) { '?' } else { $warmProc.ExitCode }))
+    }
+    catch {
+        $swWarm.Stop()
+        script:Write-CnsXlsxPdfPerfLog ("LibreOffice warm-up echoue apres {0} ms : {1} — conversions sans warm-up." -f `
+                $swWarm.ElapsedMilliseconds, $_.Exception.Message)
+        # On active quand meme le flag pool (stats / Excel) meme si warm-up LO echoue.
+    }
+
+    $script:CnsLibreOfficePoolActive = $true
+    $script:CnsLibreOfficeProcess = $null
+    return $true
+}
+
+function Stop-CnsLibreOfficeListener {
+    if ($null -ne $script:CnsLibreOfficeProcess) {
+        try {
+            if (-not $script:CnsLibreOfficeProcess.HasExited) {
+                $script:CnsLibreOfficeProcess.Kill()
+            }
+        }
+        catch { }
+        try { $script:CnsLibreOfficeProcess.Dispose() } catch { }
+        $script:CnsLibreOfficeProcess = $null
+    }
+    $script:CnsLibreOfficePoolActive = $false
+    $script:CnsLibreOfficePort = 0
+    if (-not [string]::IsNullOrWhiteSpace($script:CnsLibreOfficeUserInstallDir) -and (Test-Path -LiteralPath $script:CnsLibreOfficeUserInstallDir)) {
+        try {
+            Remove-Item -LiteralPath $script:CnsLibreOfficeUserInstallDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        catch { }
+    }
+    $script:CnsLibreOfficeUserInstallDir = $null
+}
+
+function Start-CnsExcelConversionPool {
+    if ($null -ne $script:CnsExcelConversionPool) {
+        try {
+            $null = $script:CnsExcelConversionPool.Version
+            return $true
+        }
+        catch {
+            $script:CnsExcelConversionPool = $null
+        }
+    }
+    if (-not (Test-CnsMicrosoftExcelAvailable)) { return $false }
+    try {
+        $excel = New-Object -ComObject Excel.Application -ErrorAction Stop
+        $excel.Visible = $false
+        $excel.DisplayAlerts = $false
+        $excel.ScreenUpdating = $false
+        $script:CnsExcelConversionPool = $excel
+        script:Write-CnsXlsxPdfPerfLog 'Pool Excel COM demarre (instance unique).'
+        return $true
+    }
+    catch {
+        script:Write-CnsXlsxPdfPerfLog ("Pool Excel COM echoue : {0}" -f $_.Exception.Message)
+        $script:CnsExcelConversionPool = $null
+        return $false
+    }
+}
+
+function Stop-CnsExcelConversionPool {
+    if ($null -eq $script:CnsExcelConversionPool) { return }
+    try { $script:CnsExcelConversionPool.DisplayAlerts = $false } catch { }
+    try { $script:CnsExcelConversionPool.Quit() } catch { }
+    script:Release-CnsExcelComObject -ComObject $script:CnsExcelConversionPool
+    $script:CnsExcelConversionPool = $null
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+}
+
+function Start-CnsXlsxPdfConversionPool {
+    <#
+    .SYNOPSIS
+        Demarre les pools Step 5 (LibreOffice profil + Excel COM si dispo).
+    #>
+    $script:CnsXlsxPdfPoolStats = @{
+        Conversions = 0
+        PoolHits    = 0
+        Fallbacks   = 0
+        TotalMs     = 0
+    }
+    $loOk = Start-CnsLibreOfficeListener
+    $xlOk = Start-CnsExcelConversionPool
+    script:Write-CnsXlsxPdfPerfLog ("Pool conversions XLSX->PDF demarre (LibreOffice={0}, Excel={1})" -f $loOk, $xlOk)
+    return ($loOk -or $xlOk)
+}
+
+function Stop-CnsXlsxPdfConversionPool {
+    $stats = $script:CnsXlsxPdfPoolStats
+    if ($null -ne $stats -and [int]$stats.Conversions -gt 0) {
+        script:Write-CnsXlsxPdfPerfLog ("Pool XLSX->PDF : {0} conversion(s), poolHits={1}, fallbacks={2}, total={3} ms (moy={4} ms)" -f `
+                $stats.Conversions, $stats.PoolHits, $stats.Fallbacks, $stats.TotalMs, `
+                [int]([Math]::Round($stats.TotalMs / [Math]::Max(1, $stats.Conversions))))
+    }
+    Stop-CnsExcelConversionPool
+    Stop-CnsLibreOfficeListener
+    script:Write-CnsXlsxPdfPerfLog 'Pool conversions XLSX->PDF arrete.'
+}
+
 function Convert-XlsxToPdfUsingLibreOffice {
     param(
         [Parameter(Mandatory = $true)][string]$XlsxPath,
@@ -338,19 +500,28 @@ function Convert-XlsxToPdfUsingLibreOffice {
         $null = New-Item -ItemType Directory -Path $outDir -Force -ErrorAction Stop
     }
 
-    $loArgs = @(
-        '--headless', '--nologo', '--nofirststartwizard',
-        '--convert-to', 'pdf',
-        '--outdir', $outDir,
-        $xlsxAbs
-    )
+    $loArgs = New-Object System.Collections.Generic.List[string]
+    $usedPoolProfile = $false
+    # UserInstallation dedie uniquement si force (souvent plus lent que le profil systeme).
+    $forceUserInstall = ([string]$env:CN_LO_USER_INSTALL).Trim().ToLowerInvariant() -in @('1', 'true', 'yes', 'on')
+    if ($forceUserInstall -and $script:CnsLibreOfficePoolActive -and -not [string]::IsNullOrWhiteSpace($script:CnsLibreOfficeUserInstallDir)) {
+        $userUri = Convert-CnsPathToLibreOfficeUserInstallationUri -DirectoryPath $script:CnsLibreOfficeUserInstallDir
+        [void]$loArgs.Add(('-env:UserInstallation={0}' -f $userUri))
+        $usedPoolProfile = $true
+    }
+    [void]$loArgs.AddRange([string[]]@(
+            '--headless', '--nologo', '--nofirststartwizard', '--norestore',
+            '--convert-to', 'pdf',
+            '--outdir', $outDir,
+            $xlsxAbs
+        ))
 
     $outFile = Join-Path $env:TEMP ("cn_soffice_out_{0}.txt" -f [Guid]::NewGuid().ToString('N'))
     $errFile = Join-Path $env:TEMP ("cn_soffice_err_{0}.txt" -f [Guid]::NewGuid().ToString('N'))
 
     try {
         try {
-            $proc = Start-Process -FilePath $soffice -ArgumentList $loArgs -Wait -PassThru -NoNewWindow -ErrorAction Stop `
+            $proc = Start-Process -FilePath $soffice -ArgumentList @($loArgs.ToArray()) -Wait -PassThru -NoNewWindow -ErrorAction Stop `
                 -RedirectStandardOutput $outFile -RedirectStandardError $errFile
         }
         catch {
@@ -375,6 +546,12 @@ function Convert-XlsxToPdfUsingLibreOffice {
             Move-Item -LiteralPath $produced -Destination $pdfAbs -Force
         }
 
+        if ($script:CnsLibreOfficePoolActive -and $null -ne $script:CnsXlsxPdfPoolStats) {
+            $script:CnsXlsxPdfPoolStats.PoolHits++
+        }
+        elseif ($usedPoolProfile -and $null -ne $script:CnsXlsxPdfPoolStats) {
+            $script:CnsXlsxPdfPoolStats.PoolHits++
+        }
         return (Test-Path -LiteralPath $pdfAbs)
     }
     finally {
@@ -406,16 +583,38 @@ function Convert-XlsxToPdfViaExcel {
     $xlFixedFormatTypePDF = 0
     $excel = $null
     $wb = $null
+    $ownedExcel = $false
+    $usedPool = $false
     try {
-        $excel = New-Object -ComObject Excel.Application -ErrorAction Stop
-        $excel.Visible = $false
-        $excel.DisplayAlerts = $false
+        if ($null -ne $script:CnsExcelConversionPool) {
+            try {
+                $null = $script:CnsExcelConversionPool.Version
+                $excel = $script:CnsExcelConversionPool
+                $usedPool = $true
+            }
+            catch {
+                $script:CnsExcelConversionPool = $null
+                $excel = $null
+            }
+        }
+        if ($null -eq $excel) {
+            $excel = New-Object -ComObject Excel.Application -ErrorAction Stop
+            $excel.Visible = $false
+            $excel.DisplayAlerts = $false
+            $ownedExcel = $true
+            if ($null -ne $script:CnsXlsxPdfPoolStats) {
+                $script:CnsXlsxPdfPoolStats.Fallbacks++
+            }
+        }
         $wb = $excel.Workbooks.Open($xlsxAbs, 0, $true)
         if ($null -eq $wb) {
             Write-Warning '[XLSX-PDF] Excel n''a pas ouvert le classeur.'
             return $false
         }
         $wb.ExportAsFixedFormat($xlFixedFormatTypePDF, $pdfAbs)
+        if ($usedPool -and $null -ne $script:CnsXlsxPdfPoolStats) {
+            $script:CnsXlsxPdfPoolStats.PoolHits++
+        }
     }
     catch {
         Write-Warning ("[XLSX-PDF] Conversion Excel echouee : {0}" -f $_.Exception.Message)
@@ -427,13 +626,13 @@ function Convert-XlsxToPdfViaExcel {
             script:Release-CnsExcelComObject -ComObject $wb
             $wb = $null
         }
-        if ($null -ne $excel) {
+        if ($ownedExcel -and $null -ne $excel) {
             try { $excel.Quit() } catch { }
             script:Release-CnsExcelComObject -ComObject $excel
             $excel = $null
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
         }
-        [System.GC]::Collect()
-        [System.GC]::WaitForPendingFinalizers()
     }
 
     return (Test-Path -LiteralPath $pdfAbs)
@@ -456,6 +655,7 @@ function Convert-XlsxToPdf {
         $ok = Convert-XlsxToPdfUsingLibreOffice -XlsxPath $XlsxPath -PdfPath $PdfPath
         if (-not $ok -and $mode -eq 'AUTO' -and (Test-CnsMicrosoftExcelAvailable)) {
             script:Write-CnsXlsxToPdfLog -Message 'LibreOffice echoue, fallback vers Excel (mode AUTO).' -Level 'WARN'
+            if ($null -ne $script:CnsXlsxPdfPoolStats) { $script:CnsXlsxPdfPoolStats.Fallbacks++ }
             $ok = Convert-XlsxToPdfViaExcel -XlsxPath $XlsxPath -PdfPath $PdfPath
             if ($ok) { $engineUsed = 'Excel' }
         }
@@ -464,6 +664,10 @@ function Convert-XlsxToPdf {
         $ok = Convert-XlsxToPdfViaExcel -XlsxPath $XlsxPath -PdfPath $PdfPath
     }
     $sw.Stop()
+    if ($null -ne $script:CnsXlsxPdfPoolStats) {
+        $script:CnsXlsxPdfPoolStats.Conversions++
+        $script:CnsXlsxPdfPoolStats.TotalMs += [int]$sw.ElapsedMilliseconds
+    }
     if ($ok) {
         script:Write-CnsXlsxToPdfLog -Message ("Conversion reussie via {0} en {1} ms" -f $engineUsed, $sw.ElapsedMilliseconds) -Level 'INFO'
     }

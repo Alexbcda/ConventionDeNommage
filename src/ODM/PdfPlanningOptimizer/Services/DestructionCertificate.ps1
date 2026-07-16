@@ -675,7 +675,7 @@ function Invoke-CdsGhostscriptRasterImageToSinglePagePdf {
             ("-sOutputFile=$pdfAbs")
         ))
     if (Get-Command Get-CnsCoverPdfwriteQualityArgs -ErrorAction SilentlyContinue) {
-        [void]$arg.AddRange([string[]](Get-CnsCoverPdfwriteQualityArgs))
+        [void]$arg.AddRange([string[]](Get-CnsCoverPdfwriteQualityArgs -HighQuality))
     }
     [void]$arg.AddRange([string[]](Get-CdsGhostscriptCombinedPermits -Paths @($imgAbs, $pdfAbs, $libRoot, $viewJpegPs)))
     [void]$arg.Add($viewJpegPs)
