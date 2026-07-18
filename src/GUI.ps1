@@ -354,9 +354,41 @@ function Start-GUI {
         $panelResult = Show-ConventionNommagePanel -FichierPDF $resolvedPdf
         $realPanel = $panelResult[-1]
         if ($realPanel) {
+            # Host avec Padding equilibre : marge gauche ET droite autour du contenu.
+            # Les enfants Convention sont en Position absolue — le champ collecte
+            # est donc ancre Left+Right pour remplir la largeur entre ces marges.
+            $mainPanel = [System.Windows.Forms.Panel]::new()
+            $mainPanel.Name = 'ConventionNommageHostPanel'
+            $mainPanel.Dock = 'Fill'
+            $mainPanel.BackColor = $script:CouleurGrisFond
+            $mainPanel.Padding = [System.Windows.Forms.Padding]::new(20, 10, 20, 10)
+
             $realPanel.Dock = 'Fill'
             $realPanel.Name = 'ConventionNommageRootPanel'
-            $form.Controls.Add($realPanel)
+            $realPanel.Padding = [System.Windows.Forms.Padding]::new(0)
+            $mainPanel.Controls.Add($realPanel)
+            $form.Controls.Add($mainPanel)
+
+            $script:ApplyRenameOnlyFieldMargins = {
+                param($RootPanel)
+                if ($null -eq $RootPanel) { return }
+                $availW = [int]$RootPanel.ClientSize.Width
+                if ($availW -lt 80) { return }
+                foreach ($ctrlName in @('txtCollecte', 'lblPdfFile')) {
+                    $ctrl = $RootPanel.Controls[$ctrlName]
+                    if ($null -eq $ctrl) { continue }
+                    $ctrl.Left = 0
+                    $ctrl.Width = $availW
+                    $ctrl.Anchor = [System.Windows.Forms.AnchorStyles]([System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right)
+                }
+            }
+            & $script:ApplyRenameOnlyFieldMargins $realPanel
+            $realPanel.Add_Resize({
+                param($sender, $e)
+                if ($null -ne $script:ApplyRenameOnlyFieldMargins) {
+                    & $script:ApplyRenameOnlyFieldMargins $sender
+                }
+            })
         }
         if (Get-Command Update-WinFormsTreeUiTexts -ErrorAction SilentlyContinue) {
             Update-WinFormsTreeUiTexts -RootControl $form
@@ -370,8 +402,18 @@ function Start-GUI {
             Write-AssistantRenameOnlyGuiLog ("Fenetre visible — elapsed={0}ms" -f $script:AssistantStartupSw.ElapsedMilliseconds)
             $frm = $sender
             if ($null -eq $frm -or $frm -isnot [System.Windows.Forms.Form]) { return }
-            $rootPanel = $frm.Controls['ConventionNommageRootPanel']
+            $hostPanel = $frm.Controls['ConventionNommageHostPanel']
+            $rootPanel = $null
+            if ($null -ne $hostPanel) {
+                $rootPanel = $hostPanel.Controls['ConventionNommageRootPanel']
+            }
+            if ($null -eq $rootPanel) {
+                $rootPanel = $frm.Controls['ConventionNommageRootPanel']
+            }
             if ($null -eq $rootPanel) { return }
+            if ($null -ne $script:ApplyRenameOnlyFieldMargins) {
+                & $script:ApplyRenameOnlyFieldMargins $rootPanel
+            }
             $txtBox = $rootPanel.Controls['txtCollecte']
             if ($null -ne $txtBox) {
                 $txtBox.Focus()
