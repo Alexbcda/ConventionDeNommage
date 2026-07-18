@@ -47,7 +47,7 @@ else {
         if ($args.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace([string]$args[0])) {
             $env:ASSISTANT_PDF = [string]$args[0]
         }
-        & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -STA -ExecutionPolicy Bypass -NoProfile -File $PSCommandPath @args
+        & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -STA -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File $PSCommandPath @args
         exit $LASTEXITCODE
     }
 }

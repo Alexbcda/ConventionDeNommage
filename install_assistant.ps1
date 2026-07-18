@@ -359,6 +359,7 @@ function Test-InstallPackage {
     param([Parameter(Mandatory = $true)][string]$PackageDir)
     $required = @(
         'ASSISTANT.bat',
+        'Launcher.vbs',
         'ASSISTANT.ico',
         'src\Main.ps1',
         'src\LaunchAssistant.ps1',
@@ -432,8 +433,16 @@ function New-AssistantShortcut {
     }
     $ws = New-Object -ComObject WScript.Shell
     $shortcut = $ws.CreateShortcut($ShortcutPath)
-    $shortcut.TargetPath = $LauncherBatPath
-    $shortcut.Arguments = ''
+    $launcherResolved = (Resolve-Path -LiteralPath $LauncherBatPath).Path
+    if ($launcherResolved -like '*.vbs') {
+        $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
+        $shortcut.TargetPath = $wscript
+        $shortcut.Arguments = ('//nologo "{0}"' -f $launcherResolved)
+    }
+    else {
+        $shortcut.TargetPath = $launcherResolved
+        $shortcut.Arguments = ''
+    }
     $shortcut.WorkingDirectory = $WorkingDirectory
     $shortcut.Description = 'ASSISTANT - Elise Alpes'
     $shortcut.WindowStyle = 1
@@ -457,9 +466,9 @@ function Register-AssistantPdfContextMenu {
     $cmdKey = Join-Path $shellKey 'command'
 
     if (-not (Test-Path -LiteralPath $LauncherBatPath)) {
-        throw "ASSISTANT.bat introuvable : $LauncherBatPath"
+        throw "Lanceur introuvable : $LauncherBatPath"
     }
-    $batPath = (Resolve-Path -LiteralPath $LauncherBatPath).Path
+    $launcherResolved = (Resolve-Path -LiteralPath $LauncherBatPath).Path
 
     $iconCandidate = $IconPath
     if ([string]::IsNullOrWhiteSpace($iconCandidate)) {
@@ -473,11 +482,20 @@ function Register-AssistantPdfContextMenu {
         $iconValue = '{0},0' -f $iconValue
     }
 
-    $cmdExe = Join-Path $env:SystemRoot 'System32\cmd.exe'
-    if (-not (Test-Path -LiteralPath $cmdExe)) {
-        throw "cmd.exe introuvable : $cmdExe"
+    if ($launcherResolved -like '*.vbs') {
+        $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
+        if (-not (Test-Path -LiteralPath $wscript)) {
+            throw "wscript.exe introuvable : $wscript"
+        }
+        $commandValue = ('"{0}" //nologo "{1}" "%1"' -f $wscript, $launcherResolved)
     }
-    $commandValue = ('"{0}" /c ""{1}" "%1""' -f $cmdExe, $batPath)
+    else {
+        $cmdExe = Join-Path $env:SystemRoot 'System32\cmd.exe'
+        if (-not (Test-Path -LiteralPath $cmdExe)) {
+            throw "cmd.exe introuvable : $cmdExe"
+        }
+        $commandValue = ('"{0}" /c ""{1}" "%1""' -f $cmdExe, $launcherResolved)
+    }
 
     if (-not (Test-Path -LiteralPath $shellKey)) {
         $null = New-Item -Path $shellKey -Force
@@ -620,7 +638,7 @@ foreach ($item in $itemsFromContent) {
     }
     Copy-InstallItem -Source $source -Destination $dest -ContentRoot $contentRoot
 }
-$itemsFromPackage = @('ASSISTANT.bat', 'ASSISTANT.ico', 'INSTALL.bat', 'install_assistant.ps1', 'install_gui.ps1', 'fix_installation.ps1', 'Register-AssistantContextMenu.ps1', 'uninstall_assistant.ps1')
+$itemsFromPackage = @('ASSISTANT.bat', 'Launcher.vbs', 'ASSISTANT.ico', 'INSTALL.bat', 'install_assistant.ps1', 'install_gui.ps1', 'fix_installation.ps1', 'Register-AssistantContextMenu.ps1', 'uninstall_assistant.ps1')
 foreach ($item in $itemsFromPackage) {
     $source = Join-Path $packageDir $item
     if (-not (Test-Path -LiteralPath $source)) { continue }
@@ -700,14 +718,16 @@ Ensure-InstalledPs1Utf8Bom -InstallRoot $InstallDir
 
 $installedMain = Join-Path $InstallDir 'src\Main.ps1'
 $installedBat = Join-Path $InstallDir 'ASSISTANT.bat'
+$installedVbs = Join-Path $InstallDir 'Launcher.vbs'
 $installedIcon = Join-Path $InstallDir 'ASSISTANT.ico'
+$installedLauncher = if (Test-Path -LiteralPath $installedVbs) { $installedVbs } else { $installedBat }
 $shortcutCreated = $false
 foreach ($shortcutPath in @(
     (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\ASSISTANT.lnk'),
     (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\ASSISTANT.lnk')
 )) {
     try {
-        New-AssistantShortcut -ShortcutPath $shortcutPath -LauncherBatPath $installedBat -WorkingDirectory $InstallDir -IconPath $installedIcon
+        New-AssistantShortcut -ShortcutPath $shortcutPath -LauncherBatPath $installedLauncher -WorkingDirectory $InstallDir -IconPath $installedIcon
         Write-InstallStep "Raccourci cree : $shortcutPath"
         $shortcutCreated = $true
         break
@@ -722,7 +742,7 @@ if ($DesktopShortcut) {
         $desktop = [Environment]::GetFolderPath('Desktop')
         if (-not [string]::IsNullOrWhiteSpace($desktop)) {
             $desktopLnk = Join-Path $desktop 'ASSISTANT.lnk'
-            New-AssistantShortcut -ShortcutPath $desktopLnk -LauncherBatPath $installedBat -WorkingDirectory $InstallDir -IconPath $installedIcon
+            New-AssistantShortcut -ShortcutPath $desktopLnk -LauncherBatPath $installedLauncher -WorkingDirectory $InstallDir -IconPath $installedIcon
             Write-InstallStep "Raccourci bureau cree : $desktopLnk"
             $shortcutCreated = $true
         }
@@ -755,7 +775,7 @@ if ($RegisterProgramsEntry) {
 }
 
 try {
-    Register-AssistantPdfContextMenu -InstallDir $InstallDir -LauncherBatPath $installedBat -IconPath $installedIcon
+    Register-AssistantPdfContextMenu -InstallDir $InstallDir -LauncherBatPath $installedLauncher -IconPath $installedIcon
     Write-InstallStep 'Menu contextuel PDF enregistre (clic droit)'
 }
 catch {
@@ -763,7 +783,7 @@ catch {
 }
 
 if (-not $shortcutCreated) {
-    Write-Warning 'Aucun raccourci cree. Lancez ASSISTANT.bat manuellement.'
+    Write-Warning 'Aucun raccourci cree. Lancez Launcher.vbs ou ASSISTANT.bat manuellement.'
 }
 
 Write-Host ''

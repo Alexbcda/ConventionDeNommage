@@ -14,17 +14,17 @@ $ErrorActionPreference = 'Stop'
 function Register-AssistantPdfContextMenuLocal {
     param(
         [Parameter(Mandatory = $true)][string]$InstallDir,
-        [Parameter(Mandatory = $true)][string]$LauncherBatPath,
+        [Parameter(Mandatory = $true)][string]$LauncherPath,
         [string]$IconPath = '',
         [string]$MenuLabel = 'Assistant'
     )
     $shellKey = 'HKCU:\Software\Classes\SystemFileAssociations\.pdf\shell\ASSISTANT'
     $cmdKey = Join-Path $shellKey 'command'
 
-    if (-not (Test-Path -LiteralPath $LauncherBatPath)) {
-        throw "ASSISTANT.bat introuvable : $LauncherBatPath"
+    if (-not (Test-Path -LiteralPath $LauncherPath)) {
+        throw "Lanceur introuvable : $LauncherPath"
     }
-    $batPath = (Resolve-Path -LiteralPath $LauncherBatPath).Path
+    $launcherResolved = (Resolve-Path -LiteralPath $LauncherPath).Path
 
     $iconCandidate = $IconPath
     if ([string]::IsNullOrWhiteSpace($iconCandidate)) {
@@ -38,8 +38,14 @@ function Register-AssistantPdfContextMenuLocal {
         $iconValue = '{0},0' -f $iconValue
     }
 
-    $cmdExe = Join-Path $env:SystemRoot 'System32\cmd.exe'
-    $commandValue = ('"{0}" /c ""{1}" "%1""' -f $cmdExe, $batPath)
+    if ($launcherResolved -like '*.vbs') {
+        $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
+        $commandValue = ('"{0}" //nologo "{1}" "%1"' -f $wscript, $launcherResolved)
+    }
+    else {
+        $cmdExe = Join-Path $env:SystemRoot 'System32\cmd.exe'
+        $commandValue = ('"{0}" /c ""{1}" "%1""' -f $cmdExe, $launcherResolved)
+    }
 
     if (-not (Test-Path -LiteralPath $shellKey)) { $null = New-Item -Path $shellKey -Force }
     if (-not (Test-Path -LiteralPath $cmdKey)) { $null = New-Item -Path $cmdKey -Force }
@@ -57,6 +63,8 @@ function Register-AssistantPdfContextMenuLocal {
     Write-Host "  Icone    : $iconValue"
 }
 
+$vbs = Join-Path $InstallDir 'Launcher.vbs'
 $bat = Join-Path $InstallDir 'ASSISTANT.bat'
+$launcher = if (Test-Path -LiteralPath $vbs) { $vbs } else { $bat }
 $icon = Join-Path $InstallDir 'ASSISTANT.ico'
-Register-AssistantPdfContextMenuLocal -InstallDir $InstallDir -LauncherBatPath $bat -IconPath $icon
+Register-AssistantPdfContextMenuLocal -InstallDir $InstallDir -LauncherPath $launcher -IconPath $icon

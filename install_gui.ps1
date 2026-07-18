@@ -31,6 +31,7 @@ function Test-InstallPackageComplete {
         'install_gui.ps1',
         'install_assistant.ps1',
         'ASSISTANT.bat',
+        'Launcher.vbs',
         'src\Main.ps1',
         'lib\System.Data.SQLite.dll'
     ) | Where-Object { -not (Test-Path -LiteralPath (Join-Path $Root $_)) }

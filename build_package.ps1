@@ -424,6 +424,7 @@ function Test-AssistantPackage {
     )
     $required = @(
         'ASSISTANT.bat',
+        'Launcher.vbs',
         'INSTALL.bat',
         'install_assistant.ps1',
         'install_gui.ps1',
@@ -628,6 +629,7 @@ $null = Copy-PackageGraphModules -PackageRoot $outputPath
 Write-BuildStep 'Copie des lanceurs et scripts'
 $launcherFiles = @(
     @{ Name = 'ASSISTANT.bat'; Required = $true }
+    @{ Name = 'Launcher.vbs'; Required = $true }
     @{ Name = 'INSTALL.bat'; Required = $true }
     @{ Name = 'install_assistant.ps1'; Required = $true }
     @{ Name = 'install_gui.ps1'; Required = $true }

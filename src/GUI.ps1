@@ -473,11 +473,8 @@ function Start-GUI {
     if (-not (Get-Command Get-PlanningRebuildSetting -ErrorAction SilentlyContinue)) {
         . "$PSScriptRoot\Config.ps1"
     }
-    # Convention uniquement au demarrage — Agents / Vehicules / Planning / Outils en lazy load.
-    if (-not (Get-Command Show-ConventionNommagePanel -ErrorAction SilentlyContinue)) {
-        . "$PSScriptRoot\ODM\ConventionNommage\ConventionNommage.ps1"
-    }
-    Write-AssistantStartupMark -Phase 'convention_scripts_loaded'
+    # Convention de nommage : uniquement en mode RenameOnly (clic droit PDF) — pas d'onglet ici.
+    Write-AssistantStartupMark -Phase 'core_scripts_loaded'
 
     $configManagerScript = Join-Path $PSScriptRoot 'Core\ConfigManager.ps1'
     if (Test-Path -LiteralPath $configManagerScript) {
@@ -677,22 +674,15 @@ function Start-GUI {
     $tabControl.Font = $script:PoliceNormal
     $tabControl.Name = "MainTabControl"
 
-    # ONGLET 1 : Convention de nommage (seul onglet charge au demarrage)
-    $tabRename = [System.Windows.Forms.TabPage]::new()
-    $tabRename.Name = "TabConventionNommage"
-    $tabRename.Text = "Convention de nommage"
-    $tabRename.BackColor = $script:CouleurGrisFond
-    $tabRename.Tag = $true
+    # ONGLET 1 (defaut) : Edition planning — lazy load au premier affichage
+    $tabPlanning = [System.Windows.Forms.TabPage]::new()
+    $tabPlanning.Name = 'TabPlanning'
+    $tabPlanning.Text = 'Edition planning'
+    $tabPlanning.BackColor = $script:CouleurGrisFond
+    $tabPlanning.Tag = $false
+    script:Add-AssistantLazyPlaceholder -Tab $tabPlanning -Message 'Chargement de l''edition planning au premier affichage...'
+    $tabControl.TabPages.Add($tabPlanning)
 
-    $panelResult = Show-ConventionNommagePanel -FichierPDF $resolvedPdf
-    $realPanel = $panelResult[-1]
-    $tabRename.Controls.Add($realPanel)
-    if ($realPanel) { $realPanel.Name = "ConventionNommageRootPanel" }
-    $tabControl.TabPages.Add($tabRename)
-    Write-AssistantStartupMark -Phase 'convention_panel_loaded'
-    script:Write-AssistantLazyLog 'Onglet Convention de nommage pret (demarrage)'
-
-    # ONGLET 2-5 : stubs — contenu charge au premier clic
     $tabAgents = [System.Windows.Forms.TabPage]::new()
     $tabAgents.Name = 'TabAgents'
     $tabAgents.Text = 'Données agents'
@@ -709,14 +699,6 @@ function Start-GUI {
     script:Add-AssistantLazyPlaceholder -Tab $tabVehicules -Message 'Chargement des véhicules au premier affichage...'
     $tabControl.TabPages.Add($tabVehicules)
 
-    $tabPlanning = [System.Windows.Forms.TabPage]::new()
-    $tabPlanning.Name = 'TabPlanning'
-    $tabPlanning.Text = 'Edition planning'
-    $tabPlanning.BackColor = $script:CouleurGrisFond
-    $tabPlanning.Tag = $false
-    script:Add-AssistantLazyPlaceholder -Tab $tabPlanning -Message 'Chargement de l''edition planning au premier affichage...'
-    $tabControl.TabPages.Add($tabPlanning)
-
     $tabOutils = [System.Windows.Forms.TabPage]::new()
     $tabOutils.Name = 'TabOutils'
     $tabOutils.Text = 'Outils'
@@ -725,7 +707,10 @@ function Start-GUI {
     script:Add-AssistantLazyPlaceholder -Tab $tabOutils -Message 'Chargement des outils au premier affichage...'
     $tabControl.TabPages.Add($tabOutils)
 
-    $script:GuiPreviousTabName = if ($tabControl.SelectedTab) { [string]$tabControl.SelectedTab.Name } else { $null }
+    # Convention de nommage : absente du mode normal (RenameOnly uniquement).
+
+    $tabControl.SelectedTab = $tabPlanning
+    $script:GuiPreviousTabName = [string]$tabPlanning.Name
     $tabControl.Add_SelectedIndexChanged({
         param($sender, $e)
         $tabs = $sender
@@ -747,12 +732,15 @@ function Start-GUI {
             }
         }
 
-        if ($null -ne $newTab -and $newName -ne 'TabConventionNommage' -and $newTab.Tag -ne $true) {
+        if ($null -ne $newTab -and $newTab.Tag -ne $true) {
             script:Initialize-AssistantLazyTabPage -Tab $newTab
         }
 
         $script:GuiPreviousTabName = $newName
     })
+
+    # Charger Edition planning des le demarrage (onglet par defaut).
+    script:Initialize-AssistantLazyTabPage -Tab $tabPlanning
 
     $form.Controls.Add($tabControl)
     Update-WinFormsTreeUiTexts -RootControl $form
@@ -778,18 +766,6 @@ function Start-GUI {
                 }
             })
             $updateTimer.Start()
-        }
-        Start-Sleep -Milliseconds 100
-        $frm = $sender
-        if ($null -eq $frm -or $frm -isnot [System.Windows.Forms.Form]) { return }
-        $tabs = $frm.Controls["MainTabControl"]
-        if ($null -eq $tabs -or $tabs -isnot [System.Windows.Forms.TabControl]) { return }
-        $tab = $tabs.TabPages["TabConventionNommage"]
-        if ($null -eq $tab) { return }
-        $rootPanel = $tab.Controls["ConventionNommageRootPanel"]
-        if ($null -ne $rootPanel) {
-            $txtBox = $rootPanel.Controls | Where-Object { $_ -is [System.Windows.Forms.TextBox] }
-            if ($txtBox) { $txtBox.Focus() }
         }
     })
 

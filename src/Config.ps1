@@ -1,5 +1,5 @@
 ﻿if ([System.Threading.Thread]::CurrentThread.ApartmentState -ne "STA") {
-    powershell -STA -File $PSCommandPath $args
+    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -STA -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File $PSCommandPath @args
     exit
 }
 

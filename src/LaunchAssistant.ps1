@@ -1,5 +1,6 @@
-﻿# LaunchAssistant.ps1 - point d'entree depuis ASSISTANT.bat (raccourci + clic droit PDF)
+﻿# LaunchAssistant.ps1 - point d'entree depuis Launcher.vbs / ASSISTANT.bat (raccourci + clic droit PDF)
 # Lit le chemin PDF via la variable d'environnement ASSISTANT_PDF (chemins avec espaces supportes).
+# La console est masquee par le lanceur (VBS Run 0 / powershell -WindowStyle Hidden).
 
 param(
     [Parameter(ValueFromRemainingArguments = $true)]
