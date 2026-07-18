@@ -974,7 +974,7 @@ function Build-CnsTourneeHeaderCoverPostScriptBody {
         $memoPs = New-CnsPostScriptCenteredTextShowBlock -Text $CenteredText -FontName $fontReg -FontSize 12 -Y $memoY -PageWidth $pageWidth
     }
     else {
-        $memoPs = Build-CnsCoverTextLinesPostScriptAppend -Lines @($MetierMemoLines) -StartY $memoY -LineStep 14 -MinY 72 -FontName $fontReg -FontSize 12
+        $memoPs = Build-CnsCoverTextLinesPostScriptAppend -Lines @($MetierMemoLines) -StartY $memoY -LineStep 20 -MinY 72 -FontName $fontReg -FontSize 12
     }
 
     return @"

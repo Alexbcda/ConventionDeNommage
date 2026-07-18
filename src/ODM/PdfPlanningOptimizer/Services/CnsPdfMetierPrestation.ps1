@@ -1256,6 +1256,7 @@ function Get-CnsTourneeMetierMemoLinesForBlock {
     <#
     .SYNOPSIS
         Mémos garde tournée agrégés depuis les ODM PDF du bloc (hors PdfFallback / __PRE__).
+        Inclut l'instruction texte « Inventaire FT … compter le nombre de bacs » si un point FT est detecte.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -1276,6 +1277,7 @@ function Get-CnsTourneeMetierMemoLinesForBlock {
     $trackLines = New-Object System.Collections.Generic.List[object]
     $ponctuelleSeen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
     $ponctuelleLines = New-Object System.Collections.Generic.List[object]
+    $ftLabels = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
 
     $pairs = @($SortedGsPairs)
     for ($pn = [int]$MainFrom1; $pn -le [int]$MainTo1; $pn++) {
@@ -1338,6 +1340,23 @@ function Get-CnsTourneeMetierMemoLinesForBlock {
                 [void]$ponctuelleLines.Add([pscustomobject]@{ Detail = $det; Client = $cl })
             }
         }
+
+        # Instruction garde : Inventaire FT (texte pur, aucun comptage)
+        if (Get-Command Get-CnsStep5FragSliceFtCollectionPointLabel -ErrorAction SilentlyContinue) {
+            $peLines = @()
+            if ($null -ne $pe -and $null -ne $pe.PSObject.Properties['Lines'] -and $null -ne $pe.Lines) {
+                $peLines = @($pe.Lines)
+            }
+            $ftLabel = Get-CnsStep5FragSliceFtCollectionPointLabel `
+                -FragSlicePdfPath $null `
+                -PdfRawLines $peLines `
+                -RawPageNumOneBased $rawPn `
+                -PageEntity $pe `
+                -WorkOrderEntity $wo
+            if (Test-CnsFtCollectionPointLabelEligible -Label $ftLabel) {
+                [void]$ftLabels.Add(([string]$ftLabel).Trim())
+            }
+        }
     }
 
     $dedupSeen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
@@ -1364,6 +1383,13 @@ function Get-CnsTourneeMetierMemoLinesForBlock {
         $cl = ConvertTo-CnsCoverClientDisplayLabel -Name $dc
         if (-not [string]::IsNullOrWhiteSpace($cl)) {
             [void]$out.Add(("Certificat de destruction : {0}" -f $cl))
+        }
+    }
+    foreach ($ftLabel in @($ftLabels)) {
+        if ([string]::IsNullOrWhiteSpace($ftLabel)) { continue }
+        $ftInstruction = ("Inventaire {0} compter le nombre de bacs" -f $ftLabel.Trim())
+        if ($dedupSeen.Add($ftInstruction)) {
+            [void]$out.Add($ftInstruction)
         }
     }
     return @($out.ToArray())
