@@ -14,6 +14,9 @@ function Get-CnsQpdfExecutablePath {
     try {
         $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
         [void]$candidates.Add((Join-Path $repoRoot 'lib\qpdf\bin\qpdf.exe'))
+        [void]$candidates.Add((Join-Path $repoRoot 'lib\qpdf\qpdf.exe'))
+        [void]$candidates.Add((Join-Path $repoRoot 'package\lib\qpdf\bin\qpdf.exe'))
+        [void]$candidates.Add((Join-Path $repoRoot 'package\runtime\qpdf\qpdf.exe'))
     }
     catch { }
     foreach ($p in @(
@@ -198,6 +201,40 @@ function Merge-CnsPdfFilesQpdfOrdered {
         $null = New-Item -ItemType Directory -Path $outDir -Force
     }
 
+    # Fusion par lots si ligne de commande trop longue (limite Windows ~32k).
+    $argLenEst = 0
+    foreach ($tp in @($paths)) { $argLenEst += ($tp.Length + 8) }
+    $needChunk = ($argLenEst -gt 28000 -or $paths.Count -gt 80)
+
+    if ($needChunk -and $paths.Count -gt 2) {
+        $chunkSize = 40
+        $partials = New-Object System.Collections.Generic.List[string]
+        $runId = [Guid]::NewGuid().ToString('N')
+        try {
+            for ($i = 0; $i -lt $paths.Count; $i += $chunkSize) {
+                $take = [Math]::Min($chunkSize, $paths.Count - $i)
+                $chunk = @($paths[$i..($i + $take - 1)])
+                $partOut = Join-Path $outDir ("cn_qpdf_chunk_{0}_{1:D3}.pdf" -f $runId, ($partials.Count + 1))
+                if (-not (Merge-CnsPdfFilesQpdfOrdered -InputPdfsOrdered $chunk -DestinationPdfPath $partOut)) {
+                    return $false
+                }
+                [void]$partials.Add($partOut)
+            }
+            if ($partials.Count -eq 1) {
+                Copy-Item -LiteralPath $partials[0] -Destination $outAbs -Force
+                return (Test-Path -LiteralPath $outAbs)
+            }
+            return (Merge-CnsPdfFilesQpdfOrdered -InputPdfsOrdered @($partials.ToArray()) -DestinationPdfPath $outAbs)
+        }
+        finally {
+            foreach ($pp in @($partials)) {
+                if (-not [string]::IsNullOrWhiteSpace($pp) -and (Test-Path -LiteralPath $pp)) {
+                    Remove-Item -LiteralPath $pp -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+    }
+
     $args = New-Object System.Collections.Generic.List[string]
     [void]$args.Add('--warning-exit-0')
     [void]$args.Add('--empty')
@@ -210,8 +247,14 @@ function Merge-CnsPdfFilesQpdfOrdered {
     [void]$args.Add($outAbs)
 
     try {
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
         $proc = Start-Process -FilePath $qpdf -ArgumentList @($args.ToArray()) -Wait -PassThru -NoNewWindow -ErrorAction Stop
-        return ($null -ne $proc -and $proc.ExitCode -eq 0 -and (Test-Path -LiteralPath $outAbs))
+        $sw.Stop()
+        $ok = ($null -ne $proc -and $proc.ExitCode -eq 0 -and (Test-Path -LiteralPath $outAbs))
+        if ($ok) {
+            Write-Host ("[PDF-MERGE] qpdf OK : {0} fichier(s) -> {1} en {2} ms" -f $paths.Count, (Split-Path -Leaf $outAbs), $sw.ElapsedMilliseconds) -ForegroundColor Green
+        }
+        return $ok
     }
     catch {
         Write-Warning ("[PDF-MERGE] qpdf echoue : {0}" -f $_.Exception.Message)
@@ -242,8 +285,14 @@ function Merge-CnsPdfFilesPdftkOrdered {
     [void]$argList.Add($outAbs)
 
     try {
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
         $proc = Start-Process -FilePath $pdftk -ArgumentList @($argList.ToArray()) -Wait -PassThru -NoNewWindow -ErrorAction Stop
-        return ($null -ne $proc -and $proc.ExitCode -eq 0 -and (Test-Path -LiteralPath $outAbs))
+        $sw.Stop()
+        $ok = ($null -ne $proc -and $proc.ExitCode -eq 0 -and (Test-Path -LiteralPath $outAbs))
+        if ($ok) {
+            Write-Host ("[PDF-MERGE] pdftk OK : {0} fichier(s) en {1} ms" -f $paths.Count, $sw.ElapsedMilliseconds) -ForegroundColor Yellow
+        }
+        return $ok
     }
     catch {
         Write-Warning ("[PDF-MERGE] pdftk echoue : {0}" -f $_.Exception.Message)
@@ -261,11 +310,11 @@ function Merge-CnsPdfFilesStructurePreservingOrdered {
         [Parameter(Mandatory = $true)][string]$DestinationPdfPath
     )
     if (Merge-CnsPdfFilesQpdfOrdered -InputPdfsOrdered $InputPdfsOrdered -DestinationPdfPath $DestinationPdfPath) {
-        Write-Host '[PDF-MERGE] Fusion structure-preserving via qpdf (pas de pdfwrite).' -ForegroundColor Green
+        Write-Host '[PDF-MERGE] Fusion via qpdf (structure-preserving)' -ForegroundColor Green
         return $true
     }
     if (Merge-CnsPdfFilesPdftkOrdered -InputPdfsOrdered $InputPdfsOrdered -DestinationPdfPath $DestinationPdfPath) {
-        Write-Host '[PDF-MERGE] Fusion structure-preserving via pdftk (pas de pdfwrite).' -ForegroundColor Green
+        Write-Host '[PDF-MERGE] Fusion via pdftk' -ForegroundColor Yellow
         return $true
     }
     return $false
@@ -274,8 +323,8 @@ function Merge-CnsPdfFilesStructurePreservingOrdered {
 function Merge-CnsPdfFilesForStep5TourneeComposition {
     <#
     .SYNOPSIS
-        Fusion finale STEP 5 : qpdf/pdftk si PDF LibreOffice presents (certificat, bilan) ; sinon Ghostscript historique.
-        Les PDF cert_dest_*.pdf et bilan_seg_*.pdf ne doivent jamais passer dans pdfwrite.
+        Fusion PDF Step 5 : qpdf en priorite (structure-preserving), puis pdftk, puis Ghostscript en dernier recours.
+        Les PDF LibreOffice (certificat / bilan / FT) ne passent jamais dans pdfwrite si qpdf/pdftk echouent.
     #>
     param(
         [Parameter(Mandatory = $true)][string[]]$InputPdfsOrdered,
@@ -289,61 +338,81 @@ function Merge-CnsPdfFilesForStep5TourneeComposition {
 
     foreach ($lp in @($loPaths)) {
         if (-not (Test-Path -LiteralPath $lp)) { continue }
-        $kind = if (Test-CnsPdfPathIsDestructionCertificateFragment -Path $lp) { 'DESTRUCTION-CERT' } else { 'BILAN-COLLECTE' }
+        $kind = if (Test-CnsPdfPathIsDestructionCertificateFragment -Path $lp) {
+            'DESTRUCTION-CERT'
+        }
+        elseif (Test-CnsPdfPathIsFtCollecteFragment -Path $lp) {
+            'BILAN-COLLECTE'
+        }
+        else {
+            'BILAN-COLLECTE'
+        }
         Write-CnsLibreOfficePdfMergeAudit -Phase 'BEFORE_MERGE' -PdfPath $lp -DocumentKind $kind
     }
 
+    $beforeMarkers = @{}
     if ($hasLoDocs) {
-        $beforeMarkers = @{}
         foreach ($lp in @($loPaths)) {
             if (Test-Path -LiteralPath $lp) {
                 $beforeMarkers[$lp] = Get-CnsPdfFontStructureMarkers -PdfPath $lp
             }
         }
+    }
 
-        $merged = Merge-CnsPdfFilesStructurePreservingOrdered -InputPdfsOrdered $InputPdfsOrdered -DestinationPdfPath $DestinationPdfPath
-        if (-not $merged) {
-            Write-Warning @'
-[PDF-MERGE] Fusion impossible sans qpdf/pdftk : les PDF LibreOffice (certificat, bilan) ne peuvent pas passer dans Ghostscript pdfwrite.
-Installez qpdf (https://github.com/qpdf/qpdf/releases) et definissez CN_QPDF_EXE, ou installez pdftk / PDFtk Server.
-'@
-            return $false
-        }
-
-        if (-not (Test-Path -LiteralPath $DestinationPdfPath)) { return $false }
-
-        $afterFinal = Get-CnsPdfFontStructureMarkers -PdfPath $DestinationPdfPath
-        Write-CnsLibreOfficePdfMergeAudit -Phase 'AFTER_MERGE' -PdfPath $DestinationPdfPath -DocumentKind 'PDF-FINAL'
-
-        if ($null -ne $afterFinal) {
-            $minTu = 0
-            $minFf2 = 0
-            foreach ($bm in @($beforeMarkers.Values)) {
-                if ($null -eq $bm) { continue }
-                if ([int]$bm.ToUnicode -gt $minTu) { $minTu = [int]$bm.ToUnicode }
-                if ([int]$bm.FontFile2 -gt $minFf2) { $minFf2 = [int]$bm.FontFile2 }
-            }
-            $issues = New-Object System.Collections.Generic.List[string]
-            if ($minTu -gt 0 -and [int]$afterFinal.ToUnicode -lt $minTu) {
-                [void]$issues.Add(('ToUnicode final {0} < LibreOffice min {1}' -f $afterFinal.ToUnicode, $minTu))
-            }
-            if ($minFf2 -gt 0 -and [int]$afterFinal.FontFile2 -lt $minFf2) {
-                [void]$issues.Add(('FontFile2 final {0} < LibreOffice min {1}' -f $afterFinal.FontFile2, $minFf2))
-            }
-            if ($issues.Count -gt 0) {
-                Write-Warning ("[PDF-MERGE] Validation structure degradee apres merge LibreOffice : {0}" -f ($issues -join '; '))
-            }
-            else {
-                Write-Host '[PDF-MERGE] Validation structure OK (ToUnicode/FontFile2 preserves dans le PDF final).' -ForegroundColor Green
+    # 1) qpdf — toujours en priorite (avec ou sans fragments LibreOffice)
+    if (Merge-CnsPdfFilesQpdfOrdered -InputPdfsOrdered $InputPdfsOrdered -DestinationPdfPath $DestinationPdfPath) {
+        Write-Host '[PDF-MERGE] Fusion via qpdf (structure-preserving)' -ForegroundColor Green
+        if ($hasLoDocs -and (Test-Path -LiteralPath $DestinationPdfPath)) {
+            Write-CnsLibreOfficePdfMergeAudit -Phase 'AFTER_MERGE' -PdfPath $DestinationPdfPath -DocumentKind 'PDF-FINAL'
+            $afterFinal = Get-CnsPdfFontStructureMarkers -PdfPath $DestinationPdfPath
+            if ($null -ne $afterFinal -and $beforeMarkers.Count -gt 0) {
+                $minTu = 0
+                $minFf2 = 0
+                foreach ($bm in @($beforeMarkers.Values)) {
+                    if ($null -eq $bm) { continue }
+                    if ([int]$bm.ToUnicode -gt $minTu) { $minTu = [int]$bm.ToUnicode }
+                    if ([int]$bm.FontFile2 -gt $minFf2) { $minFf2 = [int]$bm.FontFile2 }
+                }
+                $issues = New-Object System.Collections.Generic.List[string]
+                if ($minTu -gt 0 -and [int]$afterFinal.ToUnicode -lt $minTu) {
+                    [void]$issues.Add(('ToUnicode final {0} < LibreOffice min {1}' -f $afterFinal.ToUnicode, $minTu))
+                }
+                if ($minFf2 -gt 0 -and [int]$afterFinal.FontFile2 -lt $minFf2) {
+                    [void]$issues.Add(('FontFile2 final {0} < LibreOffice min {1}' -f $afterFinal.FontFile2, $minFf2))
+                }
+                if ($issues.Count -gt 0) {
+                    Write-Warning ("[PDF-MERGE] Validation structure degradee apres merge LibreOffice : {0}" -f ($issues -join '; '))
+                }
+                else {
+                    Write-Host '[PDF-MERGE] Validation structure OK (ToUnicode/FontFile2 preserves dans le PDF final).' -ForegroundColor Green
+                }
             }
         }
         return $true
+    }
+
+    # 2) pdftk
+    if (Merge-CnsPdfFilesPdftkOrdered -InputPdfsOrdered $InputPdfsOrdered -DestinationPdfPath $DestinationPdfPath) {
+        Write-Host '[PDF-MERGE] Fusion via pdftk' -ForegroundColor Yellow
+        if ($hasLoDocs -and (Test-Path -LiteralPath $DestinationPdfPath)) {
+            Write-CnsLibreOfficePdfMergeAudit -Phase 'AFTER_MERGE' -PdfPath $DestinationPdfPath -DocumentKind 'PDF-FINAL'
+        }
+        return $true
+    }
+
+    # 3) Ghostscript — interdit si fragments LibreOffice (re-encodage destructeur)
+    if ($hasLoDocs) {
+        Write-Warning @'
+[PDF-MERGE] qpdf et pdftk indisponibles : les PDF LibreOffice (certificat, bilan, FT) ne peuvent pas passer dans Ghostscript pdfwrite.
+Installez qpdf (lib\qpdf\bin\qpdf.exe) ou definissez CN_QPDF_EXE, ou installez pdftk.
+'@
+        return $false
     }
 
     if (-not (Get-Command Merge-CnsPdfFilesGhostscriptOrdered -ErrorAction SilentlyContinue)) {
         Write-Warning '[PDF-MERGE] Merge-CnsPdfFilesGhostscriptOrdered indisponible.'
         return $false
     }
-    Write-Host '[PDF-MERGE] Fusion Ghostscript pdfwrite (aucun PDF LibreOffice certificat/bilan dans la liste).' -ForegroundColor DarkGray
+    Write-Warning '[PDF-MERGE] qpdf et pdftk indisponibles - fallback Ghostscript'
     return (Merge-CnsPdfFilesGhostscriptOrdered -InputPdfsOrdered $InputPdfsOrdered -DestinationPdfPath $DestinationPdfPath)
 }

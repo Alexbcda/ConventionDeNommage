@@ -1,0 +1,32 @@
+{
+  "StartedAt": "2026-07-16T22:57:50.5976951+02:00",
+  "RebuildSec": 337.1,
+  "TotalSec": 346.2,
+  "RebuildMs": 337103,
+  "TotalMs": 346194,
+  "OutputPdf": "c:\\Users\\alexa\\Documents\\ConventionDeNommage\\Test\\Fixtures\\PdfPlanningOptimizer\\ODM_Mercredi_15_Juillet_2026.pdf",
+  "LastError": "",
+  "Exception": null,
+  "StepMs": {
+    "3": 467,
+    "5": 248874,
+    "2": 30406,
+    "4": 29534,
+    "1": 26350
+  },
+  "Step5Perf": {
+    "GsBatchExtracts": 7,
+    "CeaFromStep1": 98,
+    "GsPageExtracts": 98,
+    "CeaPdftotextFallback": 0
+  },
+  "PoolStats": {
+    "Conversions": 20,
+    "PoolHits": 20,
+    "Fallbacks": 0,
+    "TotalMs": 36571
+  },
+  "Transcript": "C:\\Users\\alexa\\AppData\\Local\\Temp\\cn_perf_qpdf_20260716-225204.log",
+  "BaselineBeforeQpdfSec": 337.5,
+  "BaselineOriginalSec": 898.9
+}

@@ -1,4 +1,4 @@
-# Composition PDF : pages de garde globale + par tournée, puis concat avec le PDF principal
+﻿# Composition PDF : pages de garde globale + par tournée, puis concat avec le PDF principal
 # (sans modifier Reorganiser-PDF ni le matching / reorder / sequence GS).
 
 . (Join-Path $PSScriptRoot '..\..\..\Core\GhostscriptResolve.ps1')
@@ -2199,7 +2199,6 @@ function Invoke-PlanningTourneePdfCoverComposition {
         et re-extrait les pages du main dans l'ordre pour produire le PDF final au meme chemin.
     .NOTES
         Desactiver : $env:CN_SKIP_TOURNEE_COVERS = '1'
-        Pas de page de synthese mismatch (supprimee).
     #>
     [CmdletBinding()]
     param(
@@ -2395,10 +2394,10 @@ function Invoke-PlanningTourneePdfCoverComposition {
         }
 
         Write-CnsStep5ConsoleProgress -Message "`n[PROGRESS] STEP 5 : Composition des pages de garde..." -ForegroundColor Cyan
-        Write-CnsStep5ConsoleProgress -Message '[PROGRESS]   - Composition des couvertures tournee (sans page de synthese mismatch)...' -ForegroundColor Gray
+        Write-CnsStep5ConsoleProgress -Message '[PROGRESS]   - Composition des couvertures tournee...' -ForegroundColor Gray
         Update-PlanningTourneeStep5Progress -SubRatio 0.10 -Detail 'Preparation couvertures tournee...'
         Update-PlanningTourneeStep5Progress -SubRatio 0.15 -Detail 'Demarrage des pages de garde tournee...'
-        script:Write-CnsTourneeLog -Message '[TOURNEE] Page de synthese mismatch ignoree (supprimee) — debut direct des gardes tournee.' -Level 'INFO'
+        script:Write-CnsTourneeLog -Message '[TOURNEE] Debut des gardes tournee.' -Level 'INFO'
 
         $seenSegments = @{}
         $prefaceAlreadyAdded = $false

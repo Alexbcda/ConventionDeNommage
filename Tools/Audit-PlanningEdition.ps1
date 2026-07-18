@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Triple audit edition planning : code source, package, installation + test fonctionnel optionnel.
@@ -50,11 +50,23 @@ $composerPath = Join-Path $RepoRoot 'src\ODM\PdfPlanningOptimizer\Services\PdfTo
 $rebuilderPath = Join-Path $RepoRoot 'src\ODM\PdfPlanningOptimizer\Services\PlanningRebuilder.ps1'
 $composer = Get-Content -LiteralPath $composerPath -Raw -ErrorAction SilentlyContinue
 $rebuilder = Get-Content -LiteralPath $rebuilderPath -Raw -ErrorAction SilentlyContinue
-if ($rebuilder -match 'function Build-PlanningOdmMismatchThreeSectionCoverLines') {
-    Write-AuditOk 'Build-PlanningOdmMismatchThreeSectionCoverLines (PlanningRebuilder.ps1)'
+$mismatchLeftovers = @(
+    'Build-PlanningOdmMismatchThreeSectionCoverLines',
+    'Build-PlanningOdmMismatchDiagnosticLines',
+    'Get-PlanningBestExcelCandidateForPdfWorkOrder',
+    'Get-PlanningPdfExcelDifferenceLines',
+    'Get-PlanningExcelSlotCollecteurDisplay',
+    'Get-PlanningPotentialMatchScore',
+    'New-CnsGlobalMismatchCoverPdf',
+    'cover_global.pdf'
+) | Where-Object {
+    ($rebuilder -match [regex]::Escape($_)) -or ($composer -match [regex]::Escape($_))
+}
+if ($mismatchLeftovers.Count -eq 0) {
+    Write-AuditOk 'Traitement mismatch totalement absent (analyse + page synthese)'
 }
 else {
-    Write-AuditKo 'Build-PlanningOdmMismatchThreeSectionCoverLines manquante'
+    Write-AuditKo ("Residus mismatch encore presents : {0}" -f ($mismatchLeftovers -join ', '))
 }
 if ($composer -match 'function Invoke-PlanningTourneePdfCoverComposition') {
     Write-AuditOk 'Invoke-PlanningTourneePdfCoverComposition'
