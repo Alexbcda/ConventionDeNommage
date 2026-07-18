@@ -554,7 +554,7 @@ $centres = @($centresData.centres)
 
 if ([string]::IsNullOrWhiteSpace($Centre)) {
     if ($Quiet) {
-        throw 'Mode silencieux : parametre -Centre obligatoire (fontaine, grenoble, valence, bourg-en-bresse, argonay)'
+        throw 'Mode silencieux : parametre -Centre obligatoire (argonay, bourg-en-bresse, fontaine, valence)'
     }
     else {
         Write-Host ''

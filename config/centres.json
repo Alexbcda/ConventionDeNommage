@@ -1,71 +1,29 @@
 {
-
   "version": "1.0",
-
   "centres": [
-
     {
-
       "id": "argonay",
-
       "name": "Argonay",
-
       "sharePointApiUrl": "https://graph.microsoft.com/v1.0/sites/naevaelisealpes.sharepoint.com:/sites/EliseAlpesArgonay/drive/root:/Planning%20ARGONAY%202026.xlsm:/content",
-
       "planningFileName": "Planning ARGONAY 2026.xlsm"
-
     },
-
     {
-
       "id": "fontaine",
-
       "name": "Fontaine",
-
       "sharePointApiUrl": "https://graph.microsoft.com/v1.0/sites/naevaelisealpes.sharepoint.com:/sites/EliseAlpesFontaine/drive/root:/Planning%20FONTAINE%202026.xlsm:/content",
-
       "planningFileName": "Planning FONTAINE 2026.xlsm"
-
     },
-
     {
-
-      "id": "grenoble",
-
-      "name": "Grenoble",
-
-      "sharePointApiUrl": "https://graph.microsoft.com/v1.0/sites/naevaelisealpes.sharepoint.com:/sites/EliseAlpes/drive/root:/Planning%20GRENOBLE%202026.xlsm:/content",
-
-      "planningFileName": "Planning GRENOBLE 2026.xlsm"
-
-    },
-
-    {
-
       "id": "bourg-en-bresse",
-
       "name": "Bourg-en-Bresse",
-
       "sharePointApiUrl": "https://graph.microsoft.com/v1.0/sites/naevaelisealpes.sharepoint.com:/sites/EliseAlpesBourg/drive/root:/Planning%20BOURG%202026.xlsm:/content",
-
       "planningFileName": "Planning BOURG 2026.xlsm"
-
     },
-
     {
-
       "id": "valence",
-
       "name": "Valence",
-
       "sharePointApiUrl": "https://graph.microsoft.com/v1.0/sites/naevaelisealpes.sharepoint.com:/sites/EliseAlpesValence/drive/root:/Planning%20VALENCE%202026.xlsm:/content",
-
       "planningFileName": "Planning VALENCE 2026.xlsm"
-
     }
-
   ]
-
 }
-
-

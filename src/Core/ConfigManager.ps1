@@ -336,7 +336,7 @@ function Show-ConfigureCentreDialog {
     $selectedIndex = 0
     for ($i = 0; $i -lt $centres.Count; $i++) {
         $c = $centres[$i]
-        [void]$combo.Items.Add(("{0} ({1})" -f [string]$c.name, [string]$c.id))
+        [void]$combo.Items.Add([string]$c.name)
         if ($null -ne $current -and [string]$current.id -eq [string]$c.id) {
             $selectedIndex = $i
         }

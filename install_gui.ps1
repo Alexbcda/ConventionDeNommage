@@ -18,11 +18,10 @@ $psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.e
 
 # Ordre d'affichage demande a l'installation (centres absents de centres.json ignores).
 $script:PreferredCentreIds = @(
-    'fontaine',
-    'grenoble',
-    'valence',
+    'argonay',
     'bourg-en-bresse',
-    'argonay'
+    'fontaine',
+    'valence'
 )
 
 function Test-InstallPackageComplete {
@@ -61,11 +60,10 @@ function Show-InstallSuccess {
 
 function Get-InstallCentresFallback {
     return @(
-        [PSCustomObject]@{ id = 'fontaine'; name = 'Fontaine'; planningFileName = 'Planning FONTAINE 2026.xlsm' },
-        [PSCustomObject]@{ id = 'grenoble'; name = 'Grenoble'; planningFileName = 'Planning GRENOBLE 2026.xlsm' },
-        [PSCustomObject]@{ id = 'valence'; name = 'Valence'; planningFileName = 'Planning VALENCE 2026.xlsm' },
+        [PSCustomObject]@{ id = 'argonay'; name = 'Argonay'; planningFileName = 'Planning ARGONAY 2026.xlsm' },
         [PSCustomObject]@{ id = 'bourg-en-bresse'; name = 'Bourg-en-Bresse'; planningFileName = 'Planning BOURG 2026.xlsm' },
-        [PSCustomObject]@{ id = 'argonay'; name = 'Argonay'; planningFileName = 'Planning ARGONAY 2026.xlsm' }
+        [PSCustomObject]@{ id = 'fontaine'; name = 'Fontaine'; planningFileName = 'Planning FONTAINE 2026.xlsm' },
+        [PSCustomObject]@{ id = 'valence'; name = 'Valence'; planningFileName = 'Planning VALENCE 2026.xlsm' }
     )
 }
 
@@ -149,7 +147,7 @@ function Show-InstallCentreSelectionDialog {
     $combo.Location = New-Object System.Drawing.Point(20, 50)
     $combo.Size = New-Object System.Drawing.Size(450, 28)
     foreach ($centre in $Centres) {
-        [void]$combo.Items.Add(('{0} ({1})' -f [string]$centre.name, [string]$centre.id))
+        [void]$combo.Items.Add([string]$centre.name)
     }
     if ($combo.Items.Count -gt 0) {
         $combo.SelectedIndex = 0
