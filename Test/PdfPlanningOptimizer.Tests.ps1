@@ -818,6 +818,25 @@ Describe 'PdfPlanningOptimizer - tournee cover (prestations speciales ODM)' {
         $body | Should Match 'N\\26024415'
     }
 
+    It 'ConvertTo-CnsPsWinAnsiParenBody : circonflexes Benoît Forêt Hôpital' {
+        (ConvertTo-CnsPsWinAnsiParenBody -Text 'Benoît') | Should Be 'Beno\356t'
+        (ConvertTo-CnsPsWinAnsiParenBody -Text 'Forêt') | Should Be 'For\352t'
+        (ConvertTo-CnsPsWinAnsiParenBody -Text 'Hôpital') | Should Be 'H\364pital'
+        $combining = 'Benoi' + [char]0x0302 + 't'
+        (ConvertTo-CnsPsWinAnsiParenBody -Text $combining) | Should Be 'Beno\356t'
+    }
+
+    It 'New-CnsPrefaceSectionCoverPdf : pluriel ODM non matché(s) et date tournée' {
+        $unmatchedLabel1 = if (1 -gt 1) { 'ODM non matchés' } else { 'ODM non matché' }
+        $unmatchedLabel2 = if (2 -gt 1) { 'ODM non matchés' } else { 'ODM non matché' }
+        $unmatchedLabel1 | Should Be 'ODM non matché'
+        $unmatchedLabel2 | Should Be 'ODM non matchés'
+        $l0 = ("{0} dans les tournées du {1}" -f $unmatchedLabel2, 'Mardi 21 Juillet 2026')
+        $l0 | Should Be 'ODM non matchés dans les tournées du Mardi 21 Juillet 2026'
+        (ConvertTo-CnsPsWinAnsiParenBody -Text $l0) | Should Match 'match\\351s'
+        (ConvertTo-CnsPsWinAnsiParenBody -Text $l0) | Should Match 'Juillet'
+    }
+
     It 'Build-CnsTourneeHeaderCoverPostScriptBody : Camion parc et immat ligne separee' {
         $ps = Build-CnsTourneeHeaderCoverPostScriptBody -DateTitle 'Lundi 1 janvier 2026' -Collecteur 'Jean DUPONT' `
             -Vehicule '44' -VehiculeImmatriculation 'EF 456 TY' -MetierMemoLines @('Collecte DEEE - CLIENT')

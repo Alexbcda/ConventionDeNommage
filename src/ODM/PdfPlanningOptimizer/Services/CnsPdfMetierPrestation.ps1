@@ -276,6 +276,7 @@ function ConvertTo-CnsFtBracketDisplayLabel {
     if (Get-Command Repair-CnsClientNumeroSignText -ErrorAction SilentlyContinue) {
         $t = Repair-CnsClientNumeroSignText -Text $t
     }
+    $t = $t -replace '(?i)&apos;', "'"
 
     return $t
 }
@@ -447,6 +448,7 @@ function ConvertTo-CnsFtCollectionPointDisplayLabel {
     $cleaned = ($cleaned -replace '\s{2,}', ' ').Trim()
 
     if ($cleaned -match '^(?i)FT\s*$') { return $t.Trim() }
+    $cleaned = $cleaned -replace '(?i)&apos;', "'"
     return $cleaned
 }
 
@@ -1387,7 +1389,8 @@ function Get-CnsTourneeMetierMemoLinesForBlock {
     }
     foreach ($ftLabel in @($ftLabels)) {
         if ([string]::IsNullOrWhiteSpace($ftLabel)) { continue }
-        $ftInstruction = ("Inventaire {0} compter le nombre de bacs" -f $ftLabel.Trim())
+        $ftClean = ($ftLabel.Trim() -replace '(?i)&apos;', "'")
+        $ftInstruction = ("Inventaire {0} compter le nombre de bacs" -f $ftClean)
         if ($dedupSeen.Add($ftInstruction)) {
             [void]$out.Add($ftInstruction)
         }

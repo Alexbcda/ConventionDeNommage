@@ -300,11 +300,12 @@ function Ensure-CnsGhostscriptOutputDirectory {
     return $true
 }
 
-function ConvertTo-CnsPsHelveticaParenBody {
+function ConvertTo-CnsPsWinAnsiParenBody {
     <#
     .SYNOPSIS
-        Corps d'une chaine PostScript entre parentheses pour Helvetica (WinAnsi/Latin-1 safe : ASCII + deaccentuation).
-        Echappe \, (, ). Le signe ° (U+00B0) est emis en \260 (WinAnsi).
+        Corps d'une chaine PostScript entre parentheses, encodee WinAnsi/Latin-1 (accents conserves).
+        Normalise tirets/guillemets/apostrophes/symboles hors Latin-1 affichable ; echappe \, (, ).
+        Degre ° -> \260. Glyphes Latin-1 restants (accents) emis en octal (ex. e-aigu -> \351).
     #>
     param([AllowNull()][AllowEmptyString()][string]$Text)
     $t = Sanitize-CnsCoverTextForGhostscript -Text $Text
@@ -312,30 +313,143 @@ function ConvertTo-CnsPsHelveticaParenBody {
         $t = Repair-CnsClientNumeroSignText -Text $t
     }
     if ([string]::IsNullOrEmpty($t)) { return '' }
-    $d = $t.Normalize([System.Text.NormalizationForm]::FormD)
+    # Entites XML/HTML residuelles (ex. FT ST MARTIN D&apos;HERES)
+    $t = $t -replace '(?i)&amp;', '&'
+    $t = $t -replace '(?i)&apos;', "'"
+    $t = $t -replace '(?i)&quot;', '"'
+    $t = $t -replace '(?i)&#39;', "'"
+    $t = $t -replace '(?i)&#x27;', "'"
+
+    # FormC : caracteres precomposes (e-aigu, i-circonflexe) pour mapping Latin-1
+    $t = $t.Normalize([System.Text.NormalizationForm]::FormC)
+    # Recomposition explicite si FormC laisse des suites base + marque (Benoî̂t etc.)
+    foreach ($pair in @(
+            @(('a' + [char]0x0302), [char]0x00E2), @(('A' + [char]0x0302), [char]0x00C2),
+            @(('e' + [char]0x0302), [char]0x00EA), @(('E' + [char]0x0302), [char]0x00CA),
+            @(('i' + [char]0x0302), [char]0x00EE), @(('I' + [char]0x0302), [char]0x00CE),
+            @(('o' + [char]0x0302), [char]0x00F4), @(('O' + [char]0x0302), [char]0x00D4),
+            @(('u' + [char]0x0302), [char]0x00FB), @(('U' + [char]0x0302), [char]0x00DB),
+            @(('a' + [char]0x0300), [char]0x00E0), @(('A' + [char]0x0300), [char]0x00C0),
+            @(('e' + [char]0x0300), [char]0x00E8), @(('E' + [char]0x0300), [char]0x00C8),
+            @(('u' + [char]0x0300), [char]0x00F9), @(('U' + [char]0x0300), [char]0x00D9),
+            @(('a' + [char]0x0301), [char]0x00E1), @(('e' + [char]0x0301), [char]0x00E9),
+            @(('E' + [char]0x0301), [char]0x00C9), @(('i' + [char]0x0301), [char]0x00ED),
+            @(('o' + [char]0x0301), [char]0x00F3), @(('u' + [char]0x0301), [char]0x00FA),
+            @(('a' + [char]0x0308), [char]0x00E4), @(('e' + [char]0x0308), [char]0x00EB),
+            @(('i' + [char]0x0308), [char]0x00EF), @(('o' + [char]0x0308), [char]0x00F6),
+            @(('u' + [char]0x0308), [char]0x00FC), @(('y' + [char]0x0308), [char]0x00FF),
+            @(('c' + [char]0x0327), [char]0x00E7), @(('C' + [char]0x0327), [char]0x00C7)
+        )) {
+        $t = $t.Replace([string]$pair[0], [string]$pair[1])
+    }
+
+    # --- Normalisation caracteres speciaux (PS 5.1 : pas de `u{...}) ---
+    # Tirets typographiques
+    $t = $t.Replace([string][char]0x2014, '-').Replace([string][char]0x2013, '-').Replace([string][char]0x2212, '-')
+    # Guillemets
+    $t = $t.Replace([string][char]0x00AB, '"').Replace([string][char]0x00BB, '"')
+    $t = $t.Replace([string][char]0x201C, '"').Replace([string][char]0x201D, '"')
+    $t = $t.Replace([string][char]0x201E, '"').Replace([string][char]0x201F, '"')
+    # Apostrophes / primes courbes
+    $t = $t.Replace([string][char]0x2018, "'").Replace([string][char]0x2019, "'")
+    $t = $t.Replace([string][char]0x02BC, "'").Replace([string][char]0x00B4, "'").Replace([string][char]0x2032, "'")
+    # Espaces / separates
+    $t = $t.Replace([string][char]0x00A0, ' ').Replace([string][char]0x202F, ' ').Replace([string][char]0x2009, ' ')
+    $t = $t.Replace([string][char]0x00AD, '')  # soft hyphen
+    # Point median
+    $t = $t.Replace([string][char]0x00B7, '.')
+    # Symboles hors rendu simple
+    $t = $t.Replace([string][char]0x20AC, 'EUR')
+    $t = $t.Replace([string][char]0x00A9, '(c)').Replace([string][char]0x00AE, '(R)')
+    $t = $t.Replace([string][char]0x2122, '(TM)')
+    # Ligatures
+    $t = $t.Replace([string][char]0x0152, 'OE').Replace([string][char]0x0153, 'oe')
+    # Lettres speciales (approx. ASCII ; accents FR restants via octal Latin-1)
+    $t = $t.Replace([string][char]0x00C5, 'A').Replace([string][char]0x00E5, 'a')  # Å å
+    $t = $t.Replace([string][char]0x00D1, 'N').Replace([string][char]0x00F1, 'n')  # Ñ ñ
+    $t = $t.Replace([string][char]0x00FF, 'y').Replace([string][char]0x0178, 'Y')  # ÿ Ÿ
+    $t = $t.Replace([string][char]0x0154, 'R').Replace([string][char]0x0155, 'r')  # Ŕ ŕ
+    $t = $t.Replace([string][char]0x00D8, 'OE').Replace([string][char]0x00F8, 'oe')  # Ø ø
+    $t = $t.Replace([string][char]0x00C6, 'AE').Replace([string][char]0x00E6, 'ae')  # Æ æ
+
     $sb = [System.Text.StringBuilder]::new()
-    foreach ($ch in $d.ToCharArray()) {
+    foreach ($ch in $t.ToCharArray()) {
+        [int]$o = [int][char]$ch
+        if ($o -lt 32) { continue }
+        # Marques combinantes residuelles : ne pas emettre '?' (evite Benoi?)
         if ([System.Globalization.CharUnicodeInfo]::GetUnicodeCategory($ch) -eq [System.Globalization.UnicodeCategory]::NonSpacingMark) {
             continue
         }
-        [int]$o = [int][char]$ch
-        if ($o -lt 32) { continue }
-        if ($o -eq 0x2019 -or $o -eq 0x2018) {
-            [void]$sb.Append("'")
-            continue
-        }
+        # Degre / ordinal masculin (N°)
         if ($o -eq 0x00B0 -or $o -eq 0x00BA) {
             [void]$sb.Append('\260')
             continue
         }
+        # Circonflexes FR explicites (Benoît, Forêt, Hôpital) — ISOLatin1 / WinAnsi
+        if ($o -eq 0x00EA) { [void]$sb.Append('\352'); continue }  # ê
+        if ($o -eq 0x00EE) { [void]$sb.Append('\356'); continue }  # î
+        if ($o -eq 0x00F4) { [void]$sb.Append('\364'); continue }  # ô
+        if ($o -eq 0x00FB) { [void]$sb.Append('\373'); continue }  # û
+        if ($o -eq 0x00CA) { [void]$sb.Append('\312'); continue }  # Ê
+        if ($o -eq 0x00CE) { [void]$sb.Append('\316'); continue }  # Î
+        if ($o -eq 0x00D4) { [void]$sb.Append('\324'); continue }  # Ô
+        if ($o -eq 0x00DB) { [void]$sb.Append('\333'); continue }  # Û
         if ($o -ge 32 -and $o -le 126) {
             if ($ch -eq '\' -or $ch -eq '(' -or $ch -eq ')') { [void]$sb.Append('\') }
             [void]$sb.Append($ch)
             continue
         }
+        # Latin-1 restant (accents FR, etc.) : meme code point octal pour ISOLatin1Encoding
+        if ($o -ge 0xA0 -and $o -le 0xFF) {
+            $oct = [Convert]::ToString($o, 8).PadLeft(3, '0')
+            [void]$sb.Append('\' + $oct)
+            continue
+        }
         [void]$sb.Append('?')
     }
     return $sb.ToString()
+}
+
+function ConvertTo-CnsPsHelveticaParenBody {
+    <#
+    .SYNOPSIS
+        Alias historique : delegue a ConvertTo-CnsPsWinAnsiParenBody (accents WinAnsi).
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Text)
+    return (ConvertTo-CnsPsWinAnsiParenBody -Text $Text)
+}
+
+function Get-CnsCoverPostScriptFontProlog {
+    <#
+    .SYNOPSIS
+        Definitions PS : reencodage ISOLatin1 + polices Arial-Cover (repli Helvetica si Arial absent).
+    .NOTES
+        Ghostscript n'expose pas toujours /WinAnsiEncoding ; ISOLatin1Encoding couvre les accents FR.
+        Sous Windows, les TTF Arial sont souvent nommes ArialMT / Arial-BoldMT.
+    #>
+    return @'
+/CnsCoverDefineLatin1Font {
+  findfont
+  dup length dict begin
+  { 1 index /FID ne {def} {pop pop} ifelse } forall
+  /Encoding ISOLatin1Encoding def
+  currentdict
+  end
+  definefont pop
+} bind def
+{
+  /Arial-Cover /ArialMT CnsCoverDefineLatin1Font
+  /Arial-Bold-Cover /Arial-BoldMT CnsCoverDefineLatin1Font
+} stopped {
+  {
+    /Arial-Cover /Arial CnsCoverDefineLatin1Font
+    /Arial-Bold-Cover /Arial-Bold CnsCoverDefineLatin1Font
+  } stopped {
+    /Arial-Cover /Helvetica CnsCoverDefineLatin1Font
+    /Arial-Bold-Cover /Helvetica-Bold CnsCoverDefineLatin1Font
+  } if
+} if
+'@
 }
 
 function Get-CnsGhostscriptPermitFileArgs {
@@ -527,6 +641,12 @@ function Get-CnsGhostscriptPdfwriteArgumentList {
     [void]$gsArgs.AddRange([string[]]@('-dNOPAUSE', '-dBATCH', '-sDEVICE=pdfwrite'))
     [void]$gsArgs.Add("--permit-file-read=$tempLit")
     [void]$gsArgs.Add("--permit-file-write=$tempLit")
+    $winFonts = Join-Path $env:SystemRoot 'Fonts'
+    if (Test-Path -LiteralPath $winFonts -PathType Container) {
+        $fontsLit = Convert-CnsFilesystemPathToGhostscriptPathLiteral -Path ([System.IO.Path]::GetFullPath($winFonts))
+        [void]$gsArgs.Add("-sFONTPATH=$fontsLit")
+        [void]$gsArgs.Add("--permit-file-read=$fontsLit")
+    }
     if (-not $MinimalQuality.IsPresent) {
         [void]$gsArgs.AddRange([string[]](Get-CnsCoverPdfwriteQualityArgs))
     }
@@ -634,8 +754,8 @@ function Write-CnsPostScriptPdfPage {
     .SYNOPSIS
         Ghostscript : .ps mono-page -> PDF A4 (595x842).
     .NOTES
-        # Utilisation de Helvetica pour compatibilite maximale Ghostscript (polices base PDF, sans CIDFont / TTF / CIDFMAP).
-        # Execution via appel direct (&) — Start-Process + redirection peut bloquer la creation du PDF sur certains postes.
+        Polices Arial (WinAnsi) si disponibles via FONTPATH Windows ; sinon repli Helvetica reencode.
+        Execution via appel direct (&) — Start-Process + redirection peut bloquer la creation du PDF sur certains postes.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -645,7 +765,7 @@ function Write-CnsPostScriptPdfPage {
         [switch]$SkipTrailingShowpage,
         [string]$LogContext = 'cover'
     )
-    $prolog = "<< /PageSize [595 842] >> setpagedevice`n"
+    $prolog = "<< /PageSize [595 842] >> setpagedevice`n" + (Get-CnsCoverPostScriptFontProlog) + "`n"
     $runId = [Guid]::NewGuid().ToString('N')
     $psPath = [System.IO.Path]::GetFullPath((Join-Path $env:TEMP ("cn_cover_{0}.ps" -f $runId)))
     $footer = if ($SkipTrailingShowpage.IsPresent) { "`r`n" } else { "`r`nshowpage`r`n" }
@@ -805,13 +925,17 @@ function Format-CnsTourneeCoverGardeDateTitle {
 function Get-CnsCoverPostScriptFontBlackName {
     <#
     .NOTES
-        Arial-Black non disponible en PostScript Ghostscript standard — Helvetica-Bold equivalent visuel.
+        Nom logique defini dans Get-CnsCoverPostScriptFontProlog (Arial-Bold Latin-1, repli Helvetica-Bold).
     #>
-    return 'Helvetica-Bold'
+    return 'Arial-Bold-Cover'
 }
 
 function Get-CnsCoverPostScriptFontRegularName {
-    return 'Helvetica'
+    <#
+    .NOTES
+        Nom logique defini dans Get-CnsCoverPostScriptFontProlog (Arial Latin-1, repli Helvetica).
+    #>
+    return 'Arial-Cover'
 }
 
 function New-CnsPostScriptRightAlignedTextShowBlock {
@@ -822,7 +946,7 @@ function New-CnsPostScriptRightAlignedTextShowBlock {
         [Parameter(Mandatory = $true)][int]$RightX,
         [Parameter(Mandatory = $true)][int]$Y
     )
-    $lit = ConvertTo-CnsPsHelveticaParenBody -Text $Text
+    $lit = ConvertTo-CnsPsWinAnsiParenBody -Text $Text
     return @"
 /$FontName findfont $FontSize scalefont setfont
 ($lit) dup stringwidth pop $RightX exch sub $Y moveto show
@@ -838,7 +962,7 @@ function New-CnsPostScriptCenteredTextShowBlock {
         [Parameter(Mandatory = $true)]
         [AllowEmptyString()]
         [string]$Text,
-        [string]$FontName = 'Helvetica',
+        [string]$FontName = 'Arial-Cover',
         [int]$FontSize = 12,
         [int]$Y = 730,
         [int]$PageWidth = 595
@@ -848,7 +972,7 @@ function New-CnsPostScriptCenteredTextShowBlock {
     if (Get-Command Repair-CnsClientNumeroSignText -ErrorAction SilentlyContinue) {
         $textForPs = Repair-CnsClientNumeroSignText -Text $textForPs
     }
-    $lit = ConvertTo-CnsPsHelveticaParenBody -Text $textForPs
+    $lit = ConvertTo-CnsPsWinAnsiParenBody -Text $textForPs
     return @"
 /$FontName findfont $FontSize scalefont setfont
 ($lit) dup stringwidth pop $PageWidth exch sub 2 div $Y moveto show
@@ -866,14 +990,14 @@ function Build-CnsCoverTextLinesPostScriptAppend {
         [int]$LineStep,
         [Parameter(Mandatory = $true)]
         [int]$MinY,
-        [string]$FontName = 'Helvetica',
+        [string]$FontName = 'Arial-Cover',
         [int]$FontSize = 11
     )
     $parts = New-Object System.Collections.Generic.List[string]
     [int]$y = $StartY
     foreach ($line in @($Lines)) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        $lit = ConvertTo-CnsPsHelveticaParenBody -Text $line
+        $lit = ConvertTo-CnsPsWinAnsiParenBody -Text $line
         [void]$parts.Add("/$FontName findfont $FontSize scalefont setfont`n50 $y moveto`n($lit) show")
         $y -= $LineStep
         if ($y -lt $MinY) { break }
@@ -914,7 +1038,7 @@ function Build-CnsTourneeHeaderCoverPostScriptBody {
     )
     $fontBlack = Get-CnsCoverPostScriptFontBlackName
     $fontReg = Get-CnsCoverPostScriptFontRegularName
-    $litDate = ConvertTo-CnsPsHelveticaParenBody -Text $DateTitle
+    $litDate = ConvertTo-CnsPsWinAnsiParenBody -Text $DateTitle
     [string]$prenom = Get-CnsTourneeCoverCollecteurPrenomDisplay -Collecteur $Collecteur
     [string]$parcText = if ([string]::IsNullOrWhiteSpace($Vehicule)) { '' } else { ([string]$Vehicule).Trim() }
     [string]$immatText = if ([string]::IsNullOrWhiteSpace($VehiculeImmatriculation)) { '' } else { ([string]$VehiculeImmatriculation).Trim() }
@@ -930,7 +1054,7 @@ function Build-CnsTourneeHeaderCoverPostScriptBody {
         $vehY = 740
         $memoY = 700
         $rightX = 550
-        $litBanner = ConvertTo-CnsPsHelveticaParenBody -Text $IncompleteBanner
+        $litBanner = ConvertTo-CnsPsWinAnsiParenBody -Text $IncompleteBanner
         $bannerPs = @"
 /$fontBlack findfont 14 scalefont setfont
 50 835 moveto
@@ -1377,19 +1501,30 @@ function New-CnsPrefaceSectionCoverPdf {
     param(
         [Parameter(Mandatory = $true)][string]$OutPdfPath,
         [Parameter(Mandatory = $true)][int]$TotalOdmCount,
-        [Parameter(Mandatory = $true)][int]$UnmatchedOdmCount
+        [Parameter(Mandatory = $true)][int]$UnmatchedOdmCount,
+        [AllowNull()][AllowEmptyString()][string]$DateTitle = $null,
+        [AllowNull()][AllowEmptyString()][string]$DateJJMMAAAA = $null
     )
-    $l0 = 'ODM non matché dans les tournées du date de la tournée depuis le PDF importé'
+    $fontBlack = Get-CnsCoverPostScriptFontBlackName
+    $fontReg = Get-CnsCoverPostScriptFontRegularName
+    if ([string]::IsNullOrWhiteSpace($DateTitle)) {
+        $DateTitle = Format-CnsTourneeCoverGardeDateTitle -DateJJMMAAAA $DateJJMMAAAA
+    }
+    if ([string]::IsNullOrWhiteSpace($DateTitle)) {
+        $DateTitle = '(date non renseignee)'
+    }
+    $unmatchedLabel = if ($UnmatchedOdmCount -gt 1) { 'ODM non matchés' } else { 'ODM non matché' }
+    $l0 = ("{0} dans les tournées du {1}" -f $unmatchedLabel, $DateTitle.Trim())
     $l1 = "Nombre total d'ODM (groupes extraits du PDF) : $TotalOdmCount"
     $l2 = "Nombre d'ODM sans correspondance : $UnmatchedOdmCount"
-    $t0 = ConvertTo-CnsPsHelveticaParenBody -Text $l0
-    $t1 = ConvertTo-CnsPsHelveticaParenBody -Text $l1
-    $t2 = ConvertTo-CnsPsHelveticaParenBody -Text $l2
+    $t0 = ConvertTo-CnsPsWinAnsiParenBody -Text $l0
+    $t1 = ConvertTo-CnsPsWinAnsiParenBody -Text $l1
+    $t2 = ConvertTo-CnsPsWinAnsiParenBody -Text $l2
     $body = @"
-/Helvetica-Bold findfont 11 scalefont setfont
+/$fontBlack findfont 11 scalefont setfont
 50 800 moveto
 ($t0) show
-/Helvetica findfont 11 scalefont setfont
+/$fontReg findfont 11 scalefont setfont
 50 760 moveto
 ($t1) show
 50 730 moveto
@@ -2557,7 +2692,23 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     Write-Host ('[TOURNEE] Creating cover page for preface / hors segment Excel (cle=' + ([string]$blk.GroupKey) + ')') -ForegroundColor Cyan
                     Write-Host ("[TOURNEE] Pages count (bloque principal) = {0}" -f (1 + $blk.MainTo1 - $blk.MainFrom1)) -ForegroundColor DarkCyan
                     if (-not $prefaceAlreadyAdded) {
-                        if (New-CnsPrefaceSectionCoverPdf -OutPdfPath $coverPath -TotalOdmCount $totalODM -UnmatchedOdmCount $unmatchedCount) {
+                        $prefaceDateJj = $VisitDate.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
+                        foreach ($segPreface in @($segments)) {
+                            if ($null -eq $segPreface) { continue }
+                            try {
+                                $jjSeg = [string]$segPreface.DisplayDateJM
+                                if ([string]::IsNullOrWhiteSpace($jjSeg) -and $null -ne $segPreface.TourDate) {
+                                    $jjSeg = ($segPreface.TourDate).ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
+                                }
+                                if (-not [string]::IsNullOrWhiteSpace($jjSeg)) {
+                                    $prefaceDateJj = $jjSeg.Trim()
+                                    break
+                                }
+                            }
+                            catch { }
+                        }
+                        $prefaceDateTitle = Format-CnsTourneeCoverGardeDateTitle -DateJJMMAAAA $prefaceDateJj
+                        if (New-CnsPrefaceSectionCoverPdf -OutPdfPath $coverPath -TotalOdmCount $totalODM -UnmatchedOdmCount $unmatchedCount -DateTitle $prefaceDateTitle) {
                             [void]$frag.Add($coverPath)
                             $prefaceAlreadyAdded = $true
                             $coverCreated = $true
