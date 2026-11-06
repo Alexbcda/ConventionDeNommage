@@ -1399,9 +1399,16 @@ function Add-CnsPendingSbTourneeCoversToFrag {
         puis le bilan de collecte (PDF separe) juste apres chaque garde.
     #>
     param(
-        [Parameter(Mandatory = $true)][System.Collections.Generic.List[string]]$Frag,
-        [Parameter(Mandatory = $true)][System.Collections.Generic.Queue[object]]$PendingSbQueue,
-        [Parameter(Mandatory = $true)][hashtable]$SeenSegments,
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [System.Collections.Generic.List[string]]$Frag,
+
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [System.Collections.Generic.Queue[object]]$PendingSbQueue,
+
+        [Parameter(Mandatory = $true)]
+        [hashtable]$SeenSegments,
         [Parameter(Mandatory = $true)][string]$TmpDir,
         [Parameter(Mandatory = $true)][datetime]$VisitDate,
         [hashtable]$BilanInjectedForSeg = $null,
