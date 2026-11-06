@@ -1425,11 +1425,7 @@ function Add-CnsPendingSbTourneeCoversToFrag {
         if ($segIdx -lt 1) { continue }
         if ($SeenSegments.ContainsKey($segIdx)) { continue }
 
-        $jj = [string]$peek.DisplayDateJM
-        if ([string]::IsNullOrWhiteSpace($jj)) {
-            try { $jj = ($peek.TourDate).ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture) }
-            catch { $jj = (Get-Date).ToString('dd/MM/yyyy') }
-        }
+        $jj = $VisitDate.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
         $collecteur = [string]$peek.Collecteur
         $vehicule = [string]$peek.Vehicule
         if ([string]::IsNullOrWhiteSpace($collecteur) -or [string]::IsNullOrWhiteSpace($vehicule)) { continue }
@@ -1603,12 +1599,7 @@ function Get-CnsTourneeCoverSegmentMetaForPair {
         catch { }
     }
     if ($null -eq $seg) { return $out }
-    $jj = ''
-    try { $jj = [string]$seg.DisplayDateJM } catch { $jj = '' }
-    if ([string]::IsNullOrWhiteSpace($jj)) {
-        try { $jj = ($seg.TourDate).ToString('dd/MM/yyyy', $inv) } catch { $jj = $defJj }
-    }
-    if ([string]::IsNullOrWhiteSpace($jj)) { $jj = $defJj }
+    $jj = $defJj
     $c = ''; $v = ''
     try { $c = [string]$seg.Collecteur } catch { }
     try { $v = [string]$seg.Vehicule } catch { }
@@ -2596,10 +2587,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     $segLabel = [string]$segUi.Collecteur
                     if ([string]::IsNullOrWhiteSpace($segLabel)) { $segLabel = [string]$segUi.Vehicule }
                     if (-not [string]::IsNullOrWhiteSpace($segLabel)) { $segmentName = $segLabel }
-                    $jjUi = [string]$segUi.DisplayDateJM
-                    if ([string]::IsNullOrWhiteSpace($jjUi)) {
-                        try { $jjUi = ($segUi.TourDate).ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture) } catch { $jjUi = $VisitDate.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture) }
-                    }
+                    $jjUi = $VisitDate.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
                     $dateTitleUi = Format-CnsTourneeCoverGardeDateTitle -DateJJMMAAAA $jjUi
                     $tourHeaderDetail = ('{0} - Collecteur : {1}' -f $dateTitleUi, $segLabel)
                 }
@@ -2651,10 +2639,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                             }
                         }
                         else {
-                            $jj = [string]$seg.DisplayDateJM
-                            if ([string]::IsNullOrWhiteSpace($jj)) {
-                                try { $jj = ($seg.TourDate).ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture) } catch { $jj = $VisitDate.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture) }
-                            }
+                            $jj = $VisitDate.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
                             $inc = $true
                             try { $inc = -not [bool]$seg.TourneeComplete } catch { $inc = $true }
                             Write-Host ("[TOURNEE-COVER] Segment={0} Incomplete={1} Date={2} Collecteur={3} Vehicule={4} PagesBloc={5}" -f $n, $inc, $jj, ([string]$seg.Collecteur), ([string]$seg.Vehicule), (1 + $blk.MainTo1 - $blk.MainFrom1)) -ForegroundColor Cyan
@@ -2700,20 +2685,6 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     Write-Host ("[TOURNEE] Pages count (bloque principal) = {0}" -f (1 + $blk.MainTo1 - $blk.MainFrom1)) -ForegroundColor DarkCyan
                     if (-not $prefaceAlreadyAdded) {
                         $prefaceDateJj = $VisitDate.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
-                        foreach ($segPreface in @($segments)) {
-                            if ($null -eq $segPreface) { continue }
-                            try {
-                                $jjSeg = [string]$segPreface.DisplayDateJM
-                                if ([string]::IsNullOrWhiteSpace($jjSeg) -and $null -ne $segPreface.TourDate) {
-                                    $jjSeg = ($segPreface.TourDate).ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
-                                }
-                                if (-not [string]::IsNullOrWhiteSpace($jjSeg)) {
-                                    $prefaceDateJj = $jjSeg.Trim()
-                                    break
-                                }
-                            }
-                            catch { }
-                        }
                         $prefaceDateTitle = Format-CnsTourneeCoverGardeDateTitle -DateJJMMAAAA $prefaceDateJj
                         if (New-CnsPrefaceSectionCoverPdf -OutPdfPath $coverPath -TotalOdmCount $totalODM -UnmatchedOdmCount $unmatchedCount -DateTitle $prefaceDateTitle) {
                             [void]$frag.Add($coverPath)

@@ -121,13 +121,6 @@ function Get-CnsFtPlaceholders {
             catch { }
         }
         if ($null -ne $SegmentMeta) {
-            try {
-                $dj = [string]$SegmentMeta.DisplayDateJM
-                if (-not [string]::IsNullOrWhiteSpace($dj)) {
-                    $dateCollecte = $dj.Trim()
-                }
-            }
-            catch { }
             $collecteurResolved = Resolve-CnsCollecteurFieldsForCertificate -CollecteurExcelRaw ([string]$SegmentMeta.Collecteur)
             $collecteurNom = (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value ([string]$collecteurResolved.Nom))
             $collecteurPrenom = (ConvertTo-CnsDestructionCertificatePlaceholderValue -Value ([string]$collecteurResolved.Prenom))

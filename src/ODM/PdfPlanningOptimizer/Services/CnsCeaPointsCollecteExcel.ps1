@@ -104,19 +104,6 @@ function Get-CnsCeaPointsDeCollectePlaceholdersExcel {
         }
     }
 
-    if ($null -ne $SegmentMeta) {
-        try {
-            $dj = [string]$SegmentMeta.DisplayDateJM
-            if (-not [string]::IsNullOrWhiteSpace($dj)) {
-                $dateCollecte = $dj.Trim()
-            }
-            elseif ($null -ne $SegmentMeta.TourDate) {
-                $dateCollecte = ([datetime]$SegmentMeta.TourDate).ToString('dd/MM/yyyy', $inv)
-            }
-        }
-        catch { }
-    }
-
     [string]$clientAdresse = $street
     if (-not [string]::IsNullOrWhiteSpace($cp) -or -not [string]::IsNullOrWhiteSpace($ville)) {
         $tail = (($cp, $ville | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' ').Trim()
