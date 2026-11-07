@@ -1,4 +1,4 @@
-﻿# ConventionNommageLogic.ps1 — Renommage PDF : sécurité production, chemins longs, anti–race condition
+# ConventionNommageLogic.ps1 — Renommage PDF : sécurité production, chemins longs, anti–race condition
 #
 # OWASP : pas d’Invoke-Expression ; entrées = données ; renommage confiné au dossier du PDF source.
 # SQLite : requêtes paramétrées dans Database.ps1 (hors fichier).
@@ -163,20 +163,6 @@ function Get-ConventionNomReferenceDate {
     }
 }
 
-function Remove-StringDiacritics {
-    param([string]$Text)
-    if ([string]::IsNullOrEmpty($Text)) { return $Text }
-    $normalized = $Text.Normalize([Text.NormalizationForm]::FormD)
-    $sb = [System.Text.StringBuilder]::new()
-    foreach ($ch in $normalized.ToCharArray()) {
-        $cat = [System.Globalization.CharUnicodeInfo]::GetUnicodeCategory($ch)
-        if ($cat -ne [System.Globalization.UnicodeCategory]::NonSpacingMark) {
-            [void]$sb.Append($ch)
-        }
-    }
-    return $sb.ToString().Normalize([Text.NormalizationForm]::FormC)
-}
-
 function Test-WindowsReservedFileStem {
     param([string]$Stem)
     if ([string]::IsNullOrWhiteSpace($Stem)) { return $false }
@@ -189,8 +175,9 @@ function Test-WindowsReservedFileStem {
 
 <#
 .SYNOPSIS
-  Sanitization idempotente : segment de nom de fichier = lettres, chiffres, espace, tiret uniquement.
-  Supprime Cf (invisibles), contrôles, séquences dangereuses, points début/fin ; NFD + sans accents.
+  Sanitization idempotente pour segment de nom de fichier : blacklist Windows uniquement.
+  Conserve accents, parentheses, apostrophes, tirets, underscores et points (hors debut/fin).
+  Supprime controles, Cf (invisibles), caracteres interdits Windows, et sequences '..'.
 #>
 function Sanitize-PointDeCollecte {
     [CmdletBinding()]
@@ -212,7 +199,7 @@ function Sanitize-PointDeCollecte {
         throw [System.ArgumentException]::new('Veuillez saisir le point de collecte')
     }
 
-    # Contrôles ASCII + Unicode Cf (caractères de format / invisibles)
+    # Controles ASCII + Unicode Cf (caracteres de format / invisibles)
     $t = $t -replace "[\x00-\x1F\x7F]", ''
     try {
         $t = [regex]::Replace($t, '\p{Cf}', '', [System.Text.RegularExpressions.RegexOptions]::None)
@@ -223,15 +210,8 @@ function Sanitize-PointDeCollecte {
         $t = $t.Replace('..', '')
     }
 
-    foreach ($ch in @('$', [char]0x60, ';', '&', '|', '(', ')')) {
-        $t = $t.Replace([string]$ch, '')
-    }
-
+    # Blacklist Windows uniquement (conserve accents, (), ', _, -, etc.)
     $t = $t -replace '[\\/:*?"<>|]', ''
-    $t = Remove-StringDiacritics -Text $t
-
-    # Autorisé : lettres, chiffres, espace, tiret (aucun autre symbole)
-    $t = $t -replace '[^a-zA-Z0-9 \-]', ''
     $t = ($t -replace '\s+', ' ').Trim()
 
     while ($t.Length -gt 0 -and $t[0] -eq '.') { $t = $t.TrimStart('.').Trim() }

@@ -149,8 +149,9 @@ Describe 'ConventionNommage — sécurité saisie (sanitization)' {
                 $exMsg = $_.Exception.Message
             }
             if (-not $threw) {
+                # Blacklist Windows uniquement : pas de \ / dans le segment
                 ($out -match '[\\/]') | Should Be $false
-                ($out -match '\$\(') | Should Be $false
+                ($out -match '[:*?"<>|]') | Should Be $false
             }
             else {
                 ($exMsg -match 'Start-Process') | Should Be $false

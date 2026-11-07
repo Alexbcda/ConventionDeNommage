@@ -1541,7 +1541,7 @@ Describe 'PdfPlanningOptimizer - FT points de collecte' {
         $ph = @{
             Date_Collecte     = '15/07/2026'
             Point_Collecte    = 'FT CHAMBERY GRAND VERGER'
-            Client_ID         = 'CLI-1'
+            Client_ID         = '8780'
             Client_Nom        = 'Client Test'
             Client_Adresse    = '1 rue Test'
             Client_CP         = '73000'
@@ -1557,6 +1557,57 @@ Describe 'PdfPlanningOptimizer - FT points de collecte' {
         }
         finally {
             Remove-Item -LiteralPath $outPdf -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Describe 'PdfPlanningOptimizer - chemins parenthèses Ghostscript' {
+    BeforeAll {
+        $script:GsResolvePath = Join-Path $PSScriptRoot '..\src\Core\GhostscriptResolve.ps1' | Resolve-Path
+        $script:PdfExPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Extractors\PdfExtractor.ps1' | Resolve-Path
+        . ([string]$script:GsResolvePath)
+        . ([string]$script:PdfExPath)
+    }
+
+    It 'ConvertTo-CnsGhostscriptPostScriptPathLiteral echappe parenthèses et slashs' {
+        $lit = ConvertTo-CnsGhostscriptPostScriptPathLiteral -Path 'C:\tmp\monfichier(1).pdf'
+        $lit | Should Match 'monfichier\\\(1\\\)\.pdf'
+        ($lit -match '(?<!\\)\(') | Should Be $false
+    }
+
+    It 'Get-PdfPageCountInternal traite monfichier(1).pdf' {
+        $gs = Get-ResolvedGhostscriptPath
+        if ([string]::IsNullOrWhiteSpace($gs)) {
+            Set-ItResult -Inconclusive -Because 'Ghostscript introuvable'
+        }
+        $src = Join-Path $PSScriptRoot 'Fixtures\PdfPlanningOptimizer\29.pdf'
+        if (-not (Test-Path -LiteralPath $src)) {
+            $src = Join-Path $PSScriptRoot 'Fixtures\PdfPlanningOptimizer\09112026.pdf'
+        }
+        if (-not (Test-Path -LiteralPath $src)) {
+            Set-ItResult -Inconclusive -Because 'Fixture PDF absente'
+        }
+        $dir = Join-Path $env:TEMP ("cn_paren_pdf_{0}" -f [Guid]::NewGuid().ToString('N'))
+        $parenPdf = Join-Path $dir 'monfichier(1).pdf'
+        # Masque pdfinfo pour forcer le chemin Ghostscript (-c) qui est le bug P0.
+        $savedPath = $env:PATH
+        try {
+            $null = New-Item -ItemType Directory -Path $dir -Force
+            Copy-Item -LiteralPath $src -Destination $parenPdf -Force
+            $env:PATH = ($savedPath -split ';' | Where-Object {
+                    $_ -and ($_ -notmatch '(?i)poppler|xpdf|pdfinfo')
+                }) -join ';'
+            $psPath = ConvertTo-CnsGhostscriptPostScriptPathLiteral -Path $parenPdf
+            $pdfAbs = [System.IO.Path]::GetFullPath($parenPdf)
+            $gsOut = & $gs -dNODISPLAY -q "--permit-file-read=$pdfAbs" -c "($psPath) (r) file runpdfbegin pdfpagecount = quit" 2>&1
+            $gsText = if ($gsOut -is [array]) { $gsOut -join "`n" } else { [string]$gsOut }
+            ($gsText -match '(?m)^\s*\d+\s*$') | Should Be $true
+            $count = Get-PdfPageCountInternal -FichierPDF $parenPdf
+            ($count -ge 1) | Should Be $true
+        }
+        finally {
+            $env:PATH = $savedPath
+            Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 }

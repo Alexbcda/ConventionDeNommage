@@ -35,9 +35,9 @@ Describe 'Sanitize-PointDeCollecte' {
         $r | Should Be 'foobarbaz'
     }
 
-    It 'supprime les séquences type injection PowerShell' {
-        $r = Sanitize-PointDeCollecte -Text 'a`$(Remove-Item x)b'
-        $r | Should Be 'aRemove-Item xb'
+    It 'conserve dollar et parentheses (hors caracteres Windows interdits)' {
+        $r = Sanitize-PointDeCollecte -Text 'Site (A) - zone $Nord'
+        $r | Should Be 'Site (A) - zone $Nord'
     }
 
     It 'tronque à 100 caractères max' {
@@ -46,9 +46,14 @@ Describe 'Sanitize-PointDeCollecte' {
         $r.Length | Should Be 100
     }
 
-    It 'normalise les accents (NFD)' {
+    It 'conserve les accents' {
         $r = Sanitize-PointDeCollecte -Text 'Cité Préfecture'
-        $r | Should Be 'Cite Prefecture'
+        $r | Should Be 'Cité Préfecture'
+    }
+
+    It 'conserve parentheses, apostrophes, underscores' {
+        $r = Sanitize-PointDeCollecte -Text "FT Chambéry (Grand'Verger)_Nord"
+        $r | Should Be "FT Chambéry (Grand'Verger)_Nord"
     }
 
     It 'évite les noms réservés Windows (CON) par préfixe sûr' {
