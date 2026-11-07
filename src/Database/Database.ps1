@@ -1149,6 +1149,54 @@ LIMIT 1
     }
 }
 
+function ConvertTo-VehiculeImmatriculationLookupKey {
+    <#
+    .SYNOPSIS
+        Normalise une plaque pour comparaison (majuscules, sans espaces ni tirets).
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Immatriculation)
+    if ([string]::IsNullOrWhiteSpace($Immatriculation)) { return '' }
+    $key = ([string]$Immatriculation).Trim().ToUpperInvariant()
+    $key = [regex]::Replace($key, '[\s\-]+', '')
+    return $key
+}
+
+function Get-VehiculeByImmatriculation {
+    <#
+    .SYNOPSIS
+        Véhicule actif par plaque d'immatriculation (normalisée : sans tirets/espaces).
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Immatriculation)
+    [string]$key = ConvertTo-VehiculeImmatriculationLookupKey -Immatriculation $Immatriculation
+    if ([string]::IsNullOrWhiteSpace($key)) { return $null }
+
+    $conn = Open-Connection
+    try {
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = @"
+SELECT id_vehicule, numero_parc, immatriculation, numero_chassis, marque, modele,
+       date_mise_circulation, date_controle, date_entree, date_sortie,
+       date_fin_controle_technique, capacite, conducteur_id, actif
+FROM Vehicule
+WHERE actif = 1
+  AND REPLACE(REPLACE(UPPER(TRIM(immatriculation)), '-', ''), ' ', '') = @key
+LIMIT 1
+"@
+        $cmd.Parameters.AddWithValue("@key", $key) | Out-Null
+        $reader = $cmd.ExecuteReader()
+        try {
+            if (-not $reader.Read()) { return $null }
+            return (New-VehiculeRowObject -Reader $reader)
+        }
+        finally {
+            if ($reader) { $reader.Close() }
+        }
+    }
+    finally {
+        Close-Connection $conn
+    }
+}
+
 function Test-VehiculeRecordExistsByColumn {
     <#
     .SYNOPSIS

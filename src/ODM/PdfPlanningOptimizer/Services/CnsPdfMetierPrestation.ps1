@@ -897,6 +897,75 @@ function Get-CnsVehiculeImmatriculationByNumeroParc {
     return $null
 }
 
+function Format-CnsVehiculeParcCoverLabel {
+    <#
+    .SYNOPSIS
+        Libellé page de garde pour un numero_parc issu de la base (ex: "Camion 13").
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$NumeroParc)
+    if ([string]::IsNullOrWhiteSpace($NumeroParc)) { return '' }
+    [string]$parc = ([string]$NumeroParc).Trim()
+    $parc = [regex]::Replace($parc, '\s+', ' ').Trim()
+    if ([string]::IsNullOrWhiteSpace($parc)) { return '' }
+    if ($parc -match '^(?i)(camion|electrique|électrique|gaz)\b') { return $parc }
+    if ($parc -match '^\d+$') { return ('Camion {0}' -f $parc) }
+    return $parc
+}
+
+function Get-CnsVehiculeByImmatriculation {
+    <#
+    .SYNOPSIS
+        Wrapper métier : véhicule actif par plaque (normalisation gérée en base).
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Immatriculation)
+    if ([string]::IsNullOrWhiteSpace($Immatriculation)) { return $null }
+    if (-not (Get-Command Get-VehiculeByImmatriculation -ErrorAction SilentlyContinue)) { return $null }
+    try {
+        return (Get-VehiculeByImmatriculation -Immatriculation $Immatriculation)
+    }
+    catch {
+        Write-Warning ("[METIER-PDF] Get-VehiculeByImmatriculation echoue : {0}" -f $_.Exception.Message)
+        return $null
+    }
+}
+
+function Resolve-CnsTourneeCoverVehicleFromPlaque {
+    <#
+    .SYNOPSIS
+        Résout CamionLine + plaque pour la garde à partir de la plaque Excel / planning.
+        Ne fabrique jamais un faux "Camion N" si le véhicule est absent de la base.
+    #>
+    param(
+        [AllowNull()][AllowEmptyString()][string]$Plaque,
+        [switch]$WriteGuardWarning
+    )
+    [string]$plaque = if ([string]::IsNullOrWhiteSpace($Plaque)) { '' } else { ([string]$Plaque).Trim() }
+    [string]$camionLine = ''
+    [string]$numeroParc = ''
+    [bool]$found = $false
+    if (-not [string]::IsNullOrWhiteSpace($plaque)) {
+        $veh = Get-CnsVehiculeByImmatriculation -Immatriculation $plaque
+        if ($null -ne $veh) {
+            $found = $true
+            try { $numeroParc = [string]$veh.numero_parc } catch { $numeroParc = '' }
+            $camionLine = Format-CnsVehiculeParcCoverLabel -NumeroParc $numeroParc
+            try {
+                $dbImmat = [string]$veh.immatriculation
+                if (-not [string]::IsNullOrWhiteSpace($dbImmat)) { $plaque = $dbImmat.Trim() }
+            } catch { }
+        }
+        elseif ($WriteGuardWarning) {
+            Write-Host ("[GARDE] Véhicule introuvable pour la plaque {0}" -f $plaque) -ForegroundColor Yellow
+        }
+    }
+    return [pscustomobject]@{
+        Found      = $found
+        NumeroParc = $numeroParc
+        CamionLine = $camionLine
+        Plaque     = $plaque
+    }
+}
+
 function Get-CnsNumeroParcForExcelOrderIndex {
     <#
     .SYNOPSIS

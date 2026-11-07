@@ -959,13 +959,213 @@ function New-CnsPostScriptRightAlignedTextShowBlock {
         [Parameter(Mandatory = $true)][string]$FontName,
         [Parameter(Mandatory = $true)][int]$FontSize,
         [Parameter(Mandatory = $true)][int]$RightX,
-        [Parameter(Mandatory = $true)][int]$Y
+        [Parameter(Mandatory = $true)][int]$Y,
+        [switch]$MutedGray
     )
     $lit = ConvertTo-CnsPsWinAnsiParenBody -Text $Text
+    $grayOn = if ($MutedGray) { "0.4 setgray`n" } else { '' }
+    $grayOff = if ($MutedGray) { "`n0 setgray" } else { '' }
     return @"
-/$FontName findfont $FontSize scalefont setfont
-($lit) dup stringwidth pop $RightX exch sub $Y moveto show
+$grayOn/$FontName findfont $FontSize scalefont setfont
+($lit) dup stringwidth pop $RightX exch sub $Y moveto show$grayOff
 "@
+}
+
+function script:Get-CnsTourneeCoverServiceDebutHourFromSegment {
+    param([AllowNull()]$Segment)
+    if ($null -eq $Segment) { return $null }
+    if ($null -eq $Segment.PSObject.Properties['ServiceDebutHour']) { return $null }
+    if ($null -eq $Segment.ServiceDebutHour) { return $null }
+    try { return [int]$Segment.ServiceDebutHour } catch { return $null }
+}
+
+function script:Format-CnsTourneeCoverServiceLine {
+    param(
+        [AllowNull()][AllowEmptyString()][string]$Collecteur,
+        [AllowNull()][AllowEmptyString()][string]$ServiceLabel = $null,
+        $DebutHour = $null
+    )
+    $prenom = Get-CnsTourneeCoverCollecteurPrenomDisplay -Collecteur $Collecteur
+    if ([string]::IsNullOrWhiteSpace($prenom)) {
+        $prenom = if ([string]::IsNullOrWhiteSpace($Collecteur)) { '' } else { ([string]$Collecteur).Trim() }
+    }
+    if ([string]::IsNullOrWhiteSpace($prenom)) { return '' }
+    if ($null -ne $DebutHour) {
+        return ('{0} | Début {1}H' -f $prenom, [int]$DebutHour)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ServiceLabel)) {
+        return ('{0} | {1}' -f $prenom, $ServiceLabel)
+    }
+    return $prenom
+}
+
+function Get-CnsTourneeCoverVehicleDayPairing {
+    <#
+    .SYNOPSIS
+        Pairing Matin / Après-midi pour un segment nouveau modele.
+        Title* = collecteur de la Perspective courante ; Subtitle* = l'autre creneau.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]$CurrentSegment,
+        [AllowEmptyCollection()][object[]]$AllSegments = @()
+    )
+    if ($null -eq $CurrentSegment) { return $null }
+    [int]$rank = 0
+    [string]$label = ''
+    [string]$perspective = ''
+    try {
+        if ($null -ne $CurrentSegment.PSObject.Properties['ServiceRank']) { $rank = [int]$CurrentSegment.ServiceRank }
+    } catch { $rank = 0 }
+    try {
+        if ($null -ne $CurrentSegment.PSObject.Properties['ServiceLabel']) { $label = [string]$CurrentSegment.ServiceLabel }
+    } catch { $label = '' }
+    try {
+        if ($null -ne $CurrentSegment.PSObject.Properties['Perspective']) { $perspective = [string]$CurrentSegment.Perspective }
+    } catch { $perspective = '' }
+    if ([string]::IsNullOrWhiteSpace($perspective)) { $perspective = $label }
+    if ($rank -lt 1 -and [string]::IsNullOrWhiteSpace($label) -and [string]::IsNullOrWhiteSpace($perspective)) { return $null }
+
+    [string]$plaque = ''
+    [string]$parc = ''
+    try {
+        if ($null -ne $CurrentSegment.PSObject.Properties['Plaque']) { $plaque = ([string]$CurrentSegment.Plaque).Trim() }
+    } catch { }
+    try {
+        if ($null -ne $CurrentSegment.PSObject.Properties['NumeroParc']) { $parc = ([string]$CurrentSegment.NumeroParc).Trim() }
+    } catch { }
+    if ([string]::IsNullOrWhiteSpace($parc)) {
+        try {
+            $candParc = ([string]$CurrentSegment.Vehicule).Trim()
+            # Ne pas prendre une plaque pour un numéro de parc (ex: Vehicule=FR-418-CS sans parenthèses).
+            if (-not [string]::IsNullOrWhiteSpace($candParc) -and $candParc -notmatch '(?i)[A-Z]{1,3}-\d{2,4}-[A-Z]{1,3}' -and $candParc -notmatch '(?i)^(NON\s+SPECIFIE|INCONNU|-)$') {
+                $parc = $candParc
+            }
+        } catch { $parc = '' }
+    }
+
+    $morningSeg = $null
+    $afternoonSeg = $null
+    foreach ($s in @($AllSegments)) {
+        if ($null -eq $s) { continue }
+        [string]$sPlaque = ''
+        [string]$sParc = ''
+        [int]$sRank = 0
+        [string]$sLabel = ''
+        try {
+            if ($null -ne $s.PSObject.Properties['Plaque']) { $sPlaque = ([string]$s.Plaque).Trim() }
+        } catch { }
+        try {
+            if ($null -ne $s.PSObject.Properties['NumeroParc']) { $sParc = ([string]$s.NumeroParc).Trim() }
+        } catch { }
+        if ([string]::IsNullOrWhiteSpace($sParc)) {
+            try { $sParc = ([string]$s.Vehicule).Trim() } catch { $sParc = '' }
+        }
+        try {
+            if ($null -ne $s.PSObject.Properties['ServiceRank']) { $sRank = [int]$s.ServiceRank }
+        } catch { $sRank = 0 }
+        try {
+            if ($null -ne $s.PSObject.Properties['ServiceLabel']) { $sLabel = [string]$s.ServiceLabel }
+        } catch { $sLabel = '' }
+
+        $sameVehicle = $false
+        if (-not [string]::IsNullOrWhiteSpace($plaque) -and -not [string]::IsNullOrWhiteSpace($sPlaque)) {
+            $sameVehicle = [string]::Equals($plaque, $sPlaque, [System.StringComparison]::OrdinalIgnoreCase)
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($parc) -and -not [string]::IsNullOrWhiteSpace($sParc)) {
+            $sameVehicle = [string]::Equals($parc, $sParc, [System.StringComparison]::OrdinalIgnoreCase)
+        }
+        if (-not $sameVehicle) { continue }
+
+        $isMorning = ($sRank -eq 1) -or ($sLabel -match '(?i)^matin')
+        $isAfternoon = ($sRank -eq 2) -or ($sLabel -match '(?i)apr')
+        if ($isMorning -and $null -eq $morningSeg) { $morningSeg = $s }
+        elseif ($isAfternoon -and $null -eq $afternoonSeg) { $afternoonSeg = $s }
+    }
+
+    [string]$morningCollector = ''
+    [string]$afternoonCollector = ''
+    $morningHour = $null
+    $afternoonHour = $null
+    if ($null -ne $morningSeg) {
+        try { $morningCollector = [string]$morningSeg.Collecteur } catch { $morningCollector = '' }
+        if (Get-Command Test-CnsExcelTourneeMetaIsSentinel -ErrorAction SilentlyContinue) {
+            if (Test-CnsExcelTourneeMetaIsSentinel -Text $morningCollector) { $morningCollector = '' }
+        }
+        $morningHour = script:Get-CnsTourneeCoverServiceDebutHourFromSegment -Segment $morningSeg
+    }
+    if ($null -ne $afternoonSeg) {
+        try { $afternoonCollector = [string]$afternoonSeg.Collecteur } catch { $afternoonCollector = '' }
+        if (Get-Command Test-CnsExcelTourneeMetaIsSentinel -ErrorAction SilentlyContinue) {
+            if (Test-CnsExcelTourneeMetaIsSentinel -Text $afternoonCollector) { $afternoonCollector = '' }
+        }
+        $afternoonHour = script:Get-CnsTourneeCoverServiceDebutHourFromSegment -Segment $afternoonSeg
+    }
+
+    [bool]$morningFree = [string]::IsNullOrWhiteSpace($morningCollector)
+    [bool]$afternoonFree = [string]::IsNullOrWhiteSpace($afternoonCollector)
+    [bool]$isAfternoonPerspective = ($rank -eq 2) -or ($perspective -match '(?i)apr') -or ($label -match '(?i)apr')
+
+    # Ligne 1 (droite) : collecteur principal de la page + heure de début.
+    [string]$titleLine = ''
+    if ($isAfternoonPerspective) {
+        $titleLine = script:Format-CnsTourneeCoverServiceLine -Collecteur $afternoonCollector -ServiceLabel 'Après-midi' -DebutHour $afternoonHour
+        if ([string]::IsNullOrWhiteSpace($titleLine)) {
+            $titleLine = script:Format-CnsTourneeCoverServiceLine -Collecteur ([string]$CurrentSegment.Collecteur) -ServiceLabel 'Après-midi' -DebutHour (script:Get-CnsTourneeCoverServiceDebutHourFromSegment -Segment $CurrentSegment)
+        }
+    }
+    else {
+        $titleLine = script:Format-CnsTourneeCoverServiceLine -Collecteur $morningCollector -ServiceLabel 'Matin' -DebutHour $morningHour
+        if ([string]::IsNullOrWhiteSpace($titleLine)) {
+            $titleLine = script:Format-CnsTourneeCoverServiceLine -Collecteur ([string]$CurrentSegment.Collecteur) -ServiceLabel 'Matin' -DebutHour (script:Get-CnsTourneeCoverServiceDebutHourFromSegment -Segment $CurrentSegment)
+        }
+    }
+
+    # Ligne service sous le véhicule : uniquement l'AUTRE créneau (pas le collecteur principal déjà en titre).
+    [string]$serviceDetailLine = ''
+    if ($isAfternoonPerspective) {
+        [string]$morningName = 'Libre'
+        if (-not $morningFree) {
+            $morningName = Get-CnsTourneeCoverCollecteurPrenomDisplay -Collecteur $morningCollector
+            if ([string]::IsNullOrWhiteSpace($morningName)) { $morningName = ([string]$morningCollector).Trim() }
+        }
+        $serviceDetailLine = ('Matin : {0}' -f $morningName)
+    }
+    else {
+        [string]$afternoonName = 'Libre'
+        if (-not $afternoonFree) {
+            $afternoonName = Get-CnsTourneeCoverCollecteurPrenomDisplay -Collecteur $afternoonCollector
+            if ([string]::IsNullOrWhiteSpace($afternoonName)) { $afternoonName = ([string]$afternoonCollector).Trim() }
+        }
+        $serviceDetailLine = ('Après-midi : {0}' -f $afternoonName)
+    }
+
+    # Numéro de parc : extrait des parenthèses Excel (ex: "FR-418-CS (13)" -> "13"). Pas de lookup DB.
+    [string]$camionLine = ''
+    if (-not [string]::IsNullOrWhiteSpace($parc)) {
+        if ($parc -match '^(?i)camion\b') {
+            $camionLine = $parc
+        }
+        else {
+            $camionLine = ('Camion {0}' -f $parc)
+        }
+    }
+
+    return [pscustomobject]@{
+        Perspective           = $(if ($isAfternoonPerspective) { 'Après-midi' } else { 'Matin' })
+        MorningCollecteur     = $morningCollector
+        AfternoonCollecteur   = $afternoonCollector
+        MorningDebutHour      = $morningHour
+        AfternoonDebutHour    = $afternoonHour
+        MorningIsFree         = $morningFree
+        AfternoonIsFree       = $afternoonFree
+        Plaque                = $plaque
+        NumeroParc            = $parc
+        TitleLine             = $titleLine
+        SubtitleLine          = $serviceDetailLine
+        ServiceDetailLine     = $serviceDetailLine
+        SubtitleIsFree        = $false
+        CamionLine            = $camionLine
+    }
 }
 
 function New-CnsPostScriptCenteredTextShowBlock {
@@ -1049,7 +1249,8 @@ function Build-CnsTourneeHeaderCoverPostScriptBody {
         [AllowNull()][AllowEmptyString()][string]$VehiculeImmatriculation = $null,
         [AllowEmptyCollection()][string[]]$MetierMemoLines = @(),
         [AllowNull()][AllowEmptyString()][string]$IncompleteBanner = $null,
-        [AllowNull()][AllowEmptyString()][string]$CenteredText = $null
+        [AllowNull()][AllowEmptyString()][string]$CenteredText = $null,
+        [AllowNull()]$VehicleDayPairing = $null
     )
     $fontBlack = Get-CnsCoverPostScriptFontBlackName
     $fontReg = Get-CnsCoverPostScriptFontRegularName
@@ -1060,14 +1261,20 @@ function Build-CnsTourneeHeaderCoverPostScriptBody {
 
     $headerFontSize = 18
     [int]$immatFontSize = 12
-    [int]$vehImmatLineStep = 14
+    [int]$vehImmatLineStep = 18
     [int]$immatRightIndent = 30
     [int]$pageWidth = 595
+    [int]$leftX = 50
+    [bool]$hasPairing = $null -ne $VehicleDayPairing
 
     if (-not [string]::IsNullOrWhiteSpace($IncompleteBanner)) {
-        $line1Y = 770
-        $vehY = 740
-        $memoY = 700
+        $dateY = 770
+        # Date + collecteur meme ligne ; sous le prenom : Camion / plaque / service (3 lignes).
+        $titleY = $dateY
+        $vehY = if ($hasPairing) { 742 } else { 740 }
+        $plateY = 724
+        $serviceY = 706
+        $memoY = if ($hasPairing) { 660 } else { 700 }
         $rightX = 550
         $litBanner = ConvertTo-CnsPsWinAnsiParenBody -Text $IncompleteBanner
         $bannerPs = @"
@@ -1077,35 +1284,121 @@ function Build-CnsTourneeHeaderCoverPostScriptBody {
 "@
     }
     else {
-        $line1Y = 800
-        $vehY = 770
-        $memoY = 730
+        $dateY = 800
+        $titleY = $dateY
+        $vehY = if ($hasPairing) { 772 } else { 770 }
+        $plateY = 754
+        $serviceY = 736
+        $memoY = if ($hasPairing) { 690 } else { 730 }
         $rightX = 550
         $bannerPs = ''
     }
 
     $prenomPs = ''
-    if (-not [string]::IsNullOrWhiteSpace($prenom)) {
-        $prenomPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $prenom -FontName $fontBlack -FontSize $headerFontSize -RightX $rightX -Y $line1Y
-    }
-
+    $subtitlePs = ''
     $parcPs = ''
-    if (-not [string]::IsNullOrWhiteSpace($parcText)) {
-        if ($parcText -notmatch '^(?i)camion\b') {
-            $parcLineText = ('Camion {0}' -f $parcText)
+    $immatPs = ''
+    if ($hasPairing) {
+        [string]$titleLine = ''
+        [string]$serviceDetailLine = ''
+        [string]$camionLine = ''
+        [string]$plaqueLine = ''
+        try { $titleLine = [string]$VehicleDayPairing.TitleLine } catch { $titleLine = '' }
+        try {
+            if ($null -ne $VehicleDayPairing.PSObject.Properties['ServiceDetailLine']) {
+                $serviceDetailLine = [string]$VehicleDayPairing.ServiceDetailLine
+            }
+            else {
+                $serviceDetailLine = [string]$VehicleDayPairing.SubtitleLine
+            }
+        } catch { $serviceDetailLine = '' }
+        try { $camionLine = [string]$VehicleDayPairing.CamionLine } catch { $camionLine = '' }
+        try { $plaqueLine = [string]$VehicleDayPairing.Plaque } catch { $plaqueLine = '' }
+        [string]$parcFromPairing = ''
+        try { $parcFromPairing = [string]$VehicleDayPairing.NumeroParc } catch { $parcFromPairing = '' }
+        if ([string]::IsNullOrWhiteSpace($plaqueLine)) { $plaqueLine = $immatText }
+        if ([string]::IsNullOrWhiteSpace($plaqueLine) -and $parcText -match '(?i)[A-Z]{1,3}-?\d{2,4}-?[A-Z]{1,3}') {
+            $plaqueLine = $parcText
+        }
+
+        # Ligne véhicule : "Camion N" depuis le numéro de parc Excel (parenthèses).
+        if ([string]::IsNullOrWhiteSpace($camionLine)) {
+            [string]$parcExcel = $parcFromPairing
+            if ([string]::IsNullOrWhiteSpace($parcExcel) -and -not [string]::IsNullOrWhiteSpace($parcText) `
+                -and $parcText -notmatch '(?i)[A-Z]{1,3}-?\d{2,4}-?[A-Z]{1,3}' `
+                -and $parcText -notmatch '(?i)^(NON\s+SPECIFIE|INCONNU|-)$') {
+                $parcExcel = $parcText
+            }
+            if (-not [string]::IsNullOrWhiteSpace($parcExcel) -and $parcExcel -notmatch '(?i)^(NON\s+SPECIFIE|INCONNU|-)$') {
+                if ($parcExcel -match '^(?i)camion\b') { $camionLine = $parcExcel }
+                else { $camionLine = ('Camion {0}' -f $parcExcel) }
+            }
+        }
+
+        # Collecteur a droite (Y inchange) + memorise le X du debut du prenom (collectorLeftX)
+        # pour aligner Camion / plaque / service sous la 1re lettre du prenom.
+        if (-not [string]::IsNullOrWhiteSpace($titleLine)) {
+            $litTitle = ConvertTo-CnsPsWinAnsiParenBody -Text $titleLine
+            $prenomPs = @"
+/$fontBlack findfont $headerFontSize scalefont setfont
+($litTitle) dup stringwidth pop $rightX exch sub
+dup /collectorLeftX exch def
+$titleY moveto show
+"@
         }
         else {
-            $parcLineText = $parcText
+            $prenomPs = "/collectorLeftX $rightX def`n"
         }
-        $parcPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $parcLineText -FontName $fontBlack -FontSize $headerFontSize -RightX $rightX -Y $vehY
-    }
 
-    $immatPs = ''
-    if (-not [string]::IsNullOrWhiteSpace($immatText)) {
-        [int]$immatY = $vehY - $vehImmatLineStep
-        [int]$immatRightX = $rightX - $immatRightIndent
-        if ($immatRightX -lt 50) { $immatRightX = 50 }
-        $immatPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $immatText -FontName $fontReg -FontSize $immatFontSize -RightX $immatRightX -Y $immatY
+        # Sous le prenom : Camion (grande), puis plaque (petite), puis service (petite) — meme X.
+        $blockParts = New-Object System.Collections.Generic.List[string]
+        if (-not [string]::IsNullOrWhiteSpace($camionLine)) {
+            $litCamion = ConvertTo-CnsPsWinAnsiParenBody -Text $camionLine
+            [void]$blockParts.Add(@"
+/$fontBlack findfont $headerFontSize scalefont setfont
+collectorLeftX $vehY moveto
+($litCamion) show
+"@)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($plaqueLine)) {
+            $litPlaque = ConvertTo-CnsPsWinAnsiParenBody -Text $plaqueLine
+            [void]$blockParts.Add(@"
+/$fontReg findfont $immatFontSize scalefont setfont
+collectorLeftX $plateY moveto
+($litPlaque) show
+"@)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($serviceDetailLine)) {
+            $litService = ConvertTo-CnsPsWinAnsiParenBody -Text $serviceDetailLine
+            [void]$blockParts.Add(@"
+/$fontReg findfont $immatFontSize scalefont setfont
+collectorLeftX $serviceY moveto
+($litService) show
+"@)
+        }
+        if ($blockParts.Count -gt 0) {
+            $parcPs = ($blockParts.ToArray() -join "`n")
+        }
+    }
+    else {
+        if (-not [string]::IsNullOrWhiteSpace($prenom)) {
+            $prenomPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $prenom -FontName $fontBlack -FontSize $headerFontSize -RightX $rightX -Y $dateY
+        }
+        if (-not [string]::IsNullOrWhiteSpace($parcText)) {
+            if ($parcText -notmatch '^(?i)camion\b') {
+                $parcLineText = ('Camion {0}' -f $parcText)
+            }
+            else {
+                $parcLineText = $parcText
+            }
+            $parcPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $parcLineText -FontName $fontBlack -FontSize $headerFontSize -RightX $rightX -Y $vehY
+        }
+        if (-not [string]::IsNullOrWhiteSpace($immatText)) {
+            [int]$immatY = $vehY - $vehImmatLineStep
+            [int]$immatRightX = $rightX - $immatRightIndent
+            if ($immatRightX -lt 50) { $immatRightX = 50 }
+            $immatPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $immatText -FontName $fontReg -FontSize $immatFontSize -RightX $immatRightX -Y $immatY
+        }
     }
 
     $memoPs = ''
@@ -1119,11 +1412,12 @@ function Build-CnsTourneeHeaderCoverPostScriptBody {
     return @"
 $bannerPs
 /$fontBlack findfont $headerFontSize scalefont setfont
-50 $line1Y moveto
+$leftX $dateY moveto
 ($litDate) show
 $prenomPs
 $parcPs
 $immatPs
+$subtitlePs
 $memoPs
 "@
 }
@@ -1380,6 +1674,7 @@ function New-CnsTourneeHeaderCoverPdf {
         [Parameter(Mandatory = $true)]
         [string]$Collecteur,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Vehicule,
         [AllowNull()][AllowEmptyString()][string]$VehiculeImmatriculation = $null,
         [Parameter()]
@@ -1387,7 +1682,8 @@ function New-CnsTourneeHeaderCoverPdf {
         [Parameter()]
         [AllowEmptyCollection()]
         [string[]]$MetierMemoLines = @(),
-        [AllowNull()][AllowEmptyString()][string]$CenteredText = $null
+        [AllowNull()][AllowEmptyString()][string]$CenteredText = $null,
+        [AllowNull()]$VehicleDayPairing = $null
     )
     if ([string]::IsNullOrWhiteSpace($DateJJMMAAAA)) {
         $DateJJMMAAAA = (Get-Date).ToString('dd/MM/yyyy')
@@ -1403,7 +1699,7 @@ function New-CnsTourneeHeaderCoverPdf {
     $banner = if ($TourneeIncomplete) { 'TOURNEE NON MATCHEE' } else { $null }
     $body = Build-CnsTourneeHeaderCoverPostScriptBody -DateTitle $dateTitle -Collecteur $Collecteur -Vehicule $Vehicule `
         -VehiculeImmatriculation $VehiculeImmatriculation -MetierMemoLines @($MetierMemoLines) -IncompleteBanner $banner `
-        -CenteredText $CenteredText
+        -CenteredText $CenteredText -VehicleDayPairing $VehicleDayPairing
     return (Write-CnsPostScriptPdfPage -PsBodySansShowpage $body -OutPdfPath $OutPdfPath)
 }
 
@@ -2745,26 +3041,39 @@ function Invoke-PlanningTourneePdfCoverComposition {
                             Write-Host ("[STEP5-METIER] Segment {0} : {1} memo(s) garde tournée (source PDF ODM)." -f $n, $metierMemos.Count) -ForegroundColor DarkCyan
                             Write-PlanningTourneeStep5UiLog ("🎨 Tournée {0}/{1} - Création page de garde..." -f $tourneeIndex, $totalTournees)
                             $vehiculeImmat = $null
-                            $vehiculeNumeroParc = [string]$seg.Vehicule
-                            if (-not [string]::IsNullOrWhiteSpace($vehiculeNumeroParc)) {
-                                $vehiculeImmat = Get-CnsVehiculeImmatriculationByNumeroParc -NumeroParc $vehiculeNumeroParc
-                                if ([string]::IsNullOrWhiteSpace($vehiculeImmat)) {
-                                    Write-Host ("[GARDE] Immatriculation introuvable pour le parc: {0}" -f $vehiculeNumeroParc) -ForegroundColor Yellow
-                                    $normalizedParc = ([string]$vehiculeNumeroParc).Trim()
-                                    $normalizedParc = [regex]::Replace($normalizedParc, '\s+', ' ').Trim()
-                                    if ($normalizedParc -ne $vehiculeNumeroParc.Trim()) {
-                                        $vehiculeImmat = Get-CnsVehiculeImmatriculationByNumeroParc -NumeroParc $normalizedParc
-                                        if (-not [string]::IsNullOrWhiteSpace($vehiculeImmat)) {
-                                            Write-Host ("[GARDE] Immatriculation trouvée après normalisation: {0}" -f $vehiculeImmat) -ForegroundColor Green
-                                        }
-                                    }
-                                }
-                                else {
-                                    Write-Host ("[GARDE] Immatriculation trouvée: {0}" -f $vehiculeImmat) -ForegroundColor Green
+                            $vehiculeNumeroParc = ''
+                            if ($null -ne $seg.PSObject.Properties['NumeroParc']) {
+                                $vehiculeNumeroParc = ([string]$seg.NumeroParc).Trim()
+                            }
+                            if ([string]::IsNullOrWhiteSpace($vehiculeNumeroParc) -and $null -ne $seg.PSObject.Properties['Vehicule']) {
+                                $candVeh = ([string]$seg.Vehicule).Trim()
+                                # Nouveau modèle : Vehicule peut être la plaque si pas de parenthèses ; ancien modèle : numéro de parc.
+                                if ($candVeh -notmatch '(?i)[A-Z]{1,3}-\d{2,4}-[A-Z]{1,3}') {
+                                    $vehiculeNumeroParc = $candVeh
                                 }
                             }
+                            if ($null -ne $seg.PSObject.Properties['Plaque']) {
+                                $plaquePlanning = ([string]$seg.Plaque).Trim()
+                                if (-not [string]::IsNullOrWhiteSpace($plaquePlanning)) {
+                                    $vehiculeImmat = $plaquePlanning
+                                }
+                            }
+                            if ([string]::IsNullOrWhiteSpace($vehiculeImmat) -and -not [string]::IsNullOrWhiteSpace($vehiculeNumeroParc)) {
+                                # Ancien modèle : immat via base à partir du numéro de parc.
+                                if (Get-Command Get-CnsVehiculeImmatriculationByNumeroParc -ErrorAction SilentlyContinue) {
+                                    $vehiculeImmat = Get-CnsVehiculeImmatriculationByNumeroParc -NumeroParc $vehiculeNumeroParc
+                                }
+                            }
+                            if ([string]::IsNullOrWhiteSpace($vehiculeNumeroParc)) {
+                                $vehiculeNumeroParc = 'NON SPECIFIE'
+                            }
+                            $vehicleDayPairing = Get-CnsTourneeCoverVehicleDayPairing -CurrentSegment $seg -AllSegments @($segments)
+                            if ($null -ne $vehicleDayPairing) {
+                                Write-Host ("[GARDE] Perspective={0} Titre=[{1}] Sous-titre=[{2}] {3} / {4}" -f $vehicleDayPairing.Perspective, $vehicleDayPairing.TitleLine, $vehicleDayPairing.SubtitleLine, $vehicleDayPairing.CamionLine, $vehicleDayPairing.Plaque) -ForegroundColor DarkCyan
+                            }
                             if (New-CnsTourneeHeaderCoverPdf -OutPdfPath $coverPath -DateJJMMAAAA $jj -Collecteur ([string]$seg.Collecteur) `
-                                -Vehicule $vehiculeNumeroParc -VehiculeImmatriculation $vehiculeImmat -TourneeIncomplete:$inc -MetierMemoLines $metierMemos) {
+                                -Vehicule $vehiculeNumeroParc -VehiculeImmatriculation $vehiculeImmat -TourneeIncomplete:$inc -MetierMemoLines $metierMemos `
+                                -VehicleDayPairing $vehicleDayPairing) {
                                 [void]$frag.Add($coverPath)
                                 $coverCreated = $true
                             }
