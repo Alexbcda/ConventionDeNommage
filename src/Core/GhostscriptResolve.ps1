@@ -156,3 +156,24 @@ function Invoke-GhostscriptSilent {
         Remove-Item -LiteralPath $tempErr -Force -ErrorAction SilentlyContinue
     }
 }
+
+function ConvertTo-CnsGhostscriptPostScriptPathLiteral {
+    <#
+    .SYNOPSIS
+        Chemin filesystem pour inclusion dans une chaîne PostScript Ghostscript (-c "(...)" ).
+        Normalise les slashs puis échappe \, ( et ) afin que monfichier(1).pdf ne casse pas le PS.
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return '' }
+    try {
+        $full = [System.IO.Path]::GetFullPath($Path)
+    }
+    catch {
+        $full = [string]$Path
+    }
+    $p = $full -replace '\\', '/'
+    $p = $p -replace '\\', '\\\\'
+    $p = $p -replace '\(', '\('
+    $p = $p -replace '\)', '\)'
+    return $p
+}

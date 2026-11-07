@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # PdfExtractor.ps1
 # Rôle : Extraire le texte brut d'un PDF, découpé en lignes par page.
 $script:_cnGhostResolve = Join-Path $PSScriptRoot '..\..\..\Core\GhostscriptResolve.ps1'
@@ -267,8 +267,9 @@ function script:Get-PdfPageCountInternal {
         $gsPath = Get-ResolvedGhostscriptPath
         if ($gsPath) {
             try {
-                $psPath = $FichierPDF -replace '\\', '/'
-                $output = & $gsPath -dNODISPLAY -q -c "($psPath) (r) file runpdfbegin pdfpagecount = quit" 2>&1
+                $psPath = ConvertTo-CnsGhostscriptPostScriptPathLiteral -Path $FichierPDF
+                $pdfAbs = [System.IO.Path]::GetFullPath($FichierPDF)
+                $output = & $gsPath -dNODISPLAY -q "--permit-file-read=$pdfAbs" -c "($psPath) (r) file runpdfbegin pdfpagecount = quit" 2>&1
                 $joined = if ($output -is [array]) { $output -join "`n" } else { [string]$output }
                 $clip = $joined
                 if ($clip.Length -gt 2000) { $clip = $clip.Substring(0, 2000) + '...' }

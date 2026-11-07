@@ -738,7 +738,7 @@ function Convert-XlsxToPdfViaLibreOfficeRecalc {
             '--headless', '--nologo', '--nofirststartwizard', '--norestore',
             ('--accept=socket,host=127.0.0.1,port={0};urp;' -f $port)
         ) -PassThru -WindowStyle Hidden
-        $pyArgs = '"{0}" "{1}" "{2}" {3} "{4}"' -f $scriptPath, $xlsxAbs, $pdfAbs, $port, $resultFile
+        $pyArgs = @($scriptPath, $xlsxAbs, $pdfAbs, ([string]$port), $resultFile)
         $py = Start-Process -FilePath $python -ArgumentList $pyArgs -Wait -PassThru -NoNewWindow `
             -RedirectStandardOutput $pyOut -RedirectStandardError $pyErr
         if ($null -eq $py -or $py.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $pdfAbs)) {

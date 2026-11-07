@@ -1,4 +1,4 @@
-﻿. (Join-Path $PSScriptRoot '..\Extractors\PdfExtractor.ps1')
+. (Join-Path $PSScriptRoot '..\Extractors\PdfExtractor.ps1')
 . (Join-Path $PSScriptRoot '..\Extractors\EntityExtractor.ps1')
 . (Join-Path $PSScriptRoot '..\Extractors\ExcelLoader.ps1')
 . (Join-Path $PSScriptRoot 'PageEntityAggregator.ps1')
@@ -3737,8 +3737,19 @@ function Start-PlanningRebuild {
             $ok = ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $outputPdfPath))
         }
         if (-not $ok) {
-            script:Write-PlanningLog -Message '[ERROR] Generation PDF echouee (Reorganiser-PDF a retourne false)' -Level 'ERROR'
-            Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 4 -StepCount $planningStepTotal -Label 'Generation PDF' -Status 'Error'
+            $reorgDetail = $null
+            if (-not [string]::IsNullOrWhiteSpace($script:LastPdfReorgError)) {
+                $reorgDetail = [string]$script:LastPdfReorgError
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($script:PlanningRebuildLastError)) {
+                $reorgDetail = [string]$script:PlanningRebuildLastError
+            }
+            else {
+                $reorgDetail = 'Reorganiser-PDF a retourne false (aucun detail Ghostscript).'
+            }
+            $script:PlanningRebuildLastError = $reorgDetail
+            script:Write-PlanningLog -Message ("[ERROR] Generation PDF echouee : {0}" -f $reorgDetail) -Level 'ERROR'
+            Write-PlanningRebuildProgress -ProgressCallback $ProgressCallback -StepIndex 4 -StepCount $planningStepTotal -Label 'Generation PDF' -Status 'Error' -Detail $reorgDetail
             Write-PlanningRebuildPdfDebug -PageMapping $pageMapping -Reordered $reordered
             return ( & $newPlanningResult -OutPdf $null )
         }

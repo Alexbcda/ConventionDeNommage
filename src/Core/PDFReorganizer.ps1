@@ -1,4 +1,4 @@
-﻿# PDFReorganizer.ps1 - Réorganisation de PDF
+# PDFReorganizer.ps1 - Réorganisation de PDF
 . (Join-Path $PSScriptRoot 'GhostscriptResolve.ps1')
 $_scalarGuard = Join-Path $PSScriptRoot '..\Common\ScalarGuard.ps1'
 if (Test-Path -LiteralPath $_scalarGuard) { . $_scalarGuard }
@@ -114,6 +114,63 @@ function Get-PdfReorganiserGhostscriptPermitArgs {
 
     return @($emit.ToArray())
 }
+
+function script:Invoke-PdfReorganiserGhostscriptCall {
+    <#
+    .SYNOPSIS
+        Lance Ghostscript via le call operator (&) + splat pour conserver les espaces/parentheses
+        dans les chemins (Start-Process -ArgumentList les decoupe sous Windows PowerShell).
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$GsPath,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$ArgumentList,
+        [Parameter(Mandatory = $true)][string]$StdOutFile,
+        [Parameter(Mandatory = $true)][string]$StdErrFile
+    )
+    foreach ($f in @($StdOutFile, $StdErrFile)) {
+        if (Test-Path -LiteralPath $f) {
+            Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+        }
+    }
+    # Fichiers vides : la redirection native exige une cible existante sur certaines versions PS.
+    [System.IO.File]::WriteAllText($StdOutFile, [string]::Empty)
+    [System.IO.File]::WriteAllText($StdErrFile, [string]::Empty)
+    & $GsPath @ArgumentList 1>$StdOutFile 2>$StdErrFile
+    if ($null -eq $LASTEXITCODE) { return -1 }
+    return [int]$LASTEXITCODE
+}
+
+function script:Register-PdfReorganiserGhostscriptFailure {
+    <#
+    .SYNOPSIS
+        Journalise l'echec GS et alimente PlanningRebuildLastError pour l'UI panel.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Context,
+        [int]$ExitCode = -1,
+        [string]$StdErrFile = '',
+        [string]$StdErrText = ''
+    )
+    $err = [string]$StdErrText
+    if ([string]::IsNullOrWhiteSpace($err) -and -not [string]::IsNullOrWhiteSpace($StdErrFile) -and (Test-Path -LiteralPath $StdErrFile)) {
+        $err = [string](Get-Content -LiteralPath $StdErrFile -Raw -ErrorAction SilentlyContinue)
+    }
+    $errOne = (($err -replace '[\r\n]+', ' ') -replace '\s+', ' ').Trim()
+    if ($errOne.Length -gt 600) { $errOne = $errOne.Substring(0, 600) + '...' }
+    $msg = if (-not [string]::IsNullOrWhiteSpace($errOne)) {
+        'Ghostscript echec ({0}, code {1}): {2}' -f $Context, $ExitCode, $errOne
+    }
+    else {
+        'Ghostscript echec ({0}, code {1}) — stderr vide (chemin source avec espaces ? permits SAFER ?).' -f $Context, $ExitCode
+    }
+    script:Write-PdfReorgLog -Message ("[ERROR] {0}" -f $msg) -Level 'ERROR'
+    if (-not [string]::IsNullOrWhiteSpace($err)) {
+        script:Write-PdfReorgLog -Message $err -Level 'ERROR'
+    }
+    $script:LastPdfReorgError = $msg
+    $script:PlanningRebuildLastError = $msg
+}
+
 
 function Write-PdfReorganiserGhostscriptResponseFileUtf8NoBom {
     param([Parameter(Mandatory = $true)][string]$RspPath, [Parameter(Mandatory = $true)][string[]]$BodyLines)
@@ -353,8 +410,9 @@ function Reorganiser-PDF {
 
         $runGuid = [Guid]::NewGuid().ToString('N')
         $tempSingles = [System.Collections.Generic.List[string]]::new()
-        $process = $null
+        $gsExitCode = $null
         $stderr = ''
+        $script:LastPdfReorgError = $null
         try {
             if ($pageNumbers.Count -eq 1) {
                 $only = [int]$pageNumbers[0]
@@ -371,7 +429,7 @@ function Reorganiser-PDF {
                 $cmdChars = 0
                 foreach ($_a in $gsArgsSingle) { $cmdChars += $_a.Length + 1 }
                 script:Write-PdfReorgLog -Message "[GS-PREP] singlePass approxArgChars=$cmdChars" -Level 'INFO'
-                $process = Start-Process -FilePath $gsPath -ArgumentList $gsArgsSingle -NoNewWindow -Wait -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+                $gsExitCode = script:Invoke-PdfReorganiserGhostscriptCall -GsPath $gsPath -ArgumentList $gsArgsSingle -StdOutFile $outFile -StdErrFile $errFile
                 if ($null -ne $ProgressCallback) {
                     try { & $ProgressCallback 1 1 $only } catch { }
                 }
@@ -413,17 +471,13 @@ function Reorganiser-PDF {
                             ) -ForegroundColor Gray
                         }
 
-                        $prSlice = Start-Process -FilePath $gsPath -ArgumentList $argSlice -NoNewWindow -Wait -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
-                        if ($null -eq $prSlice -or $prSlice.ExitCode -ne 0) {
-                            $ec = if ($null -eq $prSlice) { '(null)' } else { "$($prSlice.ExitCode)" }
-                            script:Write-PdfReorgLog -Message ("[ERROR] Ghostscript extraction echouee lot : First=$fP Last=$lP ExitCode=$ec") -Level 'ERROR'
-                            if (Test-Path -LiteralPath $errFile) {
-                                script:Write-PdfReorgLog -Message ([string](Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue)) -Level 'ERROR'
-                            }
+                        $ecSlice = script:Invoke-PdfReorganiserGhostscriptCall -GsPath $gsPath -ArgumentList $argSlice -StdOutFile $outFile -StdErrFile $errFile
+                        if ($ecSlice -ne 0) {
+                            script:Register-PdfReorganiserGhostscriptFailure -Context ("extraction lot First=$fP Last=$lP") -ExitCode $ecSlice -StdErrFile $errFile
                             return $false
                         }
                         if (-not (Test-Path -LiteralPath $sliceOut)) {
-                            script:Write-PdfReorgLog -Message "[ERROR] Fichier lot extrait absent : $sliceOut" -Level 'ERROR'
+                            script:Register-PdfReorganiserGhostscriptFailure -Context ("fichier lot absent: $sliceOut") -ExitCode $ecSlice -StdErrFile $errFile
                             return $false
                         }
                         for ($ri = 0; $ri -lt $mRep; $ri++) {
@@ -453,17 +507,13 @@ function Reorganiser-PDF {
                         if ($pi -eq 1 -or ($pi % 50 -eq 0)) {
                             Write-Host ("[PDF] Ghostscript extraction page {0}/{1}" -f $pi, $pageNumbers.Count) -ForegroundColor Gray
                         }
-                        $prSlice = Start-Process -FilePath $gsPath -ArgumentList $argSlice -NoNewWindow -Wait -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
-                        if ($null -eq $prSlice -or $prSlice.ExitCode -ne 0) {
-                            $ec = if ($null -eq $prSlice) { '(null)' } else { "$($prSlice.ExitCode)" }
-                            script:Write-PdfReorgLog -Message "[ERROR] Ghostscript extraction echouee : page=$pnI ExitCode=$ec" -Level 'ERROR'
-                            if (Test-Path -LiteralPath $errFile) {
-                                script:Write-PdfReorgLog -Message ([string](Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue)) -Level 'ERROR'
-                            }
+                        $ecSlice = script:Invoke-PdfReorganiserGhostscriptCall -GsPath $gsPath -ArgumentList $argSlice -StdOutFile $outFile -StdErrFile $errFile
+                        if ($ecSlice -ne 0) {
+                            script:Register-PdfReorganiserGhostscriptFailure -Context ("extraction page=$pnI") -ExitCode $ecSlice -StdErrFile $errFile
                             return $false
                         }
                         if (-not (Test-Path -LiteralPath $sliceOut)) {
-                            script:Write-PdfReorgLog -Message "[ERROR] Fichier page extrait absent : $sliceOut" -Level 'ERROR'
+                            script:Register-PdfReorganiserGhostscriptFailure -Context ("fichier page absent: $sliceOut") -ExitCode $ecSlice -StdErrFile $errFile
                             return $false
                         }
                         [void]$tempSingles.Add($sliceOut)
@@ -493,6 +543,7 @@ function Reorganiser-PDF {
                     foreach ($tp in @($tempSingles)) {
                         $tpNorm = [System.IO.Path]::GetFullPath($tp)
                         [void]$rspBody.Add('-f')
+                        # Chemins dans @rsp : guillemets GS (fichier texte), pas Start-Process.
                         [void]$rspBody.Add(('"' + $tpNorm + '"').Trim())
                     }
                     Write-PdfReorganiserGhostscriptResponseFileUtf8NoBom -RspPath $rspPath -BodyLines @($rspBody.ToArray())
@@ -519,25 +570,22 @@ function Reorganiser-PDF {
                     }
 
                     $rspResolved = [System.IO.Path]::GetFullPath($rspPath)
-                    $atMerge = if ($rspResolved.Contains(' ')) {
-                        ('"' + '@' + $rspResolved + '"')
-                    }
-                    else {
-                        ('@' + $rspResolved)
-                    }
+                    # Call operator : un seul element de tableau, meme avec espaces — pas de guillemets embeds.
+                    $atMerge = '@' + $rspResolved
 
                     $mergeArgsRsp = @('-dNOPAUSE', '-dBATCH') + @($permRsp) + @('-sDEVICE=pdfwrite', ("-sOutputFile=$outAbs"), $atMerge )
-                    $process = Start-Process -FilePath $gsPath -ArgumentList $mergeArgsRsp -NoNewWindow -Wait -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+                    $gsExitCode = script:Invoke-PdfReorganiserGhostscriptCall -GsPath $gsPath -ArgumentList $mergeArgsRsp -StdOutFile $outFile -StdErrFile $errFile
                     if (Test-Path -LiteralPath $rspPath) {
                         Remove-Item -LiteralPath $rspPath -Force -ErrorAction SilentlyContinue
                     }
                 }
                 else {
-                    $process = Start-Process -FilePath $gsPath -ArgumentList @($mergeArgs.ToArray()) -NoNewWindow -Wait -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+                    $gsExitCode = script:Invoke-PdfReorganiserGhostscriptCall -GsPath $gsPath -ArgumentList @($mergeArgs.ToArray()) -StdOutFile $outFile -StdErrFile $errFile
                 }
             }
         } catch {
             script:Write-PdfReorgLog -Message "[ERROR] Ghostscript pipeline : $_" -Level 'ERROR'
+            script:Register-PdfReorganiserGhostscriptFailure -Context 'exception pipeline' -ExitCode -1 -StdErrText ([string]$_)
             return $false
         } finally {
             foreach ($ts in @($tempSingles)) {
@@ -553,34 +601,26 @@ function Reorganiser-PDF {
                 Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
             }
         }
-
         script:Write-PdfReorgLog -Message "[PDF] Fusion / ecriture Ghostscript terminee (stderr agrégée si erreur)." -Level 'INFO'
 
-        if ($null -eq $process) {
-            script:Write-PdfReorgLog -Message "[ERROR] Processus Ghostscript non démarré." -Level 'ERROR'
-            if (-not [string]::IsNullOrWhiteSpace($stderr)) { script:Write-PdfReorgLog -Message $stderr -Level 'ERROR' }
+        if ($null -eq $gsExitCode) {
+            script:Register-PdfReorganiserGhostscriptFailure -Context 'processus non demarre' -ExitCode -1 -StdErrText $stderr
             return $false
         }
 
-        if ($process.ExitCode -ne 0) {
-            script:Write-PdfReorgLog -Message "[ERROR] Ghostscript a échoué (code: $($process.ExitCode))" -Level 'ERROR'
-            if (-not [string]::IsNullOrWhiteSpace($stderr)) {
-                script:Write-PdfReorgLog -Message "[ERROR] Sortie d'erreur Ghostscript (stderr) :" -Level 'ERROR'
-                script:Write-PdfReorgLog -Message $stderr -Level 'ERROR'
-            } else { script:Write-PdfReorgLog -Message "[ERROR] (stderr vide ; vérifier chemins, droits, argument -sOutputFile.)" -Level 'ERROR' }
+        if ($gsExitCode -ne 0) {
+            script:Register-PdfReorganiserGhostscriptFailure -Context 'ecriture/fusion' -ExitCode ([int]$gsExitCode) -StdErrText $stderr
             return $false
         }
 
         if (-not (Test-PlausibleGeneratedPdf -Path $outAbs)) {
-            script:Write-PdfReorgLog -Message "[ERROR] Fichier de sortie absent ou n'est pas un PDF valide (en-tête %PDF- / taille minimale)." -Level 'ERROR'
-            if (-not [string]::IsNullOrWhiteSpace($stderr)) {
-                script:Write-PdfReorgLog -Message "[ERROR] Sortie stderr Ghostscript (aide diagnostic) :" -Level 'ERROR'
-                script:Write-PdfReorgLog -Message $stderr -Level 'ERROR'
-            }
+            $extra = ''
             if (Test-Path -LiteralPath $outAbs) {
                 $len = (Get-Item -LiteralPath $outAbs).Length
+                $extra = (" Fichier trouve : {0} octet(s)." -f $len)
                 script:Write-PdfReorgLog -Message ("[ERROR] Fichier trouvé : {0} octet(s)" -f $len) -Level 'ERROR'
             }
+            script:Register-PdfReorganiserGhostscriptFailure -Context ('PDF sortie invalide/absent.' + $extra) -ExitCode ([int]$gsExitCode) -StdErrText $stderr
             return $false
         }
 

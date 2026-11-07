@@ -665,7 +665,14 @@ function Invoke-CdsGhostscriptRasterImageToSinglePagePdf {
     }
 
     $imgFwd = Convert-CdsGhostscriptPathLiteral -Path $imgAbs
-    $cmd = ("<< /PageSize [{0} {1}] >> setpagedevice ({2}) viewJPEG showpage" -f $wi, $hi, $imgFwd)
+    # Échappement PostScript : un chemin image avec ( ) ne doit pas casser la literal -c.
+    if (Get-Command ConvertTo-CnsGhostscriptPostScriptPathLiteral -ErrorAction SilentlyContinue) {
+        $imgPs = ConvertTo-CnsGhostscriptPostScriptPathLiteral -Path $imgAbs
+    }
+    else {
+        $imgPs = (($imgFwd -replace '\\', '\\\\') -replace '\(', '\(') -replace '\)', '\)'
+    }
+    $cmd = ("<< /PageSize [{0} {1}] >> setpagedevice ({2}) viewJPEG showpage" -f $wi, $hi, $imgPs)
 
     $arg = New-Object System.Collections.Generic.List[string]
     [void]$arg.AddRange([string[]]@(
