@@ -63,10 +63,25 @@ if (Test-Path -LiteralPath $_cnsFtTemplate) {
     . $_cnsFtTemplate
 }
 
+function script:Move-CnsLastFragItemBeforeIndex {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.List[string]]$Frag,
+        [Parameter(Mandatory = $true)]
+        [int]$BeforeIndex
+    )
+    $last = $Frag.Count - 1
+    if ($last -lt 1 -or $BeforeIndex -lt 0 -or $BeforeIndex -gt $last) { return }
+    $item = $Frag[$last]
+    $Frag.RemoveAt($last)
+    if ($BeforeIndex -gt $Frag.Count) { $BeforeIndex = $Frag.Count }
+    $Frag.Insert($BeforeIndex, $item)
+}
+
 function Invoke-CnsAppendFtDocumentToFrag {
     <#
     .SYNOPSIS
-        Genere et insere le document FT apres une page ODM (etape 5).
+        Genere et insere le document FT avant la page ODM (etape 5).
     .OUTPUTS
         $true si le PDF FT a ete ajoute au fragment.
     #>
@@ -127,7 +142,7 @@ function Invoke-CnsAppendFtDocumentToFrag {
         Add-TourneeCompositionGeneratedDocCount
         Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
             -Detail ("{0}Generation document FT... [OK]" -f ($TChildCore + '│   └── '))
-        Write-Host ("[STEP5-METIER] Document FT injecte apres page reorder #{0} (RawPage={1}, point={2}, fichier={3})." -f `
+        Write-Host ("[STEP5-METIER] Document FT injecte avant page reorder #{0} (RawPage={1}, point={2}, fichier={3})." -f `
                 $ReorderPage, $RawPageNum, $PointCollecteLabel, (Split-Path -Leaf $ftPdf)) -ForegroundColor Green
         return $true
     }
@@ -2146,6 +2161,104 @@ function Add-CnsOdmDuplicateSliceAfterOriginal {
     Write-Host ("[DUPLICATION-ODM] 1 page(s) copiee(s) pour {0} (immediatement apres original)." -f $RunKeyLabel) -ForegroundColor Green
 }
 
+function script:Get-CnsStep5WorkOrderCacheKeyFromGsPair {
+    param(
+        $GsPair,
+        [AllowEmptyCollection()]
+        [object[]]$WorkOrders = @(),
+        [AllowEmptyCollection()]
+        [object[]]$PdfEntities = @()
+    )
+    if ($null -eq $GsPair) { return $null }
+    [int]$rawPn = 0
+    try { $rawPn = [int]$GsPair.RawPageNum } catch { return $null }
+    if ($rawPn -lt 1) { return $null }
+    $wo = $null
+    if (Get-Command Resolve-CnsWorkOrderEntityFromPdfPage -ErrorAction SilentlyContinue) {
+        $wo = Resolve-CnsWorkOrderEntityFromPdfPage -RawPageNumOneBased $rawPn -WorkOrders @($WorkOrders) -PdfEntities @($PdfEntities)
+    }
+    if ($null -eq $wo) { return $null }
+    return Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $wo
+}
+
+function script:Test-CnsStep5FollowingPairSameWorkOrderKey {
+    param(
+        $SortedPairs,
+        [int]$PairIndex,
+        [string]$CurrentKey,
+        [AllowEmptyCollection()]
+        [object[]]$WorkOrders = @(),
+        [AllowEmptyCollection()]
+        [object[]]$PdfEntities = @()
+    )
+    if ([string]::IsNullOrWhiteSpace($CurrentKey)) { return $false }
+    $pairs = @($SortedPairs)
+    $nextIndex = $PairIndex + 1
+    if ($nextIndex -lt 0 -or $nextIndex -ge $pairs.Count) { return $false }
+    $nextKey = script:Get-CnsStep5WorkOrderCacheKeyFromGsPair -GsPair $pairs[$nextIndex] -WorkOrders @($WorkOrders) -PdfEntities @($PdfEntities)
+    if ([string]::IsNullOrWhiteSpace($nextKey)) { return $false }
+    return [string]::Equals($CurrentKey, $nextKey, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function script:Add-CnsDestructionCertificatePdfToFrag {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.List[string]]$Frag,
+        [Parameter(Mandatory = $true)]
+        [string]$TmpDir,
+        $WorkOrderEntity,
+        $GsPair,
+        [int]$BlockIndex,
+        [int]$SliceIndex,
+        [int]$ReorderPage,
+        [string]$WorkOrderCacheKey,
+        [System.Collections.Generic.HashSet[string]]$CertInjectedForWo,
+        [hashtable]$FinalOrderToLine,
+        [array]$Segments,
+        [hashtable]$OrderToSeg,
+        [datetime]$VisitDate,
+        [scriptblock]$ProgressCallback,
+        [string]$TChildCore,
+        [switch]$AfterDuplication
+    )
+    if ([string]::IsNullOrWhiteSpace($WorkOrderCacheKey)) { return $false }
+    if ($null -eq $CertInjectedForWo) { return $false }
+    if (-not $CertInjectedForWo.Add($WorkOrderCacheKey)) { return $false }
+    if (-not (Get-Command New-CnsDestructionCertificatePdfFromExcelTemplate -ErrorAction SilentlyContinue)) {
+        [void]$CertInjectedForWo.Remove($WorkOrderCacheKey)
+        Write-Warning '[DESTRUCTION-CERT] Module Word certificat non charge — injection ignoree.'
+        return $false
+    }
+    $segMeta = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $GsPair -FinalOrderToLine $FinalOrderToLine -Segments $Segments -ExcelOrderIndexToSegmentIndex $OrderToSeg -VisitDate $VisitDate
+    $phTable = @{}
+    foreach ($entry in (Get-CnsDestructionCertificatePlaceholders -WorkOrderEntity $WorkOrderEntity -SegmentMeta $segMeta -VisitDate $VisitDate).GetEnumerator()) {
+        $phTable[[string]$entry.Key] = [string]$entry.Value
+    }
+    $certOut = Join-Path $TmpDir ('cert_dest_{0:D3}_{1:D5}.pdf' -f $BlockIndex, $SliceIndex)
+    $certPdf = New-CnsDestructionCertificatePdfFromExcelTemplate -OutPdfPath $certOut -Placeholders $phTable
+    if ([string]::IsNullOrWhiteSpace($certPdf) -or -not (Test-Path -LiteralPath $certPdf)) {
+        [void]$CertInjectedForWo.Remove($WorkOrderCacheKey)
+        Write-Warning ("[DESTRUCTION-CERT] Generation certificat echouee pour WO={0} — page ODM conservee." -f $WorkOrderCacheKey)
+        return $false
+    }
+    if (Get-Command Write-CnsDestructionCertificatePdfMergeAudit -ErrorAction SilentlyContinue) {
+        Write-CnsDestructionCertificatePdfMergeAudit -Phase 'GENERATED' -PdfPath $certPdf
+    }
+    [void]$Frag.Add($certPdf)
+    Add-TourneeCompositionGeneratedDocCount
+    Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
+        -Detail ("{0}Generation certificat destruction... [OK]" -f ($TChildCore + '│   └── '))
+    $certLeaf = Split-Path -Leaf $certPdf
+    if ($AfterDuplication) {
+        $successLog = ("[DESTRUCTION-CERT] Certificat injecte apres duplication ODM (WO={0}, reorder #{1}, fichier={2})." -f $WorkOrderCacheKey, $ReorderPage, $certLeaf)
+    }
+    else {
+        $successLog = ("[DESTRUCTION-CERT] Certificat injecte apres derniere page ODM reorder #{0} (WO={1}, PDF ODM, fichier={2})." -f $ReorderPage, $WorkOrderCacheKey, $certLeaf)
+    }
+    Write-Host $successLog -ForegroundColor Green
+    return $true
+}
+
 function Invoke-CnsFlushOdmDuplicationRun {
     <#
     .SYNOPSIS
@@ -2226,41 +2339,13 @@ function Invoke-CnsFlushOdmDuplicationRun {
     }
 
     if ($null -ne $PendingCert) {
-        $woPage = $PendingCert.WorkOrderEntity
-        $gsPair = $PendingCert.GsPair
-        $fi = [int]$PendingCert.BlockIndex
-        $sliceIx = [int]$PendingCert.SliceIndex
-        $pn = [int]$PendingCert.ReorderPage
-        $woCacheKey = [string]$PendingCert.WorkOrderCacheKey
-        if (-not [string]::IsNullOrWhiteSpace($woCacheKey) -and $certInjectedForWo.Add($woCacheKey)) {
-            if (Get-Command New-CnsDestructionCertificatePdfFromExcelTemplate -ErrorAction SilentlyContinue) {
-                $segMeta = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $gsPair -FinalOrderToLine $FinalOrderToLine -Segments $Segments -ExcelOrderIndexToSegmentIndex $OrderToSeg -VisitDate $VisitDate
-                $phTable = @{}
-                foreach ($entry in (Get-CnsDestructionCertificatePlaceholders -WorkOrderEntity $woPage -SegmentMeta $segMeta -VisitDate $VisitDate).GetEnumerator()) {
-                    $phTable[[string]$entry.Key] = [string]$entry.Value
-                }
-                $certOut = Join-Path $TmpDir ('cert_dest_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
-                $certPdf = New-CnsDestructionCertificatePdfFromExcelTemplate -OutPdfPath $certOut -Placeholders $phTable
-                if (-not [string]::IsNullOrWhiteSpace($certPdf) -and (Test-Path -LiteralPath $certPdf)) {
-                    if (Get-Command Write-CnsDestructionCertificatePdfMergeAudit -ErrorAction SilentlyContinue) {
-                        Write-CnsDestructionCertificatePdfMergeAudit -Phase 'GENERATED' -PdfPath $certPdf
-                    }
-                    [void]$Frag.Add($certPdf)
-                    Add-TourneeCompositionGeneratedDocCount
-                    Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
-                        -Detail ("{0}Generation certificat destruction... [OK]" -f ($TChildCore + '│   └── '))
-                    Write-Host ("[DESTRUCTION-CERT] Certificat injecte apres duplication ODM (WO={0}, reorder #{1}, fichier={2})." -f $woCacheKey, $pn, (Split-Path -Leaf $certPdf)) -ForegroundColor Green
-                }
-                else {
-                    [void]$CertInjectedForWo.Remove($woCacheKey)
-                    Write-Warning ("[DESTRUCTION-CERT] Generation certificat echouee pour WO={0} — page ODM conservee." -f $woCacheKey)
-                }
-            }
-            else {
-                [void]$CertInjectedForWo.Remove($woCacheKey)
-                Write-Warning '[DESTRUCTION-CERT] Module Word certificat non charge — injection ignoree.'
-            }
-        }
+        $null = script:Add-CnsDestructionCertificatePdfToFrag -Frag $Frag -TmpDir $TmpDir `
+            -WorkOrderEntity $PendingCert.WorkOrderEntity -GsPair $PendingCert.GsPair `
+            -BlockIndex ([int]$PendingCert.BlockIndex) -SliceIndex ([int]$PendingCert.SliceIndex) `
+            -ReorderPage ([int]$PendingCert.ReorderPage) -WorkOrderCacheKey ([string]$PendingCert.WorkOrderCacheKey) `
+            -CertInjectedForWo $CertInjectedForWo -FinalOrderToLine $FinalOrderToLine -Segments $Segments `
+            -OrderToSeg $OrderToSeg -VisitDate $VisitDate -ProgressCallback $ProgressCallback -TChildCore $TChildCore `
+            -AfterDuplication
     }
 
     foreach ($ceaItem in @($PendingCea)) {
@@ -2303,11 +2388,12 @@ function Invoke-CnsFlushOdmDuplicationRun {
         }
     }
 
-    foreach ($ftItem in @($PendingFt)) {
-        if ($null -eq $ftItem) { continue }
+    $pendingFtOrdered = @($PendingFt | Where-Object { $null -ne $_ } | Sort-Object { [int]$_.OdmFragIndex } -Descending)
+    foreach ($ftItem in $pendingFtOrdered) {
         [int]$rawPnFt = [int]$ftItem.RawPageNum
         if ($rawPnFt -lt 1) { continue }
         if (-not $FtInjectedForPage.Add($rawPnFt)) { continue }
+        $fragCountBeforeFt = $Frag.Count
         $okFt = Invoke-CnsAppendFtDocumentToFrag -Frag $Frag -TmpDir $TmpDir `
             -BlockIndex ([int]$ftItem.BlockIndex) -SliceIndex ([int]$ftItem.SliceIndex) `
             -ReorderPage ([int]$ftItem.ReorderPage) -RawPageNum $rawPnFt `
@@ -2315,7 +2401,16 @@ function Invoke-CnsFlushOdmDuplicationRun {
             -WorkOrderEntity $ftItem.WorkOrderEntity -PageEntity $ftItem.PageEntity -GsPair $ftItem.GsPair `
             -FinalOrderToLine $FinalOrderToLine -Segments $Segments -OrderToSeg $OrderToSeg -VisitDate $VisitDate `
             -ProgressCallback $ProgressCallback -TChildCore $TChildCore
-        if (-not $okFt) {
+        if ($okFt -and $Frag.Count -eq ($fragCountBeforeFt + 1)) {
+            $beforeIdx = $Frag.IndexOf([string]$ftItem.SlicePath)
+            if ($beforeIdx -lt 0) {
+                try { $beforeIdx = [int]$ftItem.OdmFragIndex } catch { $beforeIdx = -1 }
+            }
+            if ($beforeIdx -ge 0) {
+                script:Move-CnsLastFragItemBeforeIndex -Frag $Frag -BeforeIndex $beforeIdx
+            }
+        }
+        elseif (-not $okFt) {
             [void]$FtInjectedForPage.Remove($rawPnFt)
         }
     }
@@ -2535,6 +2630,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
         $seenSegments = @{}
         $prefaceAlreadyAdded = $false
         $certInjectedForWo = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+        $classicPendingCertKey = $null
         $ceaInjectedForPage = New-Object 'System.Collections.Generic.HashSet[int]'
         $ftInjectedForPage = New-Object 'System.Collections.Generic.HashSet[int]'
         $bilanInjectedForSeg = @{}
@@ -2741,36 +2837,64 @@ function Invoke-PlanningTourneePdfCoverComposition {
                         -OutPdfPath $slicePath -SkipPrepress:$useSkipPrepress)) {
                     throw ("[TOURNEE] Extraction page principale #{0} echouee." -f $pn)
                 }
-                [void]$frag.Add($slicePath)
 
                 $pairIdx = $pn - 1
-                if ($pairIdx -ge 0 -and $pairIdx -lt $sortedPairsArr.Count) {
+                $gsPair = $null
+                $woPage = $null
+                $pePage = $null
+                $rawPnPage = 0
+                $runKey = $null
+                $isDupTarget = $false
+                $currentWoKey = $null
+                $inPair = ($pairIdx -ge 0 -and $pairIdx -lt $sortedPairsArr.Count)
+                if ($inPair) {
                     $gsPair = $sortedPairsArr[$pairIdx]
-                    [int]$rawPnPage = 0
                     try { $rawPnPage = [int]$gsPair.RawPageNum } catch { $rawPnPage = 0 }
-
                     $woPage = Resolve-CnsWorkOrderEntityForStep5 -GsPair $gsPair -FinalOrderToLine $foToLine -OrderToWorkOrder @{} -WorkOrders $WorkOrders -PdfEntities @($PdfEntities)
-                    $pePage = $null
                     if ($rawPnPage -gt 0) {
                         $pePage = Get-CnsPageEntityByPhysicalPage -PageNumberOneBased $rawPnPage -PdfEntities @($PdfEntities)
                     }
-
                     $runKey = Get-CnsOdmDuplicationRunKey -WorkOrderEntity $woPage -PageEntity $pePage
                     $isDupTarget = Test-CnsOdmDuplicationTargetClient -WorkOrderEntity $woPage -PageEntity $pePage
-                    $hasDupMetierPending = ($null -ne $dupPendingCert) -or ($dupPendingCea.Count -gt 0) -or ($dupPendingFt.Count -gt 0)
-                    if ($hasDupMetierPending -and (
-                            -not $isDupTarget -or
-                            [string]::IsNullOrWhiteSpace($runKey) -or
-                            ($null -ne $dupRunKey -and $runKey -ne $dupRunKey)
-                        )) {
-                        Invoke-CnsFlushOdmDuplicationRun -Frag $frag -SlicePaths $emptyDupSliceList `
-                            -PendingCert $dupPendingCert -PendingCea $dupPendingCea -PendingFt $dupPendingFt `
-                            -RunKeyLabel $(if ([string]::IsNullOrWhiteSpace($dupRunKey)) { 'client cible' } else { $dupRunKey }) -TmpDir $tmpDir `
-                            -CertInjectedForWo $certInjectedForWo -CeaInjectedForPage $ceaInjectedForPage -FtInjectedForPage $ftInjectedForPage `
-                            -ProgressCallback $ProgressCallback -TChildCore $tChildCore `
-                            -FinalOrderToLine $foToLine -Segments @($segments) -OrderToSeg $orderToSeg -VisitDate $VisitDate
+                    if ($null -ne $woPage) {
+                        $currentWoKey = Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage
+                    }
+                    if ($null -ne $dupPendingCert) {
+                        $pendingDupKey = [string]$dupPendingCert.WorkOrderCacheKey
+                        $sameDupWo = (-not [string]::IsNullOrWhiteSpace($currentWoKey)) -and [string]::Equals($pendingDupKey, $currentWoKey, [System.StringComparison]::OrdinalIgnoreCase)
+                        if (-not $sameDupWo) {
+                            $null = script:Add-CnsDestructionCertificatePdfToFrag -Frag $frag -TmpDir $tmpDir `
+                                -WorkOrderEntity $dupPendingCert.WorkOrderEntity -GsPair $dupPendingCert.GsPair `
+                                -BlockIndex ([int]$dupPendingCert.BlockIndex) -SliceIndex ([int]$dupPendingCert.SliceIndex) `
+                                -ReorderPage ([int]$dupPendingCert.ReorderPage) -WorkOrderCacheKey $pendingDupKey `
+                                -CertInjectedForWo $certInjectedForWo -FinalOrderToLine $foToLine -Segments @($segments) `
+                                -OrderToSeg $orderToSeg -VisitDate $VisitDate -ProgressCallback $ProgressCallback -TChildCore $tChildCore `
+                                -AfterDuplication
+                            $dupPendingCert = $null
+                        }
+                    }
+                }
+
+                [void]$frag.Add($slicePath)
+                $odmFragIndex = $frag.Count - 1
+
+                if ($inPair) {
+                    $hasDupMetierPending = ($dupPendingCea.Count -gt 0) -or ($dupPendingFt.Count -gt 0)
+                    $dupClientRunEnds = (
+                        -not $isDupTarget -or
+                        [string]::IsNullOrWhiteSpace($runKey) -or
+                        ($null -ne $dupRunKey -and $runKey -ne $dupRunKey)
+                    )
+                    if ($dupClientRunEnds -and $null -ne $dupRunKey) {
+                        if ($hasDupMetierPending) {
+                            Invoke-CnsFlushOdmDuplicationRun -Frag $frag -SlicePaths $emptyDupSliceList `
+                                -PendingCert $null -PendingCea $dupPendingCea -PendingFt $dupPendingFt `
+                                -RunKeyLabel $(if ([string]::IsNullOrWhiteSpace($dupRunKey)) { 'client cible' } else { $dupRunKey }) -TmpDir $tmpDir `
+                                -CertInjectedForWo $certInjectedForWo -CeaInjectedForPage $ceaInjectedForPage -FtInjectedForPage $ftInjectedForPage `
+                                -ProgressCallback $ProgressCallback -TChildCore $tChildCore `
+                                -FinalOrderToLine $foToLine -Segments @($segments) -OrderToSeg $orderToSeg -VisitDate $VisitDate
+                        }
                         $dupRunKey = $null
-                        $dupPendingCert = $null
                     }
 
                     if ($isDupTarget) {
@@ -2796,12 +2920,17 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     $willCert = $false
                     $willCea = $false
                     $willFt = $false
-                    if ($metierPage.RequiresDestructionCertificate -and $null -ne $woPage) {
-                        $woKeyProbe = Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage
-                        if (-not [string]::IsNullOrWhiteSpace($woKeyProbe) -and -not $certInjectedForWo.Contains($woKeyProbe)) {
-                            $willCert = $true
-                            Write-PlanningTourneeStep5UiLog ("📜 Tournée {0}/{1} - Génération certificat..." -f $tourneeIndex, $totalTournees)
-                        }
+                    $followsSameWo = $false
+                    if (-not [string]::IsNullOrWhiteSpace($currentWoKey)) {
+                        $followsSameWo = script:Test-CnsStep5FollowingPairSameWorkOrderKey -SortedPairs $sortedPairsArr -PairIndex $pairIdx -CurrentKey $currentWoKey -WorkOrders @($WorkOrders) -PdfEntities @($PdfEntities)
+                    }
+                    $pageNeedsCert = $false
+                    if ($metierPage.RequiresDestructionCertificate -and $null -ne $woPage -and -not [string]::IsNullOrWhiteSpace($currentWoKey) -and -not $certInjectedForWo.Contains($currentWoKey)) {
+                        $pageNeedsCert = $true
+                    }
+                    $classicCarriesCert = (-not [string]::IsNullOrWhiteSpace($classicPendingCertKey)) -and [string]::Equals([string]$classicPendingCertKey, [string]$currentWoKey, [System.StringComparison]::OrdinalIgnoreCase)
+                    if ($pageNeedsCert -or $classicCarriesCert) {
+                        $willCert = $true
                     }
                     if ($requiresCeaPage -and $rawPnPage -gt 0 -and -not $ceaInjectedForPage.Contains($rawPnPage)) {
                         $willCea = $true
@@ -2813,6 +2942,10 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     }
 
                     if ($isDupTarget) {
+                        $samePendingDupWo = $false
+                        if ($null -ne $dupPendingCert -and -not [string]::IsNullOrWhiteSpace($currentWoKey)) {
+                            $samePendingDupWo = [string]::Equals([string]$dupPendingCert.WorkOrderCacheKey, [string]$currentWoKey, [System.StringComparison]::OrdinalIgnoreCase)
+                        }
                         if ($willCert -and $null -eq $dupPendingCert) {
                             $dupPendingCert = @{
                                 WorkOrderEntity   = $woPage
@@ -2820,8 +2953,17 @@ function Invoke-PlanningTourneePdfCoverComposition {
                                 BlockIndex        = $fi
                                 SliceIndex        = $sliceIx
                                 ReorderPage       = $pn
-                                WorkOrderCacheKey = (Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage)
+                                WorkOrderCacheKey = $currentWoKey
                             }
+                            $willCert = $false
+                            Write-PlanningTourneeStep5UiLog ("📜 Tournée {0}/{1} - Génération certificat..." -f $tourneeIndex, $totalTournees)
+                        }
+                        elseif ($samePendingDupWo) {
+                            $dupPendingCert.WorkOrderEntity = $woPage
+                            $dupPendingCert.GsPair = $gsPair
+                            $dupPendingCert.BlockIndex = $fi
+                            $dupPendingCert.SliceIndex = $sliceIx
+                            $dupPendingCert.ReorderPage = $pn
                             $willCert = $false
                         }
                         if ($willCea) {
@@ -2847,6 +2989,8 @@ function Invoke-PlanningTourneePdfCoverComposition {
                                     ReorderPage        = $pn
                                     RawPageNum         = $rawPnPage
                                     PointCollecteLabel = $ftPointLabel
+                                    OdmFragIndex       = $odmFragIndex
+                                    SlicePath          = $slicePath
                                 })
                             $willFt = $false
                         }
@@ -2858,38 +3002,23 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
                         -Detail ("{0}Analyse ODM {1}/{2} : {3}" -f ($tChildCore + $analyseBranch), $odmIdx, $odmTotal, $odmLabel)
 
-                    if (-not $isDupTarget -and $metierPage.RequiresDestructionCertificate -and $null -ne $woPage) {
-                        $woCacheKey = Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage
-                        if (-not [string]::IsNullOrWhiteSpace($woCacheKey) -and $certInjectedForWo.Add($woCacheKey)) {
-                            if (Get-Command New-CnsDestructionCertificatePdfFromExcelTemplate -ErrorAction SilentlyContinue) {
-                                $segMeta = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $gsPair -FinalOrderToLine $foToLine -Segments $segments -ExcelOrderIndexToSegmentIndex $orderToSeg -VisitDate $VisitDate
-                                $phTable = @{}
-                                foreach ($entry in (Get-CnsDestructionCertificatePlaceholders -WorkOrderEntity $woPage -SegmentMeta $segMeta -VisitDate $VisitDate).GetEnumerator()) {
-                                    $phTable[[string]$entry.Key] = [string]$entry.Value
-                                }
-                                $certOut = Join-Path $tmpDir ('cert_dest_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
-                                Write-CnsStep5ConsoleProgress -Message '[PROGRESS]       -> Generation certificat destruction...' -ForegroundColor Gray
-                                $certPdf = New-CnsDestructionCertificatePdfFromExcelTemplate -OutPdfPath $certOut -Placeholders $phTable
-                                if (-not [string]::IsNullOrWhiteSpace($certPdf) -and (Test-Path -LiteralPath $certPdf)) {
-                                    if (Get-Command Write-CnsDestructionCertificatePdfMergeAudit -ErrorAction SilentlyContinue) {
-                                        Write-CnsDestructionCertificatePdfMergeAudit -Phase 'GENERATED' -PdfPath $certPdf
-                                    }
-                                    [void]$frag.Add($certPdf)
-                                    Add-TourneeCompositionGeneratedDocCount
-                                    Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
-                                        -Detail ("{0}Generation certificat destruction... [OK]" -f ($tChildCore + '│   └── '))
-                                    Write-Host ("[DESTRUCTION-CERT] Certificat injecte apres page reorder #{0} (WO={1}, PDF ODM, fichier={2})." -f $pn, $woCacheKey, (Split-Path -Leaf $certPdf)) -ForegroundColor Green
-                                }
-                                else {
-                                    [void]$certInjectedForWo.Remove($woCacheKey)
-                                    Write-Warning ("[DESTRUCTION-CERT] Generation certificat echouee pour WO={0} — page ODM conservee." -f $woCacheKey)
-                                }
-                            }
-                            else {
-                                [void]$certInjectedForWo.Remove($woCacheKey)
-                                Write-Warning '[DESTRUCTION-CERT] Module Word certificat non charge — injection ignoree.'
-                            }
-                        }
+                    if (-not $isDupTarget -and $willCert -and -not $followsSameWo) {
+                        Write-PlanningTourneeStep5UiLog ("📜 Tournée {0}/{1} - Génération certificat..." -f $tourneeIndex, $totalTournees)
+                        Write-CnsStep5ConsoleProgress -Message '[PROGRESS]       -> Generation certificat destruction...' -ForegroundColor Gray
+                        $null = script:Add-CnsDestructionCertificatePdfToFrag -Frag $frag -TmpDir $tmpDir `
+                            -WorkOrderEntity $woPage -GsPair $gsPair -BlockIndex $fi -SliceIndex $sliceIx -ReorderPage $pn `
+                            -WorkOrderCacheKey $currentWoKey -CertInjectedForWo $certInjectedForWo `
+                            -FinalOrderToLine $foToLine -Segments @($segments) -OrderToSeg $orderToSeg -VisitDate $VisitDate `
+                            -ProgressCallback $ProgressCallback -TChildCore $tChildCore
+                        $classicPendingCertKey = $null
+                        $willCert = $false
+                    }
+                    elseif (-not $isDupTarget -and $willCert -and $followsSameWo) {
+                        $classicPendingCertKey = $currentWoKey
+                        $willCert = $false
+                    }
+                    elseif (-not $isDupTarget -and -not $followsSameWo -and -not [string]::IsNullOrWhiteSpace($classicPendingCertKey) -and -not [string]::Equals([string]$classicPendingCertKey, [string]$currentWoKey, [System.StringComparison]::OrdinalIgnoreCase)) {
+                        $classicPendingCertKey = $null
                     }
 
                     if (-not $isDupTarget -and $requiresCeaPage -and $rawPnPage -gt 0 -and $ceaInjectedForPage.Add($rawPnPage)) {
@@ -2924,12 +3053,16 @@ function Invoke-PlanningTourneePdfCoverComposition {
 
                     if (-not $isDupTarget -and $requiresFtPage -and $rawPnPage -gt 0 -and $ftInjectedForPage.Add($rawPnPage)) {
                         Write-CnsStep5ConsoleProgress -Message '[PROGRESS]       -> Generation document FT...' -ForegroundColor Gray
+                        $fragCountBeforeFt = $frag.Count
                         $okFt = Invoke-CnsAppendFtDocumentToFrag -Frag $frag -TmpDir $tmpDir `
                             -BlockIndex $fi -SliceIndex $sliceIx -ReorderPage $pn -RawPageNum $rawPnPage `
                             -PointCollecteLabel $ftPointLabel -WorkOrderEntity $woPage -PageEntity $pePage -GsPair $gsPair `
                             -FinalOrderToLine $foToLine -Segments @($segments) -OrderToSeg $orderToSeg -VisitDate $VisitDate `
                             -ProgressCallback $ProgressCallback -TChildCore $tChildCore
-                        if (-not $okFt) {
+                        if ($okFt -and $frag.Count -eq ($fragCountBeforeFt + 1)) {
+                            script:Move-CnsLastFragItemBeforeIndex -Frag $frag -BeforeIndex ($frag.IndexOf($slicePath))
+                        }
+                        elseif (-not $okFt) {
                             [void]$ftInjectedForPage.Remove($rawPnPage)
                         }
                     }
