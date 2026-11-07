@@ -1198,6 +1198,124 @@ function New-CnsPostScriptCenteredTextShowBlock {
 "@
 }
 
+function Get-CnsDacBioCoverInstructionText {
+    return 'Reporter sur le DAC le poids de chaque bac et le nombre total de bacs collectés. Après pesée, apposer un DAC sur chaque bac. ATTENTION : 1 DAC PAR BAC COLLECTÉ. Si plusieurs bacs proviennent du même point de collecte, numéroter les DAC : 1/3, 2/3, 3/3, etc.'
+}
+
+function Split-CnsCoverTextToWrappedLines {
+    <#
+    .SYNOPSIS
+        Coupe un texte long en lignes (~MaxChars) pour la page de garde PostScript.
+    #>
+    param(
+        [AllowNull()][AllowEmptyString()][string]$Text,
+        [int]$MaxChars = 78
+    )
+    if ([string]::IsNullOrWhiteSpace($Text)) { return @() }
+    $t = ([string]$Text).Trim()
+    if ($t.Length -le $MaxChars) { return @($t) }
+
+    $out = New-Object System.Collections.Generic.List[string]
+    $words = @($t -split '\s+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $buf = ''
+    foreach ($w in $words) {
+        if ([string]::IsNullOrWhiteSpace($buf)) {
+            $buf = $w
+            continue
+        }
+        $candidate = $buf + ' ' + $w
+        if ($candidate.Length -le $MaxChars) {
+            $buf = $candidate
+        }
+        else {
+            [void]$out.Add($buf)
+            $buf = $w
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($buf)) { [void]$out.Add($buf) }
+    return @($out.ToArray())
+}
+
+function Get-CnsBioDechetsCoverMemoLinesViaStep5Detection {
+    <#
+    .SYNOPSIS
+        Mémos garde Bio : même détection que les DAC (Test-CnsStep5FragSliceRequiresBioDechetsDocument + PdfRawLinesByPage).
+        Retourne les noms de points Bio puis l'instruction DAC (une fois).
+    #>
+    param(
+        [Parameter(Mandatory = $true)][int]$MainFrom1,
+        [Parameter(Mandatory = $true)][int]$MainTo1,
+        [Parameter(Mandatory = $true)][object[]]$SortedGsPairs,
+        [Parameter(Mandatory = $true)][hashtable]$FinalOrderToLine,
+        [AllowEmptyCollection()][object[]]$WorkOrders = @(),
+        [AllowEmptyCollection()][object[]]$PdfEntities = @(),
+        [hashtable]$PdfRawLinesByPage = $null
+    )
+    if (-not (Get-Command Test-CnsStep5FragSliceRequiresBioDechetsDocument -ErrorAction SilentlyContinue)) {
+        return @()
+    }
+
+    $names = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $pairs = @($SortedGsPairs)
+    for ($pn = [int]$MainFrom1; $pn -le [int]$MainTo1; $pn++) {
+        $idx = $pn - 1
+        if ($idx -lt 0 -or $idx -ge $pairs.Count) { continue }
+        $gsPair = $pairs[$idx]
+        try { $fo = [int]$gsPair.FinalOrder } catch { continue }
+        $ln = $FinalOrderToLine[$fo]
+        if ($null -ne $ln) {
+            $src = [string]$ln.Source
+            if ($src -eq 'PdfFallback') { continue }
+        }
+        [int]$rawPn = 0
+        try { $rawPn = [int]$gsPair.RawPageNum } catch { $rawPn = 0 }
+        if ($rawPn -lt 1) { continue }
+
+        $precomputed = @()
+        if (Get-Command Get-CnsStep5RawLinesForPhysicalPage -ErrorAction SilentlyContinue) {
+            $fromStep1 = Get-CnsStep5RawLinesForPhysicalPage -PageNumberOneBased $rawPn -PdfRawLinesByPage $PdfRawLinesByPage
+            if ($null -ne $fromStep1) { $precomputed = @($fromStep1) }
+        }
+
+        $isBio = [bool](Test-CnsStep5FragSliceRequiresBioDechetsDocument `
+                -FragSlicePdfPath $null `
+                -PdfRawLinesByPage $PdfRawLinesByPage `
+                -RawPageNumOneBased $rawPn `
+                -PrecomputedRawLines $precomputed)
+        if (-not $isBio) { continue }
+
+        $wo = $null
+        $pe = $null
+        if (Get-Command Resolve-CnsWorkOrderEntityFromPdfPage -ErrorAction SilentlyContinue) {
+            $wo = Resolve-CnsWorkOrderEntityFromPdfPage -RawPageNumOneBased $rawPn -WorkOrders $WorkOrders -PdfEntities $PdfEntities
+        }
+        if (Get-Command Get-CnsPdfPageEntityByPhysicalPage -ErrorAction SilentlyContinue) {
+            $pe = Get-CnsPdfPageEntityByPhysicalPage -PageNumberOneBased $rawPn -PdfEntities $PdfEntities
+        }
+
+        [string]$client = ''
+        if ($null -ne $wo) {
+            try { $client = [string]$wo.ClientName } catch { }
+        }
+        if ([string]::IsNullOrWhiteSpace($client) -and $null -ne $pe) {
+            try { $client = [string]$pe.ClientName } catch { }
+        }
+        if (Get-Command ConvertTo-CnsCoverClientDisplayLabel -ErrorAction SilentlyContinue) {
+            $client = ConvertTo-CnsCoverClientDisplayLabel -Name $client
+        }
+        if ([string]::IsNullOrWhiteSpace($client)) { $client = 'Point de collecte Bio' }
+        [void]$names.Add($client.Trim())
+    }
+
+    if ($names.Count -lt 1) { return @() }
+    $out = New-Object System.Collections.Generic.List[string]
+    foreach ($n in @($names)) {
+        [void]$out.Add([string]$n)
+    }
+    [void]$out.Add((Get-CnsDacBioCoverInstructionText))
+    return @($out.ToArray())
+}
+
 function Build-CnsCoverTextLinesPostScriptAppend {
     param(
         [AllowNull()]
@@ -1410,7 +1528,17 @@ collectorLeftX $serviceY moveto
         $memoPs = New-CnsPostScriptCenteredTextShowBlock -Text $CenteredText -FontName $fontReg -FontSize 12 -Y $memoY -PageWidth $pageWidth
     }
     else {
-        $memoPs = Build-CnsCoverTextLinesPostScriptAppend -Lines @($MetierMemoLines) -StartY $memoY -LineStep 20 -MinY 72 -FontName $fontReg -FontSize 12
+        # Wrap long lines (instruction DAC Bio, etc.) so they stay readable on the cover.
+        $wrappedMemos = New-Object System.Collections.Generic.List[string]
+        foreach ($memoLine in @($MetierMemoLines)) {
+            if ([string]::IsNullOrWhiteSpace($memoLine)) { continue }
+            foreach ($chunk in @(Split-CnsCoverTextToWrappedLines -Text $memoLine -MaxChars 78)) {
+                if (-not [string]::IsNullOrWhiteSpace($chunk)) {
+                    [void]$wrappedMemos.Add($chunk)
+                }
+            }
+        }
+        $memoPs = Build-CnsCoverTextLinesPostScriptAppend -Lines @($wrappedMemos) -StartY $memoY -LineStep 16 -MinY 72 -FontName $fontReg -FontSize 11
     }
 
     return @"
@@ -3078,6 +3206,16 @@ function Invoke-PlanningTourneePdfCoverComposition {
                             Write-PlanningTourneeStep5UiLog ("🔎 Tournée {0}/{1} - Analyse des prestations..." -f $tourneeIndex, $totalTournees)
                             $metierMemos = @(Get-CnsTourneeMetierMemoLinesForBlock -MainFrom1 ([int]$blk.MainFrom1) -MainTo1 ([int]$blk.MainTo1) `
                                 -SortedGsPairs $sortedPairsArr -FinalOrderToLine $foToLine -WorkOrders $WorkOrders -PdfEntities @($PdfEntities))
+                            # Bio garde : même détection que l'injection DAC (PdfRawLinesByPage), avant création de la couverture.
+                            if (Get-Command Get-CnsBioDechetsCoverMemoLinesViaStep5Detection -ErrorAction SilentlyContinue) {
+                                $bioCoverMemos = @(Get-CnsBioDechetsCoverMemoLinesViaStep5Detection -MainFrom1 ([int]$blk.MainFrom1) -MainTo1 ([int]$blk.MainTo1) `
+                                        -SortedGsPairs $sortedPairsArr -FinalOrderToLine $foToLine -WorkOrders $WorkOrders -PdfEntities @($PdfEntities) `
+                                        -PdfRawLinesByPage $PdfRawLinesByPage)
+                                if ($bioCoverMemos.Count -gt 0) {
+                                    $metierMemos = @($metierMemos) + @($bioCoverMemos)
+                                    Write-Host ("[STEP5-BIO] Segment {0} : {1} ligne(s) garde Bio (detection Step5 / PdfRawLinesByPage)." -f $n, $bioCoverMemos.Count) -ForegroundColor DarkCyan
+                                }
+                            }
                             Write-Host ("[STEP5-METIER] Segment {0} : {1} memo(s) garde tournée (source PDF ODM)." -f $n, $metierMemos.Count) -ForegroundColor DarkCyan
                             Write-PlanningTourneeStep5UiLog ("🎨 Tournée {0}/{1} - Création page de garde..." -f $tourneeIndex, $totalTournees)
                             $vehiculeImmat = $null
