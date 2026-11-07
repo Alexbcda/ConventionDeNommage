@@ -506,7 +506,8 @@ function Test-AssistantPackage {
         'templates\CertificatDeDestruction.xlsx',
         'templates\BilanDeCollecte.xlsx',
         'templates\CeaPointsDeCollectes.xlsx',
-        'templates\FT.xlsx'
+        'templates\FT.xlsx',
+        'templates\FicheInventaireFranceTravail.xlsx'
     )
     foreach ($rel in $criticalTemplates) {
         if (Test-Path -LiteralPath (Join-Path $PackageRoot $rel)) {
@@ -517,6 +518,11 @@ function Test-AssistantPackage {
             $allOk = $false
         }
     }
+    $recalcScript = Join-Path $PackageRoot 'runtime\recalc_export.py'
+    if (-not (Test-Path -LiteralPath $recalcScript -PathType Leaf)) {
+        throw 'ERREUR: runtime\recalc_export.py MANQUANT. La fiche France Travail ne pourra pas être générée sur les postes sans Excel.'
+    }
+    Write-BuildSuccess 'runtime\recalc_export.py'
     if (-not $allOk -and $FailOnMissing) {
         throw 'Package incomplet. Verifiez les exclusions antivirus.'
     }
@@ -584,7 +590,7 @@ $templatesDest = Join-Path $outputPath 'templates'
 if (Test-Path -LiteralPath $templatesSource) {
     Copy-DeployDirectory -SourceDir $templatesSource -TargetDir $templatesDest
     Write-BuildSuccess 'Copie : templates'
-    foreach ($tpl in @('CertificatDeDestruction.xlsx', 'BilanDeCollecte.xlsx', 'CeaPointsDeCollectes.xlsx', 'FT.xlsx')) {
+    foreach ($tpl in @('CertificatDeDestruction.xlsx', 'BilanDeCollecte.xlsx', 'CeaPointsDeCollectes.xlsx', 'FT.xlsx', 'FicheInventaireFranceTravail.xlsx')) {
         $tplPath = Join-Path $templatesDest $tpl
         if (Test-Path -LiteralPath $tplPath) {
             Write-BuildSuccess $tpl

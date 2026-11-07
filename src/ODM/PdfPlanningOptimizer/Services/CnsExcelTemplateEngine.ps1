@@ -563,7 +563,9 @@ function Convert-XlsxToPdfUsingLibreOffice {
 function Convert-XlsxToPdfViaExcel {
     param(
         [Parameter(Mandatory = $true)][string]$XlsxPath,
-        [Parameter(Mandatory = $true)][string]$PdfPath
+        [Parameter(Mandatory = $true)][string]$PdfPath,
+        [switch]$FullCalculation,
+        [scriptblock]$AfterCalculation
     )
     if (-not (Test-CnsMicrosoftExcelAvailable)) {
         Write-Warning '[XLSX-PDF] Microsoft Excel indisponible pour la conversion.'
@@ -611,6 +613,37 @@ function Convert-XlsxToPdfViaExcel {
             Write-Warning '[XLSX-PDF] Excel n''a pas ouvert le classeur.'
             return $false
         }
+        if ($FullCalculation) {
+            $previousCalculation = $null
+            try { $previousCalculation = $excel.Calculation } catch { $previousCalculation = $null }
+            try {
+                $excel.Calculation = -4105
+                try { $excel.CalculateFullRebuild() }
+                catch {
+                    Write-Warning ("[XLSX-PDF] CalculateFullRebuild indisponible, Calculate : {0}" -f $_.Exception.Message)
+                    $excel.Calculate()
+                }
+            }
+            catch {
+                Write-Warning ("[XLSX-PDF] Recalcul non effectue, export du classeur quand meme : {0}" -f $_.Exception.Message)
+            }
+            finally {
+                if ($null -ne $previousCalculation) {
+                    try { $excel.Calculation = $previousCalculation } catch { }
+                }
+            }
+            if ($null -ne $AfterCalculation) {
+                try {
+                    $accepted = & $AfterCalculation $wb
+                    if (-not $accepted) {
+                        Write-Warning '[XLSX-PDF] Verification B5 non confirmee, la fiche est exportee quand meme.'
+                    }
+                }
+                catch {
+                    Write-Warning ("[XLSX-PDF] Lecture B5 impossible, la fiche est exportee quand meme : {0}" -f $_.Exception.Message)
+                }
+            }
+        }
         $wb.ExportAsFixedFormat($xlFixedFormatTypePDF, $pdfAbs)
         if ($usedPool -and $null -ne $script:CnsXlsxPdfPoolStats) {
             $script:CnsXlsxPdfPoolStats.PoolHits++
@@ -638,30 +671,169 @@ function Convert-XlsxToPdfViaExcel {
     return (Test-Path -LiteralPath $pdfAbs)
 }
 
+function Get-CnsLibreOfficeRecalcScriptPath {
+    $repoRoot = $PSScriptRoot
+    for ($i = 0; $i -lt 4; $i++) {
+        $repoRoot = Split-Path -Parent $repoRoot
+    }
+    foreach ($candidate in @(
+            (Join-Path $repoRoot 'runtime\recalc_export.py'),
+            (Join-Path $PSScriptRoot 'recalc_export.py')
+        )) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return ([System.IO.Path]::GetFullPath($candidate))
+        }
+    }
+    return $null
+}
+
+function Convert-XlsxToPdfViaLibreOfficeRecalc {
+    <#
+    .SYNOPSIS
+        Recalcule un xlsx via LibreOffice UNO (calculateAll) puis exporte en PDF.
+        Le script runtime\recalc_export.py ecrit le texte de B5. Si -VerifyCalculatedSite
+        est pose et que B5 differe de -CalculatedSiteMustEqual, le PDF est supprime.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$XlsxPath,
+        [Parameter(Mandatory = $true)][string]$PdfPath,
+        [switch]$VerifyCalculatedSite,
+        [string]$CalculatedSiteMustEqual
+    )
+    $soffice = Get-CnsLibreOfficeSofficePath
+    $python = $null
+    if (-not [string]::IsNullOrWhiteSpace($soffice)) {
+        $python = Join-Path (Split-Path -Parent $soffice) 'python.exe'
+    }
+    $scriptPath = Get-CnsLibreOfficeRecalcScriptPath
+    if ([string]::IsNullOrWhiteSpace($soffice) -or -not (Test-Path -LiteralPath $python) -or [string]::IsNullOrWhiteSpace($scriptPath)) {
+        Write-Warning '[XLSX-PDF] Recalcul LibreOffice impossible : soffice.exe, python.exe ou runtime\recalc_export.py introuvable.'
+        return $false
+    }
+    if (-not (Test-Path -LiteralPath $XlsxPath -PathType Leaf)) {
+        Write-Warning ("[XLSX-PDF] XLSX source introuvable : {0}" -f $XlsxPath)
+        return $false
+    }
+
+    $xlsxAbs = [System.IO.Path]::GetFullPath($XlsxPath)
+    $pdfAbs = [System.IO.Path]::GetFullPath($PdfPath)
+    $outDir = [System.IO.Path]::GetDirectoryName($pdfAbs)
+    if (-not (Test-Path -LiteralPath $outDir)) {
+        $null = New-Item -ItemType Directory -Path $outDir -Force -ErrorAction Stop
+    }
+
+    $runId = [Guid]::NewGuid().ToString('N')
+    $profileDir = Join-Path $env:TEMP ("cn_lo_ft_{0}" -f $runId)
+    $resultFile = Join-Path $env:TEMP ("cn_lo_b5_{0}.txt" -f $runId)
+    $pyOut = Join-Path $env:TEMP ("cn_lo_py_{0}.out" -f $runId)
+    $pyErr = Join-Path $env:TEMP ("cn_lo_py_{0}.err" -f $runId)
+    $port = Get-Random -Minimum 2300 -Maximum 2399
+    $listener = $null
+    $script:CnsLastLibreOfficeCalculatedB5 = ''
+    try {
+        New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+        $userUri = Convert-CnsPathToLibreOfficeUserInstallationUri -DirectoryPath $profileDir
+        $listener = Start-Process -FilePath $soffice -ArgumentList @(
+            ('-env:UserInstallation={0}' -f $userUri),
+            '--headless', '--nologo', '--nofirststartwizard', '--norestore',
+            ('--accept=socket,host=127.0.0.1,port={0};urp;' -f $port)
+        ) -PassThru -WindowStyle Hidden
+        $pyArgs = '"{0}" "{1}" "{2}" {3} "{4}"' -f $scriptPath, $xlsxAbs, $pdfAbs, $port, $resultFile
+        $py = Start-Process -FilePath $python -ArgumentList $pyArgs -Wait -PassThru -NoNewWindow `
+            -RedirectStandardOutput $pyOut -RedirectStandardError $pyErr
+        if ($null -eq $py -or $py.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $pdfAbs)) {
+            $errTxt = ''
+            if (Test-Path -LiteralPath $pyErr) { $errTxt = (Get-Content -LiteralPath $pyErr -Raw -ErrorAction SilentlyContinue) }
+            Write-Warning ("[XLSX-PDF] Recalcul LibreOffice echoue (code={0}) {1}" -f $(if ($null -eq $py) { 'null' } else { $py.ExitCode }), $errTxt)
+            if (Test-Path -LiteralPath $pdfAbs) { Remove-Item -LiteralPath $pdfAbs -Force -ErrorAction SilentlyContinue }
+            return $false
+        }
+        $shown = ''
+        if (Test-Path -LiteralPath $resultFile) {
+            $shown = [System.IO.File]::ReadAllText($resultFile).Trim()
+        }
+        $script:CnsLastLibreOfficeCalculatedB5 = $shown
+        if ($VerifyCalculatedSite) {
+            $want = ([string]$CalculatedSiteMustEqual).Trim()
+            $match = -not [string]::IsNullOrWhiteSpace($want) -and [string]::Equals($shown, $want, [System.StringComparison]::OrdinalIgnoreCase)
+            if (-not $match) {
+                Write-Warning ("[XLSX-PDF] Recalcul FT non confirme : B5=[{0}], site attendu=[{1}]. PDF supprime." -f $shown, $want)
+                script:Write-CnsXlsxToPdfLog -Message ("Recalcul FT non confirme : B5=[{0}], site attendu=[{1}]. PDF supprime." -f $shown, $want) -Level 'WARN'
+                Remove-Item -LiteralPath $pdfAbs -Force -ErrorAction SilentlyContinue
+                return $false
+            }
+        }
+        return $true
+    }
+    catch {
+        Write-Warning ("[XLSX-PDF] Recalcul LibreOffice echoue : {0}" -f $_.Exception.Message)
+        if (Test-Path -LiteralPath $pdfAbs) { Remove-Item -LiteralPath $pdfAbs -Force -ErrorAction SilentlyContinue }
+        return $false
+    }
+    finally {
+        if ($null -ne $listener) {
+            try { if (-not $listener.HasExited) { Stop-Process -Id $listener.Id -Force -ErrorAction SilentlyContinue } } catch { }
+        }
+        try {
+            Get-CimInstance Win32_Process -Filter "Name = 'soffice.bin' OR Name = 'soffice.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
+                if ($_.CommandLine -and $_.CommandLine.IndexOf($runId, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+        catch { }
+        foreach ($junk in @($resultFile, $pyOut, $pyErr)) {
+            if (Test-Path -LiteralPath $junk) { Remove-Item -LiteralPath $junk -Force -ErrorAction SilentlyContinue }
+        }
+        if (Test-Path -LiteralPath $profileDir) {
+            Remove-Item -LiteralPath $profileDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Convert-XlsxToPdf {
     param(
         [Parameter(Mandatory = $true)][string]$XlsxPath,
-        [Parameter(Mandatory = $true)][string]$PdfPath
+        [Parameter(Mandatory = $true)][string]$PdfPath,
+        [switch]$FullCalculation,
+        [scriptblock]$AfterCalculation,
+        [switch]$VerifyCalculatedSite,
+        [string]$CalculatedSiteMustEqual
     )
     $mode = Get-CnsXlsxToPdfConverterMode
     $engine = Resolve-CnsXlsxToPdfEngine -Mode $mode
+    if ($FullCalculation) {
+        if (Test-CnsMicrosoftExcelAvailable) {
+            $engine = 'Excel'
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace((Get-CnsLibreOfficeSofficePath))) {
+            $engine = 'LibreOfficeRecalc'
+        }
+        else {
+            Write-Warning '[XLSX-PDF] Recalcul impossible : ni Microsoft Excel ni LibreOffice.'
+            return $false
+        }
+    }
     if ([string]::IsNullOrWhiteSpace($engine)) { return $false }
 
     script:Write-CnsXlsxToPdfLog -Message ("Moteur selectionne : {0} (mode={1})" -f $engine, $mode) -Level 'INFO'
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     $ok = $false
     $engineUsed = $engine
-    if ($engine -eq 'LibreOffice') {
+    if ($engine -eq 'LibreOfficeRecalc') {
+        $ok = Convert-XlsxToPdfViaLibreOfficeRecalc -XlsxPath $XlsxPath -PdfPath $PdfPath -VerifyCalculatedSite:$VerifyCalculatedSite -CalculatedSiteMustEqual $CalculatedSiteMustEqual
+    }
+    elseif ($engine -eq 'LibreOffice') {
         $ok = Convert-XlsxToPdfUsingLibreOffice -XlsxPath $XlsxPath -PdfPath $PdfPath
         if (-not $ok -and $mode -eq 'AUTO' -and (Test-CnsMicrosoftExcelAvailable)) {
             script:Write-CnsXlsxToPdfLog -Message 'LibreOffice echoue, fallback vers Excel (mode AUTO).' -Level 'WARN'
             if ($null -ne $script:CnsXlsxPdfPoolStats) { $script:CnsXlsxPdfPoolStats.Fallbacks++ }
-            $ok = Convert-XlsxToPdfViaExcel -XlsxPath $XlsxPath -PdfPath $PdfPath
+            $ok = Convert-XlsxToPdfViaExcel -XlsxPath $XlsxPath -PdfPath $PdfPath -FullCalculation:$FullCalculation -AfterCalculation $AfterCalculation
             if ($ok) { $engineUsed = 'Excel' }
         }
     }
     else {
-        $ok = Convert-XlsxToPdfViaExcel -XlsxPath $XlsxPath -PdfPath $PdfPath
+        $ok = Convert-XlsxToPdfViaExcel -XlsxPath $XlsxPath -PdfPath $PdfPath -FullCalculation:$FullCalculation -AfterCalculation $AfterCalculation
     }
     $sw.Stop()
     if ($null -ne $script:CnsXlsxPdfPoolStats) {

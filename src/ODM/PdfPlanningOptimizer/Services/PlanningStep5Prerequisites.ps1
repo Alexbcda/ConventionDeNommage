@@ -42,7 +42,7 @@ function Test-PlanningStep5Environment {
 
     $missingTpl = [System.Collections.Generic.List[string]]::new()
     if (-not [string]::IsNullOrWhiteSpace($root)) {
-        foreach ($name in @('CertificatDeDestruction.xlsx', 'BilanDeCollecte.xlsx', 'CeaPointsDeCollectes.xlsx', 'FT.xlsx')) {
+        foreach ($name in @('CertificatDeDestruction.xlsx', 'BilanDeCollecte.xlsx', 'CeaPointsDeCollectes.xlsx', 'FicheInventaireFranceTravail.xlsx')) {
             $p = Join-Path $root ("templates\{0}" -f $name)
             if (-not (Test-Path -LiteralPath $p -PathType Leaf)) {
                 [void]$missingTpl.Add($name)
