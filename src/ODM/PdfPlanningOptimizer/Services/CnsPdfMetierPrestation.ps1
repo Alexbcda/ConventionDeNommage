@@ -1,4 +1,4 @@
-﻿# STEP 5 — Détection prestations métier depuis le texte ODM PDF (source de vérité unique).
+# STEP 5 — Détection prestations métier depuis le texte ODM PDF (source de vérité unique).
 # Ne pas utiliser MatchResult / ExcelOrder / SpecialFlags pour la logique métier.
 
 . (Join-Path $PSScriptRoot 'PlanningExcelTourneeSegments.ps1')
@@ -295,6 +295,66 @@ function Test-CnsFtCollectionPointLabelEligible {
     return ([string]$Label).Trim() -match '(?i)^FT\s+'
 }
 
+function Test-CnsBioDechetsLabelEligible {
+    <#
+    .SYNOPSIS
+        Vrai si le texte ODM mentionne "Collecte de Bio dechets" (casse/accents indifferents).
+    .NOTES
+        Etape 1 Bio-dechets : detection seule — une page temporaire sera inseree en STEP 5.
+        Une seule detection par page (appelant deduplique via HashSet RawPage).
+    #>
+    param(
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$Text
+    )
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+    $norm = ConvertTo-CnsMetierMatchNormalizedText -Text $Text
+    if ([string]::IsNullOrWhiteSpace($norm)) { return $false }
+    return [bool]($norm -match 'collecte\s+de\s+bio[\s\-]*dechets?')
+}
+
+function Test-CnsStep5FragSliceRequiresBioDechetsDocument {
+    <#
+    .SYNOPSIS
+        Detection Bio-dechets STEP 5 sur le texte ODM (lignes etape 1, sinon pe.Lines / pdftotext slice).
+    #>
+    param(
+        [AllowNull()][AllowEmptyString()][string]$FragSlicePdfPath,
+        [AllowEmptyCollection()]
+        [string[]]$PrecomputedRawLines = $null,
+        [hashtable]$PdfRawLinesByPage = $null,
+        [int]$RawPageNumOneBased = 0
+    )
+    $candidates = [System.Collections.Generic.List[string[]]]::new()
+    if ($null -ne $PrecomputedRawLines -and @($PrecomputedRawLines).Count -gt 0) {
+        [void]$candidates.Add([string[]]@($PrecomputedRawLines))
+    }
+    if ($RawPageNumOneBased -gt 0) {
+        $fromStep1 = Get-CnsStep5RawLinesForPhysicalPage -PageNumberOneBased $RawPageNumOneBased -PdfRawLinesByPage $PdfRawLinesByPage
+        if ($null -ne $fromStep1 -and @($fromStep1).Count -gt 0) {
+            [void]$candidates.Add([string[]]@($fromStep1))
+        }
+    }
+    if ($candidates.Count -lt 1) {
+        if (-not [string]::IsNullOrWhiteSpace($FragSlicePdfPath) -and (Test-Path -LiteralPath $FragSlicePdfPath -PathType Leaf)) {
+            if (Get-Command Get-CnsStep5PdftotextLinesFromSinglePagePdf -ErrorAction SilentlyContinue) {
+                $fallback = @(Get-CnsStep5PdftotextLinesFromSinglePagePdf -SinglePagePdfPath $FragSlicePdfPath)
+                if ($fallback.Count -gt 0) { [void]$candidates.Add([string[]]$fallback) }
+            }
+        }
+    }
+    if ($candidates.Count -lt 1) { return $false }
+    $hit = $false
+    foreach ($rawLines in @($candidates)) {
+        $blob = (($rawLines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' ')
+        if (Test-CnsBioDechetsLabelEligible -Text $blob) { $hit = $true; break }
+    }
+    if ($hit) {
+        Write-Host ("[STEP5-BIO] Collecte de Bio dechets detectee (page physique {0})" -f $(if ($RawPageNumOneBased -gt 0) { $RawPageNumOneBased } else { (Split-Path -Leaf $FragSlicePdfPath) })) -ForegroundColor DarkCyan
+    }
+    return $hit
+}
 function Resolve-CnsFtCollectionPointLabelOrNull {
     param(
         [AllowNull()]

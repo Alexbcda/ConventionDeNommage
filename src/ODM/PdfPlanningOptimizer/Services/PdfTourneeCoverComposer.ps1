@@ -1,4 +1,4 @@
-﻿# Composition PDF : pages de garde globale + par tournée, puis concat avec le PDF principal
+# Composition PDF : pages de garde globale + par tournée, puis concat avec le PDF principal
 # (sans modifier Reorganiser-PDF ni le matching / reorder / sequence GS).
 
 . (Join-Path $PSScriptRoot '..\..\..\Core\GhostscriptResolve.ps1')
@@ -61,6 +61,10 @@ if (Test-Path -LiteralPath $_cnsCeaPointsExcel) {
 $_cnsFtTemplate = Join-Path $PSScriptRoot 'CnsFtTemplate.ps1'
 if (Test-Path -LiteralPath $_cnsFtTemplate) {
     . $_cnsFtTemplate
+}
+$_cnsDacTemplate = Join-Path $PSScriptRoot 'CnsDacTemplate.ps1'
+if (Test-Path -LiteralPath $_cnsDacTemplate) {
+    . $_cnsDacTemplate
 }
 
 function script:Move-CnsLastFragItemBeforeIndex {
@@ -1811,6 +1815,31 @@ function Add-CnsPendingSbTourneeCoversToFrag {
     return $inserted
 }
 
+function New-CnsTemporaryBioDechetsPagePdf {
+    <#
+    .SYNOPSIS
+        Fallback Bio-dechets : PDF mono-page si New-CnsDacPdfFromExcelTemplate est indisponible.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$OutPdfPath
+    )
+    $fontReg = Get-CnsCoverPostScriptFontRegularName
+    $fontBlack = Get-CnsCoverPostScriptFontBlackName
+    $title = 'Page temporaire - Collecte de Bio déchets'
+    $hint = '(fallback — generation DAC Excel indisponible)'
+    $t0 = ConvertTo-CnsPsWinAnsiParenBody -Text $title
+    $t1 = ConvertTo-CnsPsWinAnsiParenBody -Text $hint
+    $body = @"
+/$fontBlack findfont 16 scalefont setfont
+50 780 moveto
+($t0) show
+/$fontReg findfont 11 scalefont setfont
+50 750 moveto
+($t1) show
+"@
+    return [bool](Write-CnsPostScriptPdfPage -PsBodySansShowpage $body -OutPdfPath $OutPdfPath -LogContext 'bio-dechets-tmp')
+}
+
 function New-CnsPrefaceSectionCoverPdf {
     param(
         [Parameter(Mandatory = $true)][string]$OutPdfPath,
@@ -1885,6 +1914,7 @@ function Get-CnsTourneeCoverSegmentMetaForPair {
         DateJJMMAAAA = $defJj
         Collecteur   = '-'
         Vehicule     = '-'
+        ServiceLabel = ''
     }
     try { $fo = [int]$GsPair.FinalOrder } catch { return $out }
     if ($fo -lt 1) { return $out }
@@ -1911,12 +1941,19 @@ function Get-CnsTourneeCoverSegmentMetaForPair {
     }
     if ($null -eq $seg) { return $out }
     $jj = $defJj
-    $c = ''; $v = ''
+    $c = ''; $v = ''; $svc = ''
     try { $c = [string]$seg.Collecteur } catch { }
     try { $v = [string]$seg.Vehicule } catch { }
+    try {
+        if ($null -ne $seg.PSObject.Properties['ServiceLabel']) {
+            $svc = [string]$seg.ServiceLabel
+        }
+    }
+    catch { }
     $out.DateJJMMAAAA = $jj
     $out.Collecteur = if ([string]::IsNullOrWhiteSpace($c)) { '-' } else { $c }
     $out.Vehicule = if ([string]::IsNullOrWhiteSpace($v)) { '-' } else { $v }
+    $out.ServiceLabel = if ([string]::IsNullOrWhiteSpace($svc)) { '' } else { $svc.Trim() }
     return $out
 }
 
@@ -2184,13 +2221,15 @@ function Get-CnsOdmPagePrestationDetectionLabel {
         $PageEntity,
         $WorkOrderEntity,
         [bool]$RequiresCea = $false,
-        [bool]$RequiresFt = $false
+        [bool]$RequiresFt = $false,
+        [bool]$RequiresBioDechets = $false
     )
     $parts = [System.Collections.Generic.List[string]]::new()
     $metierPage = Get-CnsPdfPageMetierAnalysis -PageEntity $PageEntity -WorkOrderEntity $WorkOrderEntity
     if ($metierPage.RequiresDestructionCertificate) { [void]$parts.Add('Destruction confidentielle detectee') }
     if ($RequiresCea) { [void]$parts.Add('CEA detecte') }
     if ($RequiresFt) { [void]$parts.Add('FT detecte') }
+    if ($RequiresBioDechets) { [void]$parts.Add('Bio dechets detecte') }
     foreach ($entry in @($metierPage.TrackDechetEntries)) {
         if ($null -eq $entry) { continue }
         $det = [string]$entry.Detail
@@ -2929,6 +2968,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
         $classicPendingCertKey = $null
         $ceaInjectedForPage = New-Object 'System.Collections.Generic.HashSet[int]'
         $ftInjectedForPage = New-Object 'System.Collections.Generic.HashSet[int]'
+        $bioDechetsInjectedForPage = New-Object 'System.Collections.Generic.HashSet[int]'
         $bilanInjectedForSeg = @{}
         $sortedPairsArr = @($SortedGsPairs)
 
@@ -3222,13 +3262,20 @@ function Invoke-PlanningTourneePdfCoverComposition {
                         $ftPointLabel = $null
                     }
                     $requiresFtPage = Test-CnsFtCollectionPointLabelEligible -Label $ftPointLabel
+                    $requiresBioDechetsPage = $false
+                    if (Get-Command Test-CnsStep5FragSliceRequiresBioDechetsDocument -ErrorAction SilentlyContinue) {
+                        $requiresBioDechetsPage = Test-CnsStep5FragSliceRequiresBioDechetsDocument -FragSlicePdfPath $slicePath `
+                            -PdfRawLinesByPage $PdfRawLinesByPage -RawPageNumOneBased $rawPnPage `
+                            -PrecomputedRawLines @($pePage.Lines)
+                    }
                     $odmLabel = Get-CnsOdmPagePrestationDetectionLabel -PageEntity $pePage -WorkOrderEntity $woPage `
-                        -RequiresCea:$requiresCeaPage -RequiresFt:$requiresFtPage
+                        -RequiresCea:$requiresCeaPage -RequiresFt:$requiresFtPage -RequiresBioDechets:$requiresBioDechetsPage
                     if ([string]::IsNullOrWhiteSpace($odmLabel)) { $odmLabel = 'Operation en cours' }
 
                     $willCert = $false
                     $willCea = $false
                     $willFt = $false
+                    $willBioDechets = $false
                     $followsSameWo = $false
                     if (-not [string]::IsNullOrWhiteSpace($currentWoKey)) {
                         $followsSameWo = script:Test-CnsStep5FollowingPairSameWorkOrderKey -SortedPairs $sortedPairsArr -PairIndex $pairIdx -CurrentKey $currentWoKey -WorkOrders @($WorkOrders) -PdfEntities @($PdfEntities)
@@ -3248,6 +3295,10 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     if ($requiresFtPage -and $rawPnPage -gt 0 -and -not $ftInjectedForPage.Contains($rawPnPage)) {
                         $willFt = $true
                         Write-PlanningTourneeStep5UiLog ("🏢 Tournée {0}/{1} - Génération document FT..." -f $tourneeIndex, $totalTournees)
+                    }
+                    if ($requiresBioDechetsPage -and $rawPnPage -gt 0 -and -not $bioDechetsInjectedForPage.Contains($rawPnPage)) {
+                        $willBioDechets = $true
+                        Write-PlanningTourneeStep5UiLog ("♻️ Tournée {0}/{1} - Génération DAC Bio dechets..." -f $tourneeIndex, $totalTournees)
                     }
 
                     if ($isDupTarget) {
@@ -3305,7 +3356,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                         }
                     }
 
-                    $analyseIsLast = ($odmIdx -eq $odmTotal) -and -not $willCert -and -not $willCea -and -not $willFt -and -not $hasSegBilan `
+                    $analyseIsLast = ($odmIdx -eq $odmTotal) -and -not $willCert -and -not $willCea -and -not $willFt -and -not $willBioDechets -and -not $hasSegBilan `
                         -and (-not $isDupTarget -or $dupPendingCert -eq $null) -and ($dupPendingCea.Count -eq 0) -and ($dupPendingFt.Count -eq 0)
                     $analyseBranch = if ($analyseIsLast) { '└── ' } else { '├── ' }
                     Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
@@ -3373,6 +3424,95 @@ function Invoke-PlanningTourneePdfCoverComposition {
                         }
                         elseif (-not $okFt) {
                             [void]$ftInjectedForPage.Remove($rawPnPage)
+                        }
+                    }
+
+                    # Bio-dechets : N pages DAC (quantite theorique bioseaux) AVANT l'ODM (1 injection par RawPage).
+                    if ($requiresBioDechetsPage -and $rawPnPage -gt 0 -and $bioDechetsInjectedForPage.Add($rawPnPage)) {
+                        Write-CnsStep5ConsoleProgress -Message '[PROGRESS]       -> Generation DAC Bio dechets...' -ForegroundColor Gray
+                        $bioRawLines = @()
+                        if ($null -ne $pePage -and $null -ne $pePage.Lines) {
+                            $bioRawLines = @($pePage.Lines)
+                        }
+                        if ($bioRawLines.Count -lt 1 -and $rawPnPage -gt 0) {
+                            $fromStep1Bio = Get-CnsStep5RawLinesForPhysicalPage -PageNumberOneBased $rawPnPage -PdfRawLinesByPage $PdfRawLinesByPage
+                            if ($null -ne $fromStep1Bio) { $bioRawLines = @($fromStep1Bio) }
+                        }
+                        if ($bioRawLines.Count -lt 1 -and -not [string]::IsNullOrWhiteSpace($slicePath) -and (Test-Path -LiteralPath $slicePath -PathType Leaf)) {
+                            if (Get-Command Get-CnsStep5PdftotextLinesFromSinglePagePdf -ErrorAction SilentlyContinue) {
+                                $bioRawLines = @(Get-CnsStep5PdftotextLinesFromSinglePagePdf -SinglePagePdfPath $slicePath)
+                            }
+                        }
+
+                        $bioQty = 0
+                        if (Get-Command Get-CnsBioDechetsTheoreticalQuantityFromLines -ErrorAction SilentlyContinue) {
+                            $bioQty = [int](Get-CnsBioDechetsTheoreticalQuantityFromLines -Lines $bioRawLines)
+                        }
+                        if ($bioQty -lt 1) { $bioQty = 1 }
+
+                        $segMetaBio = $null
+                        $serviceLabelBio = ''
+                        if ($null -ne $gsPair) {
+                            $segMetaBio = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $gsPair -FinalOrderToLine $foToLine `
+                                -Segments $segments -ExcelOrderIndexToSegmentIndex $orderToSeg -VisitDate $VisitDate
+                            try { $serviceLabelBio = [string]$segMetaBio.ServiceLabel } catch { $serviceLabelBio = '' }
+                        }
+
+                        $dacPdfs = @()
+                        if (Get-Command New-CnsDacPdfFromExcelTemplate -ErrorAction SilentlyContinue) {
+                            $dacPdfs = @(New-CnsDacPdfFromExcelTemplate `
+                                    -WorkOrderEntity $woPage `
+                                    -TheoreticalQuantity $bioQty `
+                                    -ExcelData $ExcelData `
+                                    -VisitDate $VisitDate `
+                                    -OutDirectory $tmpDir `
+                                    -ServiceLabel $serviceLabelBio `
+                                    -SegmentMeta $segMetaBio `
+                                    -PageEntity $pePage)
+                        }
+
+                        $insertedBio = 0
+                        if ($dacPdfs.Count -gt 0) {
+                            for ($dacIx = $dacPdfs.Count - 1; $dacIx -ge 0; $dacIx--) {
+                                $dacPath = [string]$dacPdfs[$dacIx]
+                                if ([string]::IsNullOrWhiteSpace($dacPath) -or -not (Test-Path -LiteralPath $dacPath -PathType Leaf)) { continue }
+                                [void]$frag.Add($dacPath)
+                                Add-TourneeCompositionGeneratedDocCount
+                                $beforeBio = $frag.IndexOf($slicePath)
+                                if ($beforeBio -ge 0) {
+                                    script:Move-CnsLastFragItemBeforeIndex -Frag $frag -BeforeIndex $beforeBio
+                                }
+                                $insertedBio++
+                            }
+                        }
+
+                        if ($insertedBio -lt 1) {
+                            $bioOut = Join-Path $tmpDir ('bio_tmp_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
+                            $okBioFallback = $false
+                            if (Get-Command New-CnsTemporaryBioDechetsPagePdf -ErrorAction SilentlyContinue) {
+                                $okBioFallback = [bool](New-CnsTemporaryBioDechetsPagePdf -OutPdfPath $bioOut)
+                            }
+                            if ($okBioFallback -and (Test-Path -LiteralPath $bioOut -PathType Leaf)) {
+                                [void]$frag.Add($bioOut)
+                                Add-TourneeCompositionGeneratedDocCount
+                                $beforeBio = $frag.IndexOf($slicePath)
+                                if ($beforeBio -ge 0) {
+                                    script:Move-CnsLastFragItemBeforeIndex -Frag $frag -BeforeIndex $beforeBio
+                                }
+                                $insertedBio = 1
+                                Write-Warning ("[BIO-DECHETS] Fallback page temporaire pour RawPage={0} (DAC indisponible)." -f $rawPnPage)
+                            }
+                        }
+
+                        if ($insertedBio -gt 0) {
+                            Write-Host ("[BIO-DECHETS] {0} page(s) DAC inseree(s) avant ODM RawPage={1} (qty={2})" -f $insertedBio, $rawPnPage, $bioQty) -ForegroundColor Green
+                            Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
+                                -Detail ("{0}DAC Bio dechets ({1} page(s))... [OK]" -f ($tChildCore + '│   └── '), $insertedBio)
+                            $willBioDechets = $false
+                        }
+                        else {
+                            [void]$bioDechetsInjectedForPage.Remove($rawPnPage)
+                            Write-Warning ("[BIO-DECHETS] Generation DAC echouee pour RawPage={0}" -f $rawPnPage)
                         }
                     }
                 }

@@ -1,0 +1,231 @@
+﻿[2026-06-22 21:23:25] [INFO] Demarrage - pdf=C:\Users\alexa\Documents\ConventionDeNommage\TestRenommage\document_original.pdf
+[2026-06-22 21:23:25] [INFO] PDF transmis : C:\Users\alexa\Documents\ConventionDeNommage\TestRenommage\document_original.pdf
+[2026-06-22 21:23:26] [ERROR] ERREUR : Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:353 : 67
++ ... ite-PlanningRebuildVideoDebugLog ("Fin du delai â€” lancement : {0}"  ...
++                                                         ~~~~~~~~~
+Jeton inattendu « lancement » dans l’expression ou l’instruction.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:353 : 66
++ ...         Write-PlanningRebuildVideoDebugLog ("Fin du delai â€” lanceme ...
++                                                                  ~
+Parenthèse fermante « ) » manquante dans l’expression.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:2042 : 36
++         $ofd.Filter = 'Excel (*.xls;*.xlsx;*.xlsm)|*.xls;*.xlsx;*.xls ...
++                                    ~
+Parenthèse fermante « ) » manquante dans l’expression.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:338 : 13
++         try {
++             ~
+Accolade fermante « } » manquante dans le bloc d'instruction ou définition du type manquante.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:2042 : 50
++         $ofd.Filter = 'Excel (*.xls;*.xlsx;*.xlsm)|*.xls;*.xlsx;*.xls ...
++                                                  ~
+Le bloc Catch ou Finally manque dans l’instruction Try.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:336 : 25
++     $playTimer.Add_Tick({
++                         ~
+Accolade fermante « } » manquante dans le bloc d'instruction ou définition du type manquante.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:2142 : 82
++ ... vee (play_video={0})." -f $playVideoOnLoad) + [Environment]::NewLine)
++                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Le terminateur " est manquant dans la chaîne.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:298 : 42
++ function Invoke-PlanningRebuildPlayVideo {
++                                          ~
+Accolade fermante « } » manquante dans le bloc d'instruction ou définition du type manquante.
+[2026-06-22 21:23:33] [INFO] Demarrage - pdf=C:\Users\alexa\Documents\ConventionDeNommage\TestRenommage\document_original.pdf
+[2026-06-22 21:23:33] [INFO] PDF transmis : C:\Users\alexa\Documents\ConventionDeNommage\TestRenommage\document_original.pdf
+[2026-06-22 21:23:34] [ERROR] ERREUR : Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:353 : 67
++ ... ite-PlanningRebuildVideoDebugLog ("Fin du delai â€” lancement : {0}"  ...
++                                                         ~~~~~~~~~
+Jeton inattendu « lancement » dans l’expression ou l’instruction.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:353 : 66
++ ...         Write-PlanningRebuildVideoDebugLog ("Fin du delai â€” lanceme ...
++                                                                  ~
+Parenthèse fermante « ) » manquante dans l’expression.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:2042 : 36
++         $ofd.Filter = 'Excel (*.xls;*.xlsx;*.xlsm)|*.xls;*.xlsx;*.xls ...
++                                    ~
+Parenthèse fermante « ) » manquante dans l’expression.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:338 : 13
++         try {
++             ~
+Accolade fermante « } » manquante dans le bloc d'instruction ou définition du type manquante.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:2042 : 50
++         $ofd.Filter = 'Excel (*.xls;*.xlsx;*.xlsm)|*.xls;*.xlsx;*.xls ...
++                                                  ~
+Le bloc Catch ou Finally manque dans l’instruction Try.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:336 : 25
++     $playTimer.Add_Tick({
++                         ~
+Accolade fermante « } » manquante dans le bloc d'instruction ou définition du type manquante.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:2142 : 82
++ ... vee (play_video={0})." -f $playVideoOnLoad) + [Environment]::NewLine)
++                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Le terminateur " est manquant dans la chaîne.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:298 : 42
++ function Invoke-PlanningRebuildPlayVideo {
++                                          ~
+Accolade fermante « } » manquante dans le bloc d'instruction ou définition du type manquante.
+[2026-06-22 21:23:41] [INFO] Demarrage - pdf=C:\Users\alexa\Documents\ConventionDeNommage\TestRenommage\mon fichier avec espaces.pdf
+[2026-06-22 21:23:41] [INFO] PDF transmis : C:\Users\alexa\Documents\ConventionDeNommage\TestRenommage\mon fichier avec espaces.pdf
+[2026-06-22 21:23:42] [ERROR] ERREUR : Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:353 : 67
++ ... ite-PlanningRebuildVideoDebugLog ("Fin du delai â€” lancement : {0}"  ...
++                                                         ~~~~~~~~~
+Jeton inattendu « lancement » dans l’expression ou l’instruction.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:353 : 66
++ ...         Write-PlanningRebuildVideoDebugLog ("Fin du delai â€” lanceme ...
++                                                                  ~
+Parenthèse fermante « ) » manquante dans l’expression.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:2042 : 36
++         $ofd.Filter = 'Excel (*.xls;*.xlsx;*.xlsm)|*.xls;*.xlsx;*.xls ...
++                                    ~
+Parenthèse fermante « ) » manquante dans l’expression.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:338 : 13
++         try {
++             ~
+Accolade fermante « } » manquante dans le bloc d'instruction ou définition du type manquante.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:2042 : 50
++         $ofd.Filter = 'Excel (*.xls;*.xlsx;*.xlsm)|*.xls;*.xlsx;*.xls ...
++                                                  ~
+Le bloc Catch ou Finally manque dans l’instruction Try.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:336 : 25
++     $playTimer.Add_Tick({
++                         ~
+Accolade fermante « } » manquante dans le bloc d'instruction ou définition du type manquante.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:2142 : 82
++ ... vee (play_video={0})." -f $playVideoOnLoad) + [Environment]::NewLine)
++                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Le terminateur " est manquant dans la chaîne.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\PlanningRebuilderPanel.ps1:298 : 42
++ function Invoke-PlanningRebuildPlayVideo {
++                                          ~
+Accolade fermante « } » manquante dans le bloc d'instruction ou définition du type manquante.
+[2026-06-22 21:33:34] [INFO] Demarrage - pdf=C:\Users\alexa\Documents\ConventionDeNommage\TestRenommage\document_original.pdf
+[2026-06-22 21:33:34] [INFO] PDF transmis : C:\Users\alexa\Documents\ConventionDeNommage\TestRenommage\document_original.pdf
+[2026-06-22 21:33:37] [ERROR] ERREUR : Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Services\PlanningRebuilder.ps1:3711 : 46
++         script:Write-PlanningLog -Message ("[ERROR] Extraction PDF ec ...
++                                              ~
+L’expression d’index de tableau est manquante ou non valide.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Services\PlanningRebuilder.ps1:3714 : 25
++             Write-Log "[PlanningRebuilder] Extraction" "ERROR" $_.Exc ...
++                         ~
+L’expression d’index de tableau est manquante ou non valide.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Services\PlanningRebuilder.ps1:3788 : 24
++         -Detail ("({0} pages extraites)" -f $extractedPageCount) -Per ...
++                        ~~~~~
+Jeton inattendu « pages » dans l’expression ou l’instruction.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Services\PlanningRebuilder.ps1:3788 : 23
++         -Detail ("({0} pages extraites)" -f $extractedPageCount) -Per ...
++                       ~
+Parenthèse fermante « ) » manquante dans l’expression.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Services\PlanningRebuilder.ps1:3658 : 52
++     if ($true -eq $script:PlanningPipelineRunning) {
++                                                    ~
+Accolade fermante « } » manquante dans le bloc d'instruction ou définition du type manquante.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Services\PlanningRebuilder.ps1:3648 : 32
++ function Start-PlanningRebuild {
++                                ~
+Accolade fermante « } » manquante dans le bloc d'instruction ou définition du type manquante.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Services\PlanningRebuilder.ps1:3788 : 39
++         -Detail ("({0} pages extraites)" -f $extractedPageCount) -Per ...
++                                       ~
+Jeton inattendu « ) » dans l’expression ou l’instruction.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Services\PlanningRebuilder.ps1:3792 : 41
++     script:Write-PlanningLog -Message "[PIPELINE] STEP 2: Lecture Exc ...
++                                         ~
+L’expression d’index de tableau est manquante ou non valide.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Services\PlanningRebuilder.ps1:3792 : 41
++     script:Write-PlanningLog -Message "[PIPELINE] STEP 2: Lecture Exc ...
++                                         ~~~~~~~~~
+Jeton inattendu « PIPELINE] » dans l’expression ou l’instruction.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Services\PlanningRebuilder.ps1:3820 : 91
++ ... et semaine S{0} non trouve dans le fichier Excel ({1} feuille(s))." - ...
++                                                           ~~~~~~~
+Jeton inattendu « feuille » dans l’expression ou l’instruction.
+
+Les erreurs d’analyse n’ont pas toutes été signalées. Corrigez les erreurs signalées, puis recommencez.
+[2026-06-22 21:35:24] [INFO] Demarrage - pdf=C:\Users\alexa\Documents\ConventionDeNommage\TestRenommage\document_original.pdf
+[2026-06-22 21:35:24] [INFO] PDF transmis : C:\Users\alexa\Documents\ConventionDeNommage\TestRenommage\document_original.pdf
+[2026-06-22 21:35:25] [ERROR] ERREUR : Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Extractors\EntityExtractor.ps1:334 : 29
++         '(?i)\s+((?:[A-ZÃ€Ã‚Ã„Ã‰ÃˆÃŠÃ‹ÃÃŽÃ”Ã™Ã›ÃœÃ‡]{2,})(?:\s+[A-ZÃ ...
++                             ~
+Parenthèse fermante « ) » manquante dans l’appel de méthode.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Extractors\EntityExtractor.ps1:334 : 29
++         '(?i)\s+((?:[A-ZÃ€Ã‚Ã„Ã‰ÃˆÃŠÃ‹ÃÃŽÃ”Ã™Ã›ÃœÃ‡]{2,})(?:\s+[A-ZÃ ...
++                             ~~~~~~~~~~~~~~~~~~~~~~~~~
+Jeton inattendu « Ã„Ã‰ÃˆÃŠÃ‹ÃÃŽÃ”Ã™Ã›ÃœÃ‡] » dans l’expression ou l’instruction.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Extractors\EntityExtractor.ps1:334 : 57
++         '(?i)\s+((?:[A-ZÃ€Ã‚Ã„Ã‰ÃˆÃŠÃ‹ÃÃŽÃ”Ã™Ã›ÃœÃ‡]{2,})(?:\s+[A-ZÃ ...
++                                                         ~
+Expression manquante après « , ».
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Extractors\EntityExtractor.ps1:326 : 59
++ function script:Extract-TrailingClientNameFromAddressHead {
++                                                           ~
+Accolade fermante « } » manquante dans le bloc d'instruction ou définition du type manquante.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Extractors\EntityExtractor.ps1:334 : 58
++         '(?i)\s+((?:[A-ZÃ€Ã‚Ã„Ã‰ÃˆÃŠÃ‹ÃÃŽÃ”Ã™Ã›ÃœÃ‡]{2,})(?:\s+[A-ZÃ ...
++                                                          ~
+Jeton inattendu « ) » dans l’expression ou l’instruction.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Extractors\EntityExtractor.ps1:340 : 1
++ }
++ ~
+Jeton inattendu « } » dans l’expression ou l’instruction.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Extractors\EntityExtractor.ps1:607 : 55
++ function script:Split-MonolithicClientNameLayoutLines {
++                                                       ~
+Accolade fermante « } » manquante dans le bloc d'instruction ou définition du type manquante.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Extractors\EntityExtractor.ps1:621 : 61
++     $numeroPat = '(?i)N\s*(?:[Â°\u00B0\u00BA?]|â”¬â–‘|\uFFFD)?\s*\d{4 ...
++                                                             ~
+Jeton inattendu « ) » dans l’expression ou l’instruction.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Extractors\EntityExtractor.ps1:644 : 44
++         $nameLine = $afterDate.TrimStart(' ', '-', 'â€“', 'â€”', ',', ...
++                                            ~~~~
+Jeton inattendu « ', ' » dans l’expression ou l’instruction.
+
+Au caractère C:\Users\alexa\Documents\ConventionDeNommage\src\ODM\PdfPlanningOptimizer\Extractors\EntityExtractor.ps1:644 : 53
++ ...    $nameLine = $afterDate.TrimStart(' ', '-', 'â€“', 'â€”', ',', ';') ...
++                                                    ~~~~~~~~~~~~~~
+Jeton inattendu « â€“', 'â€”', ' » dans l’expression ou l’instruction.
+
+Les erreurs d’analyse n’ont pas toutes été signalées. Corrigez les erreurs signalées, puis recommencez.
+[2026-06-22 21:37:47] [INFO] Demarrage - pdf=C:\Users\alexa\Documents\ConventionDeNommage\TestRenommage\document_original.pdf
+[2026-06-22 21:37:47] [INFO] PDF transmis : C:\Users\alexa\Documents\ConventionDeNommage\TestRenommage\document_original.pdf
