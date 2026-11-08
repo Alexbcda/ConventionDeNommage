@@ -1270,6 +1270,18 @@ function Get-SharePointFile {
     return (Get-SharePointPlanningFile -Url $url -LocalPath $DestinationPath)
 }
 
+function Test-SharePointUseStableIdsFlag {
+    <#
+    .SYNOPSIS
+        Lot 2 — lit SharePointUseStableIds (absent = $false).
+    #>
+    if (-not (Get-Command Get-AppConfig -ErrorAction SilentlyContinue)) {
+        return $false
+    }
+    $raw = Get-AppConfig -Key 'SharePointUseStableIds'
+    if ([string]::IsNullOrWhiteSpace($raw)) { return $false }
+    return ($raw -match '^(?i)(1|true|yes)$')
+}
 function Get-SharePointPlanningFile {
     [CmdletBinding()]
     param(
@@ -1282,14 +1294,32 @@ function Get-SharePointPlanningFile {
     if ([string]::IsNullOrWhiteSpace($Url)) {
         $Url = Get-SharePointPlanningUrl
     }
-    if ([string]::IsNullOrWhiteSpace($Url)) {
+    $useStableIds = Test-SharePointUseStableIdsFlag
+    $driveId = $null
+    $itemId = $null
+    if ($useStableIds) {
+        if (Get-Command Get-SharePointStableIds -ErrorAction SilentlyContinue) {
+            $ids = Get-SharePointStableIds
+            if ($null -ne $ids) {
+                $driveId = [string]$ids.DriveId
+                $itemId = [string]$ids.ItemId
+            }
+        }
+        elseif (Get-Command Get-AppConfig -ErrorAction SilentlyContinue) {
+            $driveId = [string](Get-AppConfig -Key 'SharePointDriveId')
+            $itemId = [string](Get-AppConfig -Key 'SharePointItemId')
+        }
+    }
+    $canUseIds = $useStableIds `
+        -and (-not [string]::IsNullOrWhiteSpace($driveId)) `
+        -and (-not [string]::IsNullOrWhiteSpace($itemId))
+    if (-not $canUseIds -and [string]::IsNullOrWhiteSpace($Url)) {
         return $false
     }
     Import-CnsSharePointGraphModule
     if ($null -eq (Get-MgContext -ErrorAction SilentlyContinue)) {
         Connect-SharePointGraph | Out-Null
     }
-
     $destDir = Split-Path -Parent $LocalPath
     if (-not [string]::IsNullOrWhiteSpace($destDir) -and -not (Test-Path -LiteralPath $destDir)) {
         $null = New-Item -ItemType Directory -Path $destDir -Force
@@ -1298,9 +1328,7 @@ function Get-SharePointPlanningFile {
     if (Test-Path -LiteralPath $tempPath) {
         Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
     }
-
-    try {
-        Invoke-MgGraphRequest -Method GET -Uri $Url -OutputFilePath $tempPath -ErrorAction Stop
+    $finalizeDownload = {
         if (-not (Test-Path -LiteralPath $tempPath -PathType Leaf)) {
             return $false
         }
@@ -1314,6 +1342,35 @@ function Get-SharePointPlanningFile {
         Move-Item -LiteralPath $tempPath -Destination $LocalPath -Force
         return $true
     }
+    if ($canUseIds) {
+        $idUri = "https://graph.microsoft.com/v1.0/drives/$driveId/items/$itemId/content"
+        try {
+            Invoke-MgGraphRequest -Method GET -Uri $idUri -OutputFilePath $tempPath -ErrorAction Stop
+            $ok = & $finalizeDownload
+            if ($ok) { return $true }
+            throw 'Download par ID : fichier vide ou absent'
+        }
+        catch {
+            if (Test-Path -LiteralPath $tempPath) {
+                Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+            }
+            if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+                Write-Log '[SharePoint] Download par ID echoue — fallback SharePointApiUrl' 'WARN' @{
+                    message = $_.Exception.Message
+                }
+            }
+            else {
+                Write-Host ("[SharePoint] Download par ID echoue — fallback URL : {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+            }
+            if ([string]::IsNullOrWhiteSpace($Url)) {
+                throw
+            }
+        }
+    }
+    try {
+        Invoke-MgGraphRequest -Method GET -Uri $Url -OutputFilePath $tempPath -ErrorAction Stop
+        return (& $finalizeDownload)
+    }
     catch {
         if (Test-Path -LiteralPath $tempPath) {
             Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
@@ -1321,7 +1378,6 @@ function Get-SharePointPlanningFile {
         throw
     }
 }
-
 function New-CnsSharePointResult {
     param(
         [Parameter(Mandatory = $true)][string]$Status,
