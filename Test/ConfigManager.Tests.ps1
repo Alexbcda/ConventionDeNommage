@@ -129,3 +129,74 @@ Describe 'ConfigManager - gestion centre' {
         $store['CentreId'] | Should Be 'fontaine'
     }
 }
+
+Describe 'ConfigManager - SharePoint stable IDs (Lot 1)' {
+
+    BeforeAll {
+        $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+        $configManagerPath = Join-Path $repoRoot 'src\Core\ConfigManager.ps1'
+        . $configManagerPath
+    }
+
+    It 'Get-SharePointStableIds : cles absentes -> objet vide sans erreur' {
+        Mock Get-AppConfig {
+            param([string]$Key)
+            return $null
+        }
+
+        $ids = Get-SharePointStableIds
+        $ids.DriveId | Should Be $null
+        $ids.ItemId | Should Be $null
+        $ids.PlanningFileName | Should Be $null
+        $ids.LastValidatedAt | Should Be $null
+        $ids.SourceUrl | Should Be $null
+    }
+
+    It 'Set-SharePointStableIds puis Get : valeurs identiques' {
+        $store = @{}
+        Mock Set-AppConfig {
+            param([string]$Key, [string]$Value)
+            $store[$Key] = $Value
+        }
+        Mock Get-AppConfig {
+            param([string]$Key)
+            if ($store.ContainsKey($Key)) { return $store[$Key] }
+            return $null
+        }
+
+        Set-SharePointStableIds `
+            -DriveId 'drive-abc' `
+            -ItemId 'item-xyz' `
+            -PlanningFileName 'Planning FONTAINE 2026.xlsm' `
+            -LastValidatedAt '2026-11-08T14:00:00Z' `
+            -SourceUrl 'https://graph.microsoft.com/v1.0/sites/example'
+
+        $ids = Get-SharePointStableIds
+        $ids.DriveId | Should Be 'drive-abc'
+        $ids.ItemId | Should Be 'item-xyz'
+        $ids.PlanningFileName | Should Be 'Planning FONTAINE 2026.xlsm'
+        $ids.LastValidatedAt | Should Be '2026-11-08T14:00:00Z'
+        $ids.SourceUrl | Should Be 'https://graph.microsoft.com/v1.0/sites/example'
+    }
+
+    It 'Set-SharePointStableIds ne modifie pas SharePointApiUrl' {
+        $store = @{
+            SharePointApiUrl = 'https://graph.microsoft.com/v1.0/sites/keep-me'
+        }
+        Mock Set-AppConfig {
+            param([string]$Key, [string]$Value)
+            $store[$Key] = $Value
+        }
+        Mock Get-AppConfig {
+            param([string]$Key)
+            if ($store.ContainsKey($Key)) { return $store[$Key] }
+            return $null
+        }
+
+        Set-SharePointStableIds -DriveId 'drive-1' -ItemId 'item-1'
+
+        $store['SharePointApiUrl'] | Should Be 'https://graph.microsoft.com/v1.0/sites/keep-me'
+        $store.ContainsKey('CentreId') | Should Be $false
+        $store.ContainsKey('CentreName') | Should Be $false
+    }
+}

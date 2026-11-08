@@ -13,6 +13,14 @@ if (-not (Get-Command Write-Log -ErrorAction SilentlyContinue)) {
     }
 }
 
+# Lot 1 — stockage uniquement, pas encore utilise par la connexion.
+$script:SharePointIdConfigKeys = @(
+    'SharePointDriveId'
+    'SharePointItemId'
+    'SharePointLastValidatedAt'
+    'SharePointSourceUrl'
+)
+
 function Get-CnsUnrecognizedCentreDisplayName {
     return 'Centre non reconnu'
 }
@@ -93,6 +101,76 @@ function Test-CentreAppConfigurationComplete {
     return (-not [string]::IsNullOrWhiteSpace($storedId)) `
         -and (-not [string]::IsNullOrWhiteSpace($storedName)) `
         -and (-not [string]::IsNullOrWhiteSpace($currentUrl))
+}
+
+function Get-SharePointStableIds {
+    <#
+    .SYNOPSIS
+        Lit les identifiants SharePoint stables (Lot 1 — stockage seul).
+    .OUTPUTS
+        [pscustomobject] DriveId, ItemId, PlanningFileName, LastValidatedAt, SourceUrl
+        (valeur $null si cle absente).
+    #>
+    if (-not (Get-Command Get-AppConfig -ErrorAction SilentlyContinue)) {
+        return [pscustomobject]@{
+            DriveId          = $null
+            ItemId           = $null
+            PlanningFileName = $null
+            LastValidatedAt  = $null
+            SourceUrl        = $null
+        }
+    }
+
+    $driveId = Get-AppConfig -Key 'SharePointDriveId'
+    $itemId = Get-AppConfig -Key 'SharePointItemId'
+    $planningFileName = Get-AppConfig -Key 'PlanningFileName'
+    $lastValidatedAt = Get-AppConfig -Key 'SharePointLastValidatedAt'
+    $sourceUrl = Get-AppConfig -Key 'SharePointSourceUrl'
+
+    return [pscustomobject]@{
+        DriveId          = $(if ([string]::IsNullOrWhiteSpace($driveId)) { $null } else { [string]$driveId })
+        ItemId           = $(if ([string]::IsNullOrWhiteSpace($itemId)) { $null } else { [string]$itemId })
+        PlanningFileName = $(if ([string]::IsNullOrWhiteSpace($planningFileName)) { $null } else { [string]$planningFileName })
+        LastValidatedAt  = $(if ([string]::IsNullOrWhiteSpace($lastValidatedAt)) { $null } else { [string]$lastValidatedAt })
+        SourceUrl        = $(if ([string]::IsNullOrWhiteSpace($sourceUrl)) { $null } else { [string]$sourceUrl })
+    }
+}
+
+function Set-SharePointStableIds {
+    <#
+    .SYNOPSIS
+        Ecrit les identifiants SharePoint stables (Lot 1 — stockage seul).
+    .NOTES
+        Ne modifie pas SharePointApiUrl, CentreId, CentreName.
+        Seuls les parametres explicitement fournis sont ecrits.
+    #>
+    param(
+        [AllowNull()][string]$DriveId,
+        [AllowNull()][string]$ItemId,
+        [AllowNull()][string]$PlanningFileName,
+        [AllowNull()][string]$LastValidatedAt,
+        [AllowNull()][string]$SourceUrl
+    )
+
+    if (-not (Get-Command Set-AppConfig -ErrorAction SilentlyContinue)) {
+        return
+    }
+
+    if ($PSBoundParameters.ContainsKey('DriveId')) {
+        Set-AppConfig -Key 'SharePointDriveId' -Value $DriveId
+    }
+    if ($PSBoundParameters.ContainsKey('ItemId')) {
+        Set-AppConfig -Key 'SharePointItemId' -Value $ItemId
+    }
+    if ($PSBoundParameters.ContainsKey('PlanningFileName')) {
+        Set-AppConfig -Key 'PlanningFileName' -Value $PlanningFileName
+    }
+    if ($PSBoundParameters.ContainsKey('LastValidatedAt')) {
+        Set-AppConfig -Key 'SharePointLastValidatedAt' -Value $LastValidatedAt
+    }
+    if ($PSBoundParameters.ContainsKey('SourceUrl')) {
+        Set-AppConfig -Key 'SharePointSourceUrl' -Value $SourceUrl
+    }
 }
 
 function Get-CurrentCentre {
