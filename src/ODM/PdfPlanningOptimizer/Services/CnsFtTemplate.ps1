@@ -213,7 +213,7 @@ function New-CnsFtPdfFromExcelTemplate {
 
     $result = $null
     try {
-        if (Get-Command script:Ensure-ImportExcelModule -ErrorAction SilentlyContinue) {
+        if (Get-Command Ensure-ImportExcelModule -ErrorAction SilentlyContinue) {
             script:Ensure-ImportExcelModule
         }
         else {

@@ -112,11 +112,34 @@ function script:Get-CnsDacActiveCentreObject {
 }
 
 function script:Ensure-CnsDacImportExcel {
-    if (Get-Command script:Ensure-ImportExcelModule -ErrorAction SilentlyContinue) {
-        script:Ensure-ImportExcelModule
-        return
+    # 1) Déjà chargé et sain ?
+    $m = Get-Module -Name ImportExcel -ErrorAction SilentlyContinue
+    if ($m -and (Get-Command Open-ExcelPackage -ErrorAction SilentlyContinue)) { return }
+
+    # 2) Loader bundlé — SANS préfixe script: dans Get-Command
+    if (Get-Command Ensure-ImportExcelModule -ErrorAction SilentlyContinue) {
+        try { Ensure-ImportExcelModule } catch { }
+        if (Get-Command Open-ExcelPackage -ErrorAction SilentlyContinue) { return }
     }
-    Import-Module ImportExcel -ErrorAction Stop
+
+    # 3) Fallback chemins absolus
+    $candidates = New-Object System.Collections.Generic.List[string]
+    try {
+        $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..\..\..')).Path
+        [void]$candidates.Add((Join-Path $root 'runtime\ImportExcel\ImportExcel.psd1'))
+    } catch { }
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        [void]$candidates.Add((Join-Path $env:LOCALAPPDATA 'ASSISTANT\runtime\ImportExcel\ImportExcel.psd1'))
+    }
+
+    foreach ($psd1 in $candidates) {
+        if ([string]::IsNullOrWhiteSpace($psd1)) { continue }
+        if (-not (Test-Path -LiteralPath $psd1 -PathType Leaf)) { continue }
+        Import-Module -Name $psd1 -Force -ErrorAction Stop
+        if (Get-Command Open-ExcelPackage -ErrorAction SilentlyContinue) { return }
+    }
+
+    throw "[DAC] ImportExcel introuvable ou invalide. Open-ExcelPackage indisponible. Chemins testés : $($candidates -join ' ; ')"
 }
 
 function script:Get-CnsDacWorksheetCellText {

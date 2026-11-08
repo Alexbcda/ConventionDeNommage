@@ -226,6 +226,27 @@ Write-AssistantStartupMark -Phase 'gui_script_loaded'
 if (-not $script:AssistantRenameOnly) {
     . Import-AssistantPlanningExtractorScripts
     Write-AssistantStartupMark -Phase 'planning_extractors_loaded'
+
+    # Avertissement discret : Excel COM requis pour FT / CEA / DAC / Certificat (ne bloque pas le demarrage).
+    try {
+        if (-not (Get-Command Test-CnsMicrosoftExcelAvailable -ErrorAction SilentlyContinue)) {
+            $excelEnginePath = Join-Path $scriptPath 'ODM\PdfPlanningOptimizer\Services\CnsExcelTemplateEngine.ps1'
+            if (Test-Path -LiteralPath $excelEnginePath -PathType Leaf) {
+                . $excelEnginePath
+            }
+        }
+        if (Get-Command Test-CnsMicrosoftExcelAvailable -ErrorAction SilentlyContinue) {
+            if (-not (Test-CnsMicrosoftExcelAvailable)) {
+                $excelWarn = '[DEMARRAGE] Microsoft Excel n''est pas accessible. La generation des fiches (FT, CEA, DAC, Certificat) pourrait echouer. Veuillez ouvrir Excel une fois manuellement.'
+                Write-Log $excelWarn 'WARN'
+                Write-Warning $excelWarn
+            }
+        }
+    }
+    catch {
+        Write-Log ("[DEMARRAGE] Verification Excel COM ignoree : {0}" -f $_.Exception.Message) 'WARN'
+    }
+    Write-AssistantStartupMark -Phase 'excel_com_check'
 }
 
 # ============================================

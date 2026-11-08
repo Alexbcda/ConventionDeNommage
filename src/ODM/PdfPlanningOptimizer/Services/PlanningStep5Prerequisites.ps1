@@ -12,6 +12,20 @@ function Get-PlanningAssistantInstallRoot {
     }
 }
 
+function script:Write-PlanningStep5PrerequisiteLog {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [string]$Level = 'WARN'
+    )
+    Write-Warning $Message
+    if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+        Write-Log $Message $Level
+    }
+    elseif (Get-Command Write-PlanningLog -ErrorAction SilentlyContinue) {
+        Write-PlanningLog -Message $Message -Level $Level
+    }
+}
+
 function Test-PlanningStep5Environment {
     <#
     .OUTPUTS
@@ -37,16 +51,26 @@ function Test-PlanningStep5Environment {
         $excelOk = Test-CnsMicrosoftExcelAvailable
     }
     if ([string]::IsNullOrWhiteSpace($lo) -and -not $excelOk) {
-        [void]$issues.Add('Aucun convertisseur XLSX->PDF (LibreOffice ou Excel requis).')
+        [void]$issues.Add('Aucun convertisseur XLSX->PDF (Excel ou LibreOffice requis).')
     }
 
     $missingTpl = [System.Collections.Generic.List[string]]::new()
     if (-not [string]::IsNullOrWhiteSpace($root)) {
-        foreach ($name in @('CertificatDeDestruction.xlsx', 'BilanDeCollecte.xlsx', 'CeaPointsDeCollectes.xlsx', 'FicheInventaireFranceTravail.xlsx')) {
+        foreach ($name in @(
+                'CertificatDeDestruction.xlsx',
+                'BilanDeCollecte.xlsx',
+                'CeaPointsDeCollectes.xlsx',
+                'FicheInventaireFranceTravail.xlsx'
+            )) {
             $p = Join-Path $root ("templates\{0}" -f $name)
             if (-not (Test-Path -LiteralPath $p -PathType Leaf)) {
                 [void]$missingTpl.Add($name)
             }
+        }
+        $dacRel = 'planning\destruction\DAC.xlsx'
+        $dacPath = Join-Path $root ("templates\{0}" -f $dacRel)
+        if (-not (Test-Path -LiteralPath $dacPath -PathType Leaf)) {
+            [void]$missingTpl.Add($dacRel)
         }
     }
     else {
@@ -56,8 +80,26 @@ function Test-PlanningStep5Environment {
         [void]$issues.Add(('Templates manquants dans {0}\templates\ : {1}' -f $root, ($missingTpl -join ', ')))
     }
 
+    $ok = ($issues.Count -eq 0)
+    if (-not $ok) {
+        script:Write-PlanningStep5PrerequisiteLog -Message '[STEP5] Prerequis etape 5 non satisfaits — detail :' -Level 'WARN'
+        if ([string]::IsNullOrWhiteSpace($gs)) {
+            script:Write-PlanningStep5PrerequisiteLog -Message '[STEP5] Ghostscript introuvable' -Level 'WARN'
+        }
+        if ([string]::IsNullOrWhiteSpace($lo) -and -not $excelOk) {
+            script:Write-PlanningStep5PrerequisiteLog -Message '[STEP5] Aucun convertisseur XLSX->PDF (Excel ou LibreOffice requis)' -Level 'WARN'
+        }
+        if ($missingTpl.Count -gt 0) {
+            script:Write-PlanningStep5PrerequisiteLog -Message ('[STEP5] Templates manquants : {0}' -f ($missingTpl -join ', ')) -Level 'WARN'
+        }
+        foreach ($issue in @($issues)) {
+            if ([string]::IsNullOrWhiteSpace($issue)) { continue }
+            script:Write-PlanningStep5PrerequisiteLog -Message ("[STEP5] {0}" -f $issue) -Level 'WARN'
+        }
+    }
+
     return [pscustomobject]@{
-        Ok               = ($issues.Count -eq 0)
+        Ok               = $ok
         Issues           = @($issues.ToArray())
         InstallRoot      = $root
         GhostscriptPath  = $gs

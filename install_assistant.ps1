@@ -1,4 +1,4 @@
-# install_assistant.ps1 - Installation ASSISTANT (version script, sans exe)
+﻿# install_assistant.ps1 - Installation ASSISTANT (version script, sans exe)
 # Usage : .\install_assistant.ps1 [-Centre fontaine] [-Quiet] [-InstallDir path] [-Fresh] [-DesktopShortcut]
 
 param(
@@ -123,6 +123,116 @@ function Resolve-InstallPath {
     return $Path
 }
 
+function Test-InstallFileAlreadyPresent {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$DestinationPath
+    )
+    if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) { return $false }
+    if (-not (Test-Path -LiteralPath $DestinationPath -PathType Leaf)) { return $false }
+    try {
+        $src = Get-Item -LiteralPath $SourcePath -Force -ErrorAction Stop
+        $dst = Get-Item -LiteralPath $DestinationPath -Force -ErrorAction Stop
+        if ($src.Length -ne $dst.Length) { return $false }
+        if ($src.LastWriteTimeUtc -ne $dst.LastWriteTimeUtc) { return $false }
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Copy-FileWithRetry {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$DestinationPath,
+        [string]$DisplayPath = '',
+        [int]$MaxRetries = 10
+    )
+    if ([string]::IsNullOrWhiteSpace($DisplayPath)) {
+        $DisplayPath = Split-Path -Leaf $SourcePath
+    }
+    if (Test-InstallFileAlreadyPresent -SourcePath $SourcePath -DestinationPath $DestinationPath) {
+        return $true
+    }
+
+    $destDir = Split-Path -Parent $DestinationPath
+    if (-not (Test-Path -LiteralPath $destDir)) {
+        $null = New-Item -ItemType Directory -Path $destDir -Force
+    }
+
+    try {
+        # PS 5.1 : pas de -PassThru sur Unblock-File — detecter Zone.Identifier avant/apres.
+        $hadZone = $false
+        try {
+            $zoneStream = Get-Item -LiteralPath $SourcePath -Stream Zone.Identifier -ErrorAction SilentlyContinue
+            if ($null -ne $zoneStream) { $hadZone = $true }
+        }
+        catch { }
+        Unblock-File -LiteralPath $SourcePath -ErrorAction SilentlyContinue
+        if ($hadZone) {
+            Write-InstallStep ("[INSTALL] Debloque (Zone.Identifier) : {0}" -f $DisplayPath) 'DarkGray'
+        }
+    }
+    catch { }
+
+    $lastError = $null
+    for ($attempt = 1; $attempt -le $MaxRetries; $attempt++) {
+        try {
+            Copy-Item -LiteralPath $SourcePath -Destination $DestinationPath -Force -ErrorAction Stop
+            try { Unblock-File -LiteralPath $DestinationPath -ErrorAction SilentlyContinue | Out-Null } catch { }
+            return $true
+        }
+        catch {
+            $lastError = $_
+            $msg = $_.Exception.Message
+            Write-InstallStep ("[INSTALL] Copie bloquee (tentative {0}/{1}) : {2} : {3}" -f $attempt, $MaxRetries, $DisplayPath, $msg) 'Yellow'
+            if ($attempt -lt $MaxRetries) {
+                # Backoff lineaire : 1s, 2s, ..., 9s entre les 10 tentatives
+                Start-Sleep -Seconds $attempt
+            }
+        }
+    }
+
+    $errMsg = if ($null -ne $lastError) { $lastError.Exception.Message } else { 'erreur inconnue' }
+    $null = $script:InstallCopyFailures.Add(('{0} ({1})' -f $DisplayPath, $errMsg))
+    Write-InstallStep ("[INSTALL] Echec apres {0} tentatives : {1} : {2}" -f $MaxRetries, $DisplayPath, $errMsg) 'Red'
+    return $false
+}
+
+function Invoke-WithImportExcelDefenderExclusion {
+    param(
+        [Parameter(Mandatory = $true)][scriptblock]$ScriptBlock,
+        [object[]]$ArgumentList = @()
+    )
+    $exclusionPath = Join-Path $env:LOCALAPPDATA 'ASSISTANT\runtime\ImportExcel'
+    $added = $false
+    try {
+        if (Get-Command Add-MpPreference -ErrorAction SilentlyContinue) {
+            try {
+                Add-MpPreference -ExclusionPath $exclusionPath -ErrorAction Stop
+                $added = $true
+                Write-InstallStep ("[INSTALL] Exclusion Defender temporaire : {0}" -f $exclusionPath) 'DarkGray'
+            }
+            catch {
+                Write-InstallStep ("[INSTALL] Exclusion Defender NON posee (droits/antivirus tiers) — le retry seul s'appliquera : {0}" -f $_.Exception.Message) 'Yellow'
+            }
+        }
+        else {
+            Write-InstallStep '[INSTALL] Exclusion Defender NON posee (Add-MpPreference indisponible) — le retry seul s''appliquera.' 'Yellow'
+        }
+        & $ScriptBlock @ArgumentList
+    }
+    finally {
+        if ($added -and (Get-Command Remove-MpPreference -ErrorAction SilentlyContinue)) {
+            try {
+                Remove-MpPreference -ExclusionPath $exclusionPath -ErrorAction SilentlyContinue
+            }
+            catch { }
+        }
+    }
+}
+
 function Copy-InstallItem {
     param(
         [Parameter(Mandatory = $true)][string]$Source,
@@ -131,10 +241,10 @@ function Copy-InstallItem {
     )
     if (-not (Test-Path -LiteralPath $Source)) { return }
     if (Test-Path -LiteralPath $Source -PathType Container) {
-        if (Test-Path -LiteralPath $Destination) {
-            Remove-Item -LiteralPath $Destination -Recurse -Force -ErrorAction SilentlyContinue
+        # Merge : ne plus supprimer le dossier destination (reprise + anti-AV)
+        if (-not (Test-Path -LiteralPath $Destination)) {
+            $null = New-Item -ItemType Directory -Path $Destination -Force
         }
-        $null = New-Item -ItemType Directory -Path $Destination -Force
         Get-ChildItem -LiteralPath $Source -Recurse -File -Force | ForEach-Object {
             $rel = $_.FullName.Substring($Source.Length).TrimStart('\')
             $destFile = Join-Path $Destination $rel
@@ -168,7 +278,6 @@ function Copy-InstallFile {
     if ([string]::IsNullOrWhiteSpace($DisplayPath)) {
         $DisplayPath = Split-Path -Leaf $SourcePath
     }
-    try { Unblock-File -LiteralPath $SourcePath -ErrorAction SilentlyContinue } catch {}
 
     $targets = [System.Collections.Generic.List[string]]::new()
     $null = $targets.Add($DestinationPath)
@@ -179,53 +288,11 @@ function Copy-InstallFile {
         }
     }
 
-    $lastError = $null
     foreach ($targetPath in $targets) {
-        $targetDir = Split-Path -Parent $targetPath
-        if (-not (Test-Path -LiteralPath $targetDir)) {
-            $null = New-Item -ItemType Directory -Path $targetDir -Force
+        $ok = Copy-FileWithRetry -SourcePath $SourcePath -DestinationPath $targetPath -DisplayPath $DisplayPath
+        if (-not $ok) {
+            return
         }
-        for ($attempt = 1; $attempt -le 5; $attempt++) {
-            try {
-                Copy-Item -LiteralPath $SourcePath -Destination $targetPath -Force -ErrorAction Stop
-                try { Unblock-File -LiteralPath $targetPath -ErrorAction SilentlyContinue } catch {}
-                return
-            }
-            catch {
-                $lastError = $_
-                Start-Sleep -Milliseconds (200 * $attempt)
-                try {
-                    $stream = [System.IO.File]::Open($SourcePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-                    try {
-                        $length = $stream.Length
-                        $bytes = New-Object byte[] $length
-                        $offset = 0
-                        while ($offset -lt $length) {
-                            $read = $stream.Read($bytes, $offset, $length - $offset)
-                            if ($read -le 0) { break }
-                            $offset += $read
-                        }
-                    }
-                    finally {
-                        $stream.Close()
-                        $stream.Dispose()
-                    }
-                    [System.IO.File]::WriteAllBytes($targetPath, $bytes)
-                    try { Unblock-File -LiteralPath $targetPath -ErrorAction SilentlyContinue } catch {}
-                    return
-                }
-                catch {
-                    $lastError = $_
-                }
-            }
-        }
-    }
-
-    $errMsg = if ($lastError) { $lastError.Exception.Message } else { 'erreur inconnue' }
-    $null = $script:InstallCopyFailures.Add("$DisplayPath ($errMsg)")
-    if (-not $Quiet) {
-        Write-InstallStep "  Echec copie : $DisplayPath" 'Red'
-        Write-InstallStep "     $errMsg" 'Red'
     }
 }
 
@@ -409,7 +476,8 @@ function Test-InstallPackage {
         'templates\CertificatDeDestruction.xlsx',
         'templates\BilanDeCollecte.xlsx',
         'templates\CeaPointsDeCollectes.xlsx',
-        'templates\FT.xlsx'
+        'templates\FT.xlsx',
+        'templates\FicheInventaireFranceTravail.xlsx'
     )) {
         if (-not (Test-Path -LiteralPath (Join-Path $PackageDir $rel))) {
             throw "Package incomplet : $rel manquant dans $PackageDir. Relancez .\build_package.ps1 -Clean"
@@ -633,10 +701,15 @@ foreach ($item in $itemsFromContent) {
     $source = Join-Path $contentRoot $item
     if (-not (Test-Path -LiteralPath $source)) { continue }
     $dest = Join-Path $InstallDir $item
-    if (Test-Path -LiteralPath $dest) {
-        Remove-Item -LiteralPath $dest -Recurse -Force -ErrorAction SilentlyContinue
+    if ($item -eq 'runtime') {
+        Invoke-WithImportExcelDefenderExclusion -ArgumentList @($source, $dest, $contentRoot) -ScriptBlock {
+            param($Src, $Dst, $Root)
+            Copy-InstallItem -Source $Src -Destination $Dst -ContentRoot $Root
+        }
     }
-    Copy-InstallItem -Source $source -Destination $dest -ContentRoot $contentRoot
+    else {
+        Copy-InstallItem -Source $source -Destination $dest -ContentRoot $contentRoot
+    }
 }
 $itemsFromPackage = @('ASSISTANT.bat', 'Launcher.vbs', 'ASSISTANT.ico', 'INSTALL.bat', 'install_assistant.ps1', 'install_gui.ps1', 'fix_installation.ps1', 'Register-AssistantContextMenu.ps1', 'uninstall_assistant.ps1')
 foreach ($item in $itemsFromPackage) {
@@ -663,10 +736,9 @@ if ($script:InstallCopyFailures.Count -gt 0) {
     foreach ($failed in $script:InstallCopyFailures) {
         Write-InstallStep "  - $failed" 'Yellow'
     }
-    Write-InstallStep 'Solution : desactivez temporairement l antivirus et reessayez.' 'Cyan'
-    Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
-    Write-InstallStep 'Dossier partiel supprime.' 'Yellow'
-    throw "Copie echouee : $($script:InstallCopyFailures.Count) fichier(s) bloques"
+    Write-InstallStep 'Le dossier d''installation a ete conserve pour permettre une relance (merge / reprise).' 'Cyan'
+    Write-InstallStep 'Solution : ajoutez une exclusion antivirus sur %LOCALAPPDATA%\ASSISTANT\runtime\ImportExcel et relancez.' 'Cyan'
+    throw ("Copie echouee : {0} fichier(s) bloques. Ajoutez une exclusion antivirus sur %LOCALAPPDATA%\ASSISTANT\runtime\ImportExcel et relancez." -f $script:InstallCopyFailures.Count)
 }
 
 $copiedCount = (Get-ChildItem -LiteralPath $InstallDir -Recurse -File -Force | Measure-Object).Count

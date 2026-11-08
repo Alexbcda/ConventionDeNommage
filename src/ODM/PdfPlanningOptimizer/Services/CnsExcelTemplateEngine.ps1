@@ -175,7 +175,7 @@ function Get-XlsxCellReference {
 function script:Get-CnsXlsxCellDisplayText {
     param($Cell)
     if ($null -eq $Cell) { return '' }
-    if (Get-Command script:Get-CellDisplayText -ErrorAction SilentlyContinue) {
+    if (Get-Command Get-CellDisplayText -ErrorAction SilentlyContinue) {
         return (script:Get-CellDisplayText -Cell $Cell)
     }
     try {
@@ -198,7 +198,7 @@ function Find-XlsxPlaceholders {
         [string]$XlsxPath,
         [string]$WorksheetName
     )
-    if (Get-Command script:Ensure-ImportExcelModule -ErrorAction SilentlyContinue) {
+    if (Get-Command Ensure-ImportExcelModule -ErrorAction SilentlyContinue) {
         script:Ensure-ImportExcelModule
     }
     elseif (-not (Get-Module -Name ImportExcel -ListAvailable -ErrorAction SilentlyContinue)) {
@@ -283,7 +283,7 @@ function Set-CnsXlsxTemplatePlaceholders {
         return $false
     }
 
-    if (Get-Command script:Ensure-ImportExcelModule -ErrorAction SilentlyContinue) {
+    if (Get-Command Ensure-ImportExcelModule -ErrorAction SilentlyContinue) {
         script:Ensure-ImportExcelModule
     }
     else {

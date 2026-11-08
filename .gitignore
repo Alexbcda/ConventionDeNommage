@@ -1,12 +1,27 @@
-package_old_*/
+# Binaires / packages
+*.zip
 package/
-build_log.txt
-export-*.txt
-code-pour-ia.txt
+output/
+deploy/
+installer/
+package_graph_test/
+package_graph_test2/
+_test_assistant_pdftotext/
+
+# Données locales
+Data/gestion.db
+Data/quality-monitor-history.jsonl
+Logs/
+build/*.log
+
+# Fichiers parasites (variables PowerShell interprétées)
 $gsPs
 $loPs
 $out
 $outP5
 $pdf
 $ps
-*.pdf
+
+# Système
+Thumbs.db
+.DS_Store

@@ -518,6 +518,11 @@ function Test-AssistantPackage {
             $allOk = $false
         }
     }
+    $dacTemplate = Join-Path $PackageRoot 'templates\planning\destruction\DAC.xlsx'
+    if (-not (Test-Path -LiteralPath $dacTemplate -PathType Leaf)) {
+        throw 'ERREUR: templates\planning\destruction\DAC.xlsx MANQUANT. La génération du DAC Bio Déchets ne pourra pas fonctionner.'
+    }
+    Write-BuildSuccess 'templates\planning\destruction\DAC.xlsx'
     $recalcScript = Join-Path $PackageRoot 'runtime\recalc_export.py'
     if (-not (Test-Path -LiteralPath $recalcScript -PathType Leaf)) {
         throw 'ERREUR: runtime\recalc_export.py MANQUANT. La fiche France Travail ne pourra pas être générée sur les postes sans Excel.'
@@ -598,6 +603,14 @@ if (Test-Path -LiteralPath $templatesSource) {
         else {
             Write-BuildFail "$tpl MANQUANT dans templates/"
         }
+    }
+    $dacRel = 'planning\destruction\DAC.xlsx'
+    $dacPath = Join-Path $templatesDest $dacRel
+    if (Test-Path -LiteralPath $dacPath -PathType Leaf) {
+        Write-BuildSuccess $dacRel
+    }
+    else {
+        Write-BuildFail 'planning\destruction\DAC.xlsx MANQUANT dans templates/'
     }
 }
 else {
