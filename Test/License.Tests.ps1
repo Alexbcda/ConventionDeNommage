@@ -129,3 +129,101 @@ Describe 'License wiring in Main.ps1 (etape 2)' {
         ($script:MainContent -match 'Set-LicenseLastSeenUtc') | Should Be $true
     }
 }
+
+Describe 'License alerts and clock (etape 3)' {
+
+    BeforeAll {
+        $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+        $licenseScript = Join-Path $repoRoot 'src\Core\License.ps1'
+        $script:KeyPairTool = Join-Path $repoRoot 'Tools\New-AssistantLicenseKeyPair.ps1'
+        $script:LicenseTool = Join-Path $repoRoot 'Tools\New-AssistantLicense.ps1'
+        . $licenseScript
+
+        $script:TestRoot3 = Join-Path $env:TEMP ("assistant_license_tests3_{0}" -f ([Guid]::NewGuid().ToString('N')))
+        $null = New-Item -ItemType Directory -Path $script:TestRoot3 -Force
+        $script:AssistantLicenseDirectory = Join-Path $script:TestRoot3 'license'
+        $null = New-Item -ItemType Directory -Path $script:AssistantLicenseDirectory -Force
+
+        $script:PrivateKeyPath3 = Join-Path $script:TestRoot3 'private.pem'
+        $script:PublicKeyPath3 = Join-Path $script:TestRoot3 'public.pem'
+        & $script:KeyPairTool -PrivateKeyPath $script:PrivateKeyPath3 -PublicKeyPath $script:PublicKeyPath3 | Out-Null
+        $script:LicensePublicKeyPem = Get-Content -LiteralPath $script:PublicKeyPath3 -Raw -Encoding ASCII
+
+        $script:OutilsPanelPath = Join-Path $repoRoot 'src\ODM\Outils\OutilsPanel.ps1'
+        $script:OutilsContent = Get-Content -LiteralPath $script:OutilsPanelPath -Raw -Encoding UTF8
+
+        $script:AlertLic = Join-Path $script:TestRoot3 'alerts.lic'
+        & $script:LicenseTool -Customer 'Alert SA' -ExpiresOn ([datetime]'2027-06-01') `
+            -PrivateKeyPath $script:PrivateKeyPath3 -OutputPath $script:AlertLic | Out-Null
+    }
+
+    AfterAll {
+        if (Test-Path -LiteralPath $script:TestRoot3) {
+            Remove-Item -LiteralPath $script:TestRoot3 -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    BeforeEach {
+        $script:AssistantLicenseDirectory = Join-Path $script:TestRoot3 'license'
+        if (-not (Test-Path -LiteralPath $script:AssistantLicenseDirectory)) {
+            $null = New-Item -ItemType Directory -Path $script:AssistantLicenseDirectory -Force
+        }
+        Get-ChildItem -LiteralPath $script:AssistantLicenseDirectory -Force -ErrorAction SilentlyContinue |
+            Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+        $script:LicensePublicKeyPem = Get-Content -LiteralPath $script:PublicKeyPath3 -Raw -Encoding ASCII
+        Copy-Item -LiteralPath $script:AlertLic -Destination (Get-LicenseFilePath) -Force
+    }
+
+    It 'Alerte 10 mai -> Information' {
+        $s = Get-LicenseStatus -UtcNow ([datetime]'2027-05-10T12:00:00Z')
+        $a = Get-LicenseRenewalAlert -LicenseStatus $s -UtcNow ([datetime]'2027-05-10T12:00:00Z')
+        $a | Should Not BeNullOrEmpty
+        $a.Severity | Should Be 'Information'
+        ($a.Message -match 'Pensez') | Should Be $true
+    }
+
+    It 'Alerte 20 mai -> Warning' {
+        $s = Get-LicenseStatus -UtcNow ([datetime]'2027-05-20T12:00:00Z')
+        $a = Get-LicenseRenewalAlert -LicenseStatus $s -UtcNow ([datetime]'2027-05-20T12:00:00Z')
+        $a.Severity | Should Be 'Warning'
+        ($a.Message -match '15 jours') | Should Be $true
+    }
+
+    It 'Alerte 26 mai -> Error' {
+        $s = Get-LicenseStatus -UtcNow ([datetime]'2027-05-26T12:00:00Z')
+        $a = Get-LicenseRenewalAlert -LicenseStatus $s -UtcNow ([datetime]'2027-05-26T12:00:00Z')
+        $a.Severity | Should Be 'Error'
+        ($a.Message -match '5 jours') | Should Be $true
+    }
+
+    It 'Memorisation : une seule alerte par jour (alert-shown.txt)' {
+        $now = [datetime]'2027-05-20T12:00:00Z'
+        $s = Get-LicenseStatus -UtcNow $now
+        $a1 = Get-LicenseRenewalAlert -LicenseStatus $s -UtcNow $now
+        $a1 | Should Not BeNullOrEmpty
+        (Test-LicenseAlertShownToday -UtcNow $now) | Should Be $false
+        Set-LicenseAlertShownToday -UtcNow $now
+        (Test-LicenseAlertShownToday -UtcNow $now) | Should Be $true
+        (Test-Path -LiteralPath (Get-LicenseAlertShownPath)) | Should Be $true
+        (Test-LicenseAlertShownToday -UtcNow $now) | Should Be $true
+    }
+
+    It 'Horloge reculee : LastSeen 2027-06-01, Now 2027-05-01 -> Suspect' {
+        Set-LicenseLastSeenUtc -UtcDateTime ([datetime]'2027-06-01T00:00:00Z')
+        $s = Get-LicenseStatus -UtcNow ([datetime]'2027-05-01T12:00:00Z')
+        $s.Status | Should Be 'Suspect'
+    }
+
+    It 'Cas normal : LastSeen hier, Now aujourd''hui -> Valid' {
+        $now = [datetime]'2027-04-15T12:00:00Z'
+        Set-LicenseLastSeenUtc -UtcDateTime ($now.AddDays(-1))
+        $s = Get-LicenseStatus -UtcNow $now
+        $s.Status | Should Be 'Valid'
+    }
+
+    It 'OutilsPanel : bouton Importer la licence + Import-LicenseFile' {
+        ($script:OutilsContent -match 'btnImportLicence') | Should Be $true
+        ($script:OutilsContent -match 'Importer la licence') | Should Be $true
+        ($script:OutilsContent -match 'Import-LicenseFile') | Should Be $true
+    }
+}

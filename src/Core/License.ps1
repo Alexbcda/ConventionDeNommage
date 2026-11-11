@@ -41,6 +41,94 @@ function Ensure-LicenseDirectory {
     return $dir
 }
 
+function Get-LicenseAlertShownPath {
+    return (Join-Path (Get-LicenseDirectory) 'alert-shown.txt')
+}
+
+function Test-LicenseAlertShownToday {
+    param([datetime]$UtcNow = [datetime]::UtcNow)
+    $path = Get-LicenseAlertShownPath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
+    try {
+        $raw = (Get-Content -LiteralPath $path -Raw -Encoding UTF8).Trim()
+        $shownDay = [datetime]::ParseExact($raw, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture).Date
+        return ($shownDay -eq $UtcNow.ToUniversalTime().Date)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Set-LicenseAlertShownToday {
+    param([datetime]$UtcNow = [datetime]::UtcNow)
+    Ensure-LicenseDirectory | Out-Null
+    $day = $UtcNow.ToUniversalTime().ToString('yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+    Set-Content -LiteralPath (Get-LicenseAlertShownPath) -Value $day -Encoding UTF8
+}
+
+function Format-LicenseExpiryLabelFr {
+    param([Parameter(Mandatory = $true)][datetime]$ExpiresOnUtc)
+    $d = $ExpiresOnUtc.ToUniversalTime().Date
+    $cult = [System.Globalization.CultureInfo]::GetCultureInfo('fr-FR')
+    if ($d.Day -eq 1) {
+        return ('1er {0}' -f $d.ToString('MMMM yyyy', $cult))
+    }
+    return $d.ToString('d MMMM yyyy', $cult)
+}
+
+function Get-LicenseRenewalAlert {
+    <#
+    .SYNOPSIS
+        Si Valid et au moins une AlertDate due (today >= alert et today < expires),
+        retourne Message + Severity (Information|Warning|Error). Sinon $null.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]$LicenseStatus,
+        [datetime]$UtcNow = [datetime]::UtcNow
+    )
+    if ([string]$LicenseStatus.Status -ne 'Valid') { return $null }
+    if ($null -eq $LicenseStatus.ExpiresOn) { return $null }
+
+    $today = $UtcNow.ToUniversalTime().Date
+    $expiresDate = ([datetime]$LicenseStatus.ExpiresOn).ToUniversalTime().Date
+    if ($today -ge $expiresDate) { return $null }
+
+    $due = @()
+    foreach ($ad in @($LicenseStatus.AlertDates)) {
+        try {
+            $adDate = ([datetime]$ad).ToUniversalTime().Date
+            if ($today -ge $adDate) { $due += $adDate }
+        }
+        catch { }
+    }
+    if ($due.Count -eq 0) { return $null }
+
+    $daysLeft = ($expiresDate - $today).Days
+    if ($daysLeft -le 5) {
+        $severity = 'Error'
+        $message = 'Votre licence ASSISTANT expire dans moins de 5 jours. Contactez immédiatement votre administrateur.'
+    }
+    elseif ($daysLeft -le 15) {
+        $severity = 'Warning'
+        $message = 'Votre licence ASSISTANT expire dans moins de 15 jours. Contactez votre administrateur.'
+    }
+    else {
+        $severity = 'Information'
+        $label = Format-LicenseExpiryLabelFr -ExpiresOnUtc $expiresDate
+        $message = ("Votre licence ASSISTANT expire le {0}. Pensez à demander le renouvellement." -f $label)
+    }
+
+    return [pscustomobject]@{
+        Status      = 'Valid'
+        Severity    = $severity
+        Message     = $message
+        ExpiresOn   = $LicenseStatus.ExpiresOn
+        Customer    = $LicenseStatus.Customer
+        AlertDates  = $LicenseStatus.AlertDates
+        TriggerDate = ($due | Sort-Object -Descending | Select-Object -First 1)
+    }
+}
+
 function ConvertTo-LicensePem {
     param(
         [Parameter(Mandatory = $true)][string]$Body,
@@ -178,6 +266,7 @@ function Get-LicenseStatus {
     .SYNOPSIS
         Lit et valide license.lic. Ne met pas a jour lastseen (pas d'effet de bord).
     #>
+    param([datetime]$UtcNow = [datetime]::UtcNow)
     $licensePath = Get-LicenseFilePath
     if (-not (Test-Path -LiteralPath $licensePath -PathType Leaf)) {
         return [pscustomobject]@{
@@ -254,7 +343,7 @@ function Get-LicenseStatus {
         }
     }
 
-    $now = [datetime]::UtcNow
+    $now = $UtcNow.ToUniversalTime()
     $lastSeen = Get-LicenseLastSeenUtc
     if ($null -ne $lastSeen) {
         $skewLimit = $lastSeen.AddDays(-1)
@@ -304,7 +393,12 @@ function Show-LicenseAlert {
     $title = 'Licence ASSISTANT'
     try {
         Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
-        $icon = switch ([string]$StatusObject.Status) {
+        $severity = [string]$StatusObject.Severity
+        if ([string]::IsNullOrWhiteSpace($severity)) { $severity = [string]$StatusObject.Status }
+        $icon = switch ($severity) {
+            'Information' { [System.Windows.Forms.MessageBoxIcon]::Information }
+            'Warning' { [System.Windows.Forms.MessageBoxIcon]::Warning }
+            'Error' { [System.Windows.Forms.MessageBoxIcon]::Error }
             'Valid' { [System.Windows.Forms.MessageBoxIcon]::Information }
             'Missing' { [System.Windows.Forms.MessageBoxIcon]::Warning }
             'Expired' { [System.Windows.Forms.MessageBoxIcon]::Error }

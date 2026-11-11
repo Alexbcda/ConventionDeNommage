@@ -204,6 +204,83 @@ function Show-OutilsPanel {
     $grpSharePoint.Controls.Add($btnConfigureCentre)
     $panel.Controls.Add($grpSharePoint)
 
+    $grpLicence = [System.Windows.Forms.GroupBox]::new()
+    $grpLicence.Name = 'grpLicence'
+    $grpLicence.Text = 'Licence'
+    $grpLicence.Location = [System.Drawing.Point]::new(0, 220)
+    $grpLicence.Size = [System.Drawing.Size]::new(700, 100)
+    $grpLicence.Font = $script:PoliceTitre3
+
+    $lblLicenceInfo = [System.Windows.Forms.Label]::new()
+    $lblLicenceInfo.Text = 'Remplacer le fichier de licence (.lic) sans passer par une console.'
+    $lblLicenceInfo.Font = $script:PoliceLabelSecondaireFenetre
+    $lblLicenceInfo.Location = [System.Drawing.Point]::new(15, 25)
+    $lblLicenceInfo.Size = [System.Drawing.Size]::new(650, 25)
+    $grpLicence.Controls.Add($lblLicenceInfo)
+
+    $btnImportLicence = [System.Windows.Forms.Button]::new()
+    $btnImportLicence.Name = 'btnImportLicence'
+    $btnImportLicence.Text = 'Importer la licence'
+    $btnImportLicence.Size = [System.Drawing.Size]::new(260, 40)
+    $btnImportLicence.Location = [System.Drawing.Point]::new(15, 50)
+    $btnImportLicence.BackColor = $script:CouleurOrange
+    $btnImportLicence.ForeColor = $script:CouleurBlanc
+    $btnImportLicence.FlatStyle = 'Flat'
+    $btnImportLicence.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnImportLicence.Font = $script:PoliceBouton
+    $btnImportLicence.Add_Click({
+        try {
+            if (-not (Get-Command Import-LicenseFile -ErrorAction SilentlyContinue)) {
+                throw 'Module Licence non charge'
+            }
+            $ofd = [System.Windows.Forms.OpenFileDialog]::new()
+            $ofd.Filter = 'Licence ASSISTANT (*.lic)|*.lic|Tous les fichiers (*.*)|*.*'
+            $ofd.Title = 'Selectionnez un fichier de licence'
+            if ($ofd.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
+
+            $ok = Import-LicenseFile -Path $ofd.FileName
+            if (-not $ok) {
+                [System.Windows.Forms.MessageBox]::Show(
+                    'Import echoue : fichier invalide ou signature incorrecte.',
+                    'Licence ASSISTANT',
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Error
+                ) | Out-Null
+                return
+            }
+
+            $restart = [System.Windows.Forms.MessageBox]::Show(
+                'Licence importee. Redemarrer l''application pour appliquer la nouvelle licence ?',
+                'Licence ASSISTANT',
+                [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                [System.Windows.Forms.MessageBoxIcon]::Information
+            )
+            if ($restart -eq [System.Windows.Forms.DialogResult]::Yes) {
+                if (Get-Command Restart-Application -ErrorAction SilentlyContinue) {
+                    Restart-Application
+                }
+                else {
+                    [System.Windows.Forms.MessageBox]::Show(
+                        'Veuillez redemarrer l''application manuellement.',
+                        'Redemarrage requis',
+                        [System.Windows.Forms.MessageBoxButtons]::OK,
+                        [System.Windows.Forms.MessageBoxIcon]::Information
+                    ) | Out-Null
+                }
+            }
+        }
+        catch {
+            [System.Windows.Forms.MessageBox]::Show(
+                ("Erreur import licence : {0}" -f $_.Exception.Message),
+                'Erreur',
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+        }
+    })
+    $grpLicence.Controls.Add($btnImportLicence)
+    $panel.Controls.Add($grpLicence)
+
     $showSuperviseurOutils = $false
     if ($showSuperviseurOutils) {
         $exportImportScript = Join-Path $PSScriptRoot '..\..\Database\ExportImport.ps1'
@@ -319,7 +396,7 @@ function Show-OutilsPanel {
         $panel.Controls.Add($grpSuperviseur)
     }
 
-    $grpVideoY = if ($showSuperviseurOutils) { 280 } else { 220 }
+    $grpVideoY = if ($showSuperviseurOutils) { 390 } else { 330 }
     $grpVideo = [System.Windows.Forms.GroupBox]::new()
     $grpVideo.Name = 'grpVideo'
     $grpVideo.Text = 'Video de demonstration'

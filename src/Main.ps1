@@ -206,28 +206,6 @@ else {
 # ============================================
 # 2b. VERIFICATION LICENCE (normal + RenameOnly)
 # ============================================
-function Get-LicenseAlertShownPath {
-    return (Join-Path (Get-LicenseDirectory) 'alert-shown.txt')
-}
-
-function Test-LicenseAlertShownToday {
-    $path = Get-LicenseAlertShownPath
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
-    try {
-        $raw = (Get-Content -LiteralPath $path -Raw -Encoding UTF8).Trim()
-        $shownDay = [datetime]::ParseExact($raw, 'yyyy-MM-dd', $null).Date
-        return ($shownDay -eq [datetime]::UtcNow.Date)
-    }
-    catch {
-        return $false
-    }
-}
-
-function Set-LicenseAlertShownToday {
-    Ensure-LicenseDirectory | Out-Null
-    Set-Content -LiteralPath (Get-LicenseAlertShownPath) -Value ([datetime]::UtcNow.ToString('yyyy-MM-dd')) -Encoding UTF8
-}
-
 function Show-AssistantLicenseMessage {
     param([Parameter(Mandatory = $true)]$StatusObject)
     $preferHost = ($true -eq $global:SuppressConsoleOutput)
@@ -243,31 +221,9 @@ Write-Log '[MAIN] Licence status' 'INFO' @{ status = [string]$licenseStatus.Stat
 
 switch ([string]$licenseStatus.Status) {
     'Valid' {
-        $today = [datetime]::UtcNow.Date
-        $expiresDate = $null
-        if ($null -ne $licenseStatus.ExpiresOn) {
-            $expiresDate = ([datetime]$licenseStatus.ExpiresOn).ToUniversalTime().Date
-        }
-        $dueAlerts = @()
-        if ($null -ne $expiresDate -and $today -lt $expiresDate -and $null -ne $licenseStatus.AlertDates) {
-            foreach ($ad in @($licenseStatus.AlertDates)) {
-                try {
-                    $adDate = ([datetime]$ad).ToUniversalTime().Date
-                    if ($today -ge $adDate) { $dueAlerts += $adDate }
-                }
-                catch { }
-            }
-        }
-        if ($dueAlerts.Count -gt 0 -and -not (Test-LicenseAlertShownToday)) {
-            $latest = ($dueAlerts | Sort-Object -Descending | Select-Object -First 1)
-            $alertMsg = ("Rappel licence ASSISTANT : expiration le {0:yyyy-MM-dd} (alerte du {1:yyyy-MM-dd}). Contactez votre administrateur pour renouveler." -f $expiresDate, $latest)
-            Show-AssistantLicenseMessage -StatusObject ([pscustomobject]@{
-                    Status     = 'Valid'
-                    Message    = $alertMsg
-                    ExpiresOn  = $licenseStatus.ExpiresOn
-                    Customer   = $licenseStatus.Customer
-                    AlertDates = $licenseStatus.AlertDates
-                })
+        $renewalAlert = Get-LicenseRenewalAlert -LicenseStatus $licenseStatus
+        if ($null -ne $renewalAlert -and -not (Test-LicenseAlertShownToday)) {
+            Show-AssistantLicenseMessage -StatusObject $renewalAlert
             Set-LicenseAlertShownToday
         }
         Set-LicenseLastSeenUtc -UtcDateTime ([datetime]::UtcNow)
