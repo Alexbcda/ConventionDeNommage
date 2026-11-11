@@ -19,18 +19,37 @@ function ConvertFrom-LicensePem {
     return [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64))
 }
 
+function ConvertTo-LicenseCanonicalDateString {
+    param([Parameter(Mandatory = $true)]$Value)
+    if ($Value -is [datetime]) {
+        $dt = [datetime]$Value
+        if ($dt.Kind -eq [DateTimeKind]::Unspecified) {
+            $dt = [datetime]::SpecifyKind($dt, [DateTimeKind]::Utc)
+        }
+        elseif ($dt.Kind -eq [DateTimeKind]::Local) {
+            $dt = $dt.ToUniversalTime()
+        }
+        return $dt.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+    }
+    $dto = [DateTimeOffset]::Parse(
+        [string]$Value,
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [System.Globalization.DateTimeStyles]::RoundtripKind)
+    return $dto.UtcDateTime.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+}
+
 function Get-LicenseCanonicalPayload {
     param([Parameter(Mandatory = $true)]$Payload)
     $alertDates = @()
     if ($null -ne $Payload.alertDates) {
-        $alertDates = @($Payload.alertDates | ForEach-Object { [string]$_ })
+        $alertDates = @($Payload.alertDates | ForEach-Object { ConvertTo-LicenseCanonicalDateString -Value $_ })
     }
     $ordered = [ordered]@{
         version    = [string]$Payload.version
         customer   = [string]$Payload.customer
-        expiresOn  = [string]$Payload.expiresOn
+        expiresOn  = (ConvertTo-LicenseCanonicalDateString -Value $Payload.expiresOn)
         alertDates = @($alertDates)
-        issuedAt   = [string]$Payload.issuedAt
+        issuedAt   = (ConvertTo-LicenseCanonicalDateString -Value $Payload.issuedAt)
         product    = [string]$Payload.product
     }
     return (($ordered | ConvertTo-Json -Compress -Depth 5))
@@ -56,11 +75,11 @@ $issuedAt = [datetime]::UtcNow
 $payload = [pscustomobject]@{
     version    = '1.0'
     customer   = $Customer
-    expiresOn  = $expiresUtc.ToString('o')
+    expiresOn  = $expiresUtc.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
     alertDates = @($AlertDates | ForEach-Object {
-            [datetime]::SpecifyKind($_.ToUniversalTime(), [DateTimeKind]::Utc).ToString('o')
+            [datetime]::SpecifyKind($_.ToUniversalTime(), [DateTimeKind]::Utc).ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
         })
-    issuedAt   = $issuedAt.ToString('o')
+    issuedAt   = $issuedAt.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
     product    = 'ASSISTANT'
 }
 

@@ -79,6 +79,29 @@ function New-LicenseRsaFromPem {
     return $rsa
 }
 
+function ConvertTo-LicenseCanonicalDateString {
+    <#
+    .SYNOPSIS
+        Normalise une date (string ISO ou DateTime post-ConvertFrom-Json) en ISO 8601 'o' invariant UTC.
+    #>
+    param([Parameter(Mandatory = $true)]$Value)
+    if ($Value -is [datetime]) {
+        $dt = [datetime]$Value
+        if ($dt.Kind -eq [DateTimeKind]::Unspecified) {
+            $dt = [datetime]::SpecifyKind($dt, [DateTimeKind]::Utc)
+        }
+        elseif ($dt.Kind -eq [DateTimeKind]::Local) {
+            $dt = $dt.ToUniversalTime()
+        }
+        return $dt.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+    }
+    $dto = [DateTimeOffset]::Parse(
+        [string]$Value,
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [System.Globalization.DateTimeStyles]::RoundtripKind)
+    return $dto.UtcDateTime.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+}
+
 function Get-LicenseCanonicalPayload {
     <#
     .SYNOPSIS
@@ -88,15 +111,15 @@ function Get-LicenseCanonicalPayload {
 
     $alertDates = @()
     if ($null -ne $Payload.alertDates) {
-        $alertDates = @($Payload.alertDates | ForEach-Object { [string]$_ })
+        $alertDates = @($Payload.alertDates | ForEach-Object { ConvertTo-LicenseCanonicalDateString -Value $_ })
     }
 
     $ordered = [ordered]@{
         version    = [string]$Payload.version
         customer   = [string]$Payload.customer
-        expiresOn  = [string]$Payload.expiresOn
+        expiresOn  = (ConvertTo-LicenseCanonicalDateString -Value $Payload.expiresOn)
         alertDates = @($alertDates)
-        issuedAt   = [string]$Payload.issuedAt
+        issuedAt   = (ConvertTo-LicenseCanonicalDateString -Value $Payload.issuedAt)
         product    = [string]$Payload.product
     }
     return (($ordered | ConvertTo-Json -Compress -Depth 5))
@@ -203,7 +226,10 @@ function Get-LicenseStatus {
     }
 
     try {
-        $expiresOn = [DateTimeOffset]::Parse([string]$payload.expiresOn, $null, [System.Globalization.DateTimeStyles]::RoundtripKind).UtcDateTime
+        $expiresOn = [DateTimeOffset]::Parse(
+            (ConvertTo-LicenseCanonicalDateString -Value $payload.expiresOn),
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::RoundtripKind).UtcDateTime
     }
     catch {
         return [pscustomobject]@{
@@ -219,7 +245,10 @@ function Get-LicenseStatus {
     if ($null -ne $payload.alertDates) {
         foreach ($a in @($payload.alertDates)) {
             try {
-                $alertDates += [DateTimeOffset]::Parse([string]$a, $null, [System.Globalization.DateTimeStyles]::RoundtripKind).UtcDateTime
+                $alertDates += [DateTimeOffset]::Parse(
+                    (ConvertTo-LicenseCanonicalDateString -Value $a),
+                    [System.Globalization.CultureInfo]::InvariantCulture,
+                    [System.Globalization.DateTimeStyles]::RoundtripKind).UtcDateTime
             }
             catch { }
         }
