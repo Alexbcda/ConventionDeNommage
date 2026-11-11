@@ -1,0 +1,110 @@
+
+=== Preparation package ASSISTANT v1.0.0 (version script) ===
+
+=== Copie des dependances dans le package de deploiement ===
+
+[OK] Copie : src
+
+[OK] Copie : Data
+
+[OK] Copie : lib
+
+[OK] Copie : runtime
+
+[OK] Copie : config
+
+=== Copie des templates (certificats, bilans, CEA, FT) ===
+
+[OK] Copie : templates
+[OK] CertificatDeDestruction.xlsx
+[OK] BilanDeCollecte.xlsx
+[OK] CeaPointsDeCollectes.xlsx
+[OK] FT.xlsx
+
+=== Copie du module ImportExcel ===
+  ImportExcel trouve : C:\Users\alexa\Documents\PowerShell\Modules\ImportExcel\7.8.10
+[OK] ImportExcel copie dans runtime/ImportExcel
+
+=== Copie des modules Microsoft.Graph ===
+    module : Microsoft.Graph
+    module : Microsoft.Graph.Applications
+    module : Microsoft.Graph.Authentication
+    module : Microsoft.Graph.BackupRestore
+    module : Microsoft.Graph.Bookings
+    module : Microsoft.Graph.Calendar
+    module : Microsoft.Graph.ChangeNotifications
+    module : Microsoft.Graph.CloudCommunications
+    module : Microsoft.Graph.Compliance
+    module : Microsoft.Graph.ConfigurationManagement
+    module : Microsoft.Graph.CrossDeviceExperiences
+    module : Microsoft.Graph.DeviceManagement
+    module : Microsoft.Graph.DeviceManagement.Administration
+    module : Microsoft.Graph.DeviceManagement.Enrollment
+    module : Microsoft.Graph.DeviceManagement.Functions
+    module : Microsoft.Graph.Devices.CloudPrint
+    module : Microsoft.Graph.Devices.CorporateManagement
+    module : Microsoft.Graph.Devices.ServiceAnnouncement
+    module : Microsoft.Graph.DirectoryObjects
+    module : Microsoft.Graph.Education
+    module : Microsoft.Graph.Files
+    module : Microsoft.Graph.Groups
+    module : Microsoft.Graph.Identity.DirectoryManagement
+    module : Microsoft.Graph.Identity.Governance
+    module : Microsoft.Graph.Identity.Partner
+    module : Microsoft.Graph.Identity.SignIns
+    module : Microsoft.Graph.Mail
+    module : Microsoft.Graph.Notes
+    module : Microsoft.Graph.People
+    module : Microsoft.Graph.PersonalContacts
+    module : Microsoft.Graph.Planner
+    module : Microsoft.Graph.Reports
+    module : Microsoft.Graph.SchemaExtensions
+    module : Microsoft.Graph.Search
+    module : Microsoft.Graph.Security
+    module : Microsoft.Graph.Sites
+    module : Microsoft.Graph.Teams
+    module : Microsoft.Graph.Users
+    module : Microsoft.Graph.Users.Actions
+    module : Microsoft.Graph.Users.Functions
+[OK] runtime\Graph\Microsoft.Graph.Authentication.psd1
+
+=== Copie des lanceurs et scripts ===
+[OK] ASSISTANT.bat
+[OK] Launcher.vbs
+[OK] INSTALL.bat
+[OK] install_assistant.ps1
+[OK] install_gui.ps1
+[AVERT] fix_installation.ps1 absent — ignore
+[AVERT] clean_install.ps1 absent — ignore
+[OK] uninstall_assistant.ps1
+[OK] Register-AssistantContextMenu.ps1
+[OK] Register-AssistantContextMenu.ps1 (racine + Tools/)
+[OK] ASSISTANT.ico copie depuis Resources\EliseE.ico
+
+=== Normalisation Poppler (pdftotext.exe + DLL) ===
+[OK] Poppler normalise depuis C:\Users\alexa\Documents\ConventionDeNommage\package\runtime\poppler\poppler-24.08.0\Library\bin
+[OK] runtime\ghostscript\gswin64c.exe + gsdll64.dll
+[OK] version.txt (1.0.0)
+
+=== Verification integrite du package ===
+[OK] ASSISTANT.bat
+[OK] Launcher.vbs
+[OK] INSTALL.bat
+[OK] install_assistant.ps1
+[OK] install_gui.ps1
+[OK] src\Main.ps1
+[OK] src\LaunchAssistant.ps1
+[OK] config\centres.json
+[OK] lib\System.Data.SQLite.dll
+[ERREUR] PdfTextNormalizer.ps1 / CnsPdfTextNormalizer.ps1 MANQUANT
+[OK] runtime\ImportExcel\ImportExcel.psd1
+[OK] runtime\Graph\Microsoft.Graph.Authentication.psd1
+[OK] ASSISTANT.ico
+[OK] runtime\poppler\pdftotext.exe (56832 octets)
+[OK] runtime\ghostscript\gswin64c.exe (93696 octets)
+[OK] lib\qpdf\qpdf.exe (19456 octets)
+[OK] lib\SQLite.Interop.dll
+[OK] templates\CertificatDeDestruction.xlsx
+[OK] templates\BilanDeCollecte.xlsx
+[OK] templates\CeaPointsDeCollectes.xlsx
+[OK] templates\FT.xlsx
