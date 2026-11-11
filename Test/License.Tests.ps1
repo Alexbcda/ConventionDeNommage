@@ -104,3 +104,28 @@ Describe 'License module (etape 1)' {
         }
     }
 }
+
+Describe 'License wiring in Main.ps1 (etape 2)' {
+
+    BeforeAll {
+        $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+        $script:MainPs1Path = Join-Path $repoRoot 'src\Main.ps1'
+        $script:MainContent = Get-Content -LiteralPath $script:MainPs1Path -Raw -Encoding UTF8
+    }
+
+    It 'Main.ps1 dot-source License.ps1' {
+        ($script:MainContent -match 'Core\\License\.ps1') | Should Be $true
+    }
+
+    It 'Main.ps1 appelle Get-LicenseStatus avant Start-GUI' {
+        $idxStatus = $script:MainContent.IndexOf('Get-LicenseStatus')
+        $idxGui = $script:MainContent.IndexOf('Start-GUI')
+        ($idxStatus -ge 0) | Should Be $true
+        ($idxGui -ge 0) | Should Be $true
+        ($idxStatus -lt $idxGui) | Should Be $true
+    }
+
+    It 'Main.ps1 appelle Set-LicenseLastSeenUtc' {
+        ($script:MainContent -match 'Set-LicenseLastSeenUtc') | Should Be $true
+    }
+}

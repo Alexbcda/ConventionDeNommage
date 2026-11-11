@@ -133,6 +133,7 @@ function Write-AssistantRenameOnlyLog {
 # Styles apres UiText (Convert-ToUiText sur libelles boutons).
 . "$scriptPath\Common\Styles.ps1"
 . "$scriptPath\Core\Logger.ps1"
+. "$scriptPath\Core\License.ps1"
 Write-Log "[MAIN] Application start" "INFO" @{ scriptPath = $scriptPath; compiledExe = $script:IsCompiledExe }
 Write-AssistantStartupMark -Phase 'config_styles_logger'
 
@@ -200,6 +201,113 @@ if (-not $script:AssistantRenameOnly) {
 else {
     Write-AssistantRenameOnlyLog 'Skip Initialize-Database / ConfigManager'
     Write-AssistantStartupMark -Phase 'database_init_skipped'
+}
+
+# ============================================
+# 2b. VERIFICATION LICENCE (normal + RenameOnly)
+# ============================================
+function Get-LicenseAlertShownPath {
+    return (Join-Path (Get-LicenseDirectory) 'alert-shown.txt')
+}
+
+function Test-LicenseAlertShownToday {
+    $path = Get-LicenseAlertShownPath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
+    try {
+        $raw = (Get-Content -LiteralPath $path -Raw -Encoding UTF8).Trim()
+        $shownDay = [datetime]::ParseExact($raw, 'yyyy-MM-dd', $null).Date
+        return ($shownDay -eq [datetime]::UtcNow.Date)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Set-LicenseAlertShownToday {
+    Ensure-LicenseDirectory | Out-Null
+    Set-Content -LiteralPath (Get-LicenseAlertShownPath) -Value ([datetime]::UtcNow.ToString('yyyy-MM-dd')) -Encoding UTF8
+}
+
+function Show-AssistantLicenseMessage {
+    param([Parameter(Mandatory = $true)]$StatusObject)
+    $preferHost = ($true -eq $global:SuppressConsoleOutput)
+    if ($preferHost) {
+        Write-Host ('[Licence ASSISTANT] {0}' -f [string]$StatusObject.Message) -ForegroundColor Yellow
+        return
+    }
+    Show-LicenseAlert -StatusObject $StatusObject
+}
+
+$licenseStatus = Get-LicenseStatus
+Write-Log '[MAIN] Licence status' 'INFO' @{ status = [string]$licenseStatus.Status }
+
+switch ([string]$licenseStatus.Status) {
+    'Valid' {
+        $today = [datetime]::UtcNow.Date
+        $expiresDate = $null
+        if ($null -ne $licenseStatus.ExpiresOn) {
+            $expiresDate = ([datetime]$licenseStatus.ExpiresOn).ToUniversalTime().Date
+        }
+        $dueAlerts = @()
+        if ($null -ne $expiresDate -and $today -lt $expiresDate -and $null -ne $licenseStatus.AlertDates) {
+            foreach ($ad in @($licenseStatus.AlertDates)) {
+                try {
+                    $adDate = ([datetime]$ad).ToUniversalTime().Date
+                    if ($today -ge $adDate) { $dueAlerts += $adDate }
+                }
+                catch { }
+            }
+        }
+        if ($dueAlerts.Count -gt 0 -and -not (Test-LicenseAlertShownToday)) {
+            $latest = ($dueAlerts | Sort-Object -Descending | Select-Object -First 1)
+            $alertMsg = ("Rappel licence ASSISTANT : expiration le {0:yyyy-MM-dd} (alerte du {1:yyyy-MM-dd}). Contactez votre administrateur pour renouveler." -f $expiresDate, $latest)
+            Show-AssistantLicenseMessage -StatusObject ([pscustomobject]@{
+                    Status     = 'Valid'
+                    Message    = $alertMsg
+                    ExpiresOn  = $licenseStatus.ExpiresOn
+                    Customer   = $licenseStatus.Customer
+                    AlertDates = $licenseStatus.AlertDates
+                })
+            Set-LicenseAlertShownToday
+        }
+        Set-LicenseLastSeenUtc -UtcDateTime ([datetime]::UtcNow)
+        Write-AssistantStartupMark -Phase 'license_ok'
+    }
+    'Expired' {
+        Show-AssistantLicenseMessage -StatusObject ([pscustomobject]@{
+                Status  = 'Expired'
+                Message = 'Licence expiree. Contactez votre administrateur pour renouveler.'
+            })
+        exit 1
+    }
+    'Missing' {
+        Show-AssistantLicenseMessage -StatusObject ([pscustomobject]@{
+                Status  = 'Missing'
+                Message = 'Licence absente. Contactez votre administrateur pour obtenir une licence.'
+            })
+        exit 1
+    }
+    'Invalid' {
+        Show-AssistantLicenseMessage -StatusObject ([pscustomobject]@{
+                Status  = 'Invalid'
+                Message = 'Licence invalide ou corrompue. Contactez votre administrateur.'
+            })
+        exit 1
+    }
+    'Suspect' {
+        Show-AssistantLicenseMessage -StatusObject ([pscustomobject]@{
+                Status  = 'Suspect'
+                Message = 'Date systeme suspecte. Verifiez l''horloge de votre poste.'
+            })
+        exit 1
+    }
+    default {
+        Show-AssistantLicenseMessage -StatusObject ([pscustomobject]@{
+                Status  = 'Invalid'
+                Message = 'Licence invalide ou corrompue. Contactez votre administrateur.'
+            })
+        exit 1
+    }
 }
 
 # ============================================
