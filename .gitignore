@@ -25,3 +25,9 @@ $ps
 # Système
 Thumbs.db
 .DS_Store
+# Licence ASSISTANT - clés privées et secrets (ne jamais committer)
+*.pem
+*.key
+.assistant-license/
+secrets.*
+.env
