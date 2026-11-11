@@ -744,6 +744,27 @@ if ($script:InstallCopyFailures.Count -gt 0) {
 $copiedCount = (Get-ChildItem -LiteralPath $InstallDir -Recurse -File -Force | Measure-Object).Count
 Write-InstallStep "Copie terminee ($copiedCount fichiers)" 'Green'
 
+Write-InstallStep 'Licence ASSISTANT...'
+$licenseDir = Join-Path $env:LOCALAPPDATA 'ASSISTANT\license'
+$licenseDest = Join-Path $licenseDir 'license.lic'
+$licenseSrc = Join-Path $packageDir 'license\license.lic'
+if (-not (Test-Path -LiteralPath $licenseDir)) {
+    $null = New-Item -ItemType Directory -Path $licenseDir -Force
+    Write-InstallStep "Dossier cree : $licenseDir"
+}
+if (Test-Path -LiteralPath $licenseSrc -PathType Leaf) {
+    if (Test-Path -LiteralPath $licenseDest -PathType Leaf) {
+        Write-InstallStep 'Licence existante conservee (pas d''ecrasement).' 'Yellow'
+    }
+    else {
+        Copy-Item -LiteralPath $licenseSrc -Destination $licenseDest -Force
+        Write-InstallStep "Licence installee : $licenseDest" 'Green'
+    }
+}
+else {
+    Write-InstallStep 'license\license.lic absent du package — l''app affichera Licence absente au premier lancement.' 'Yellow'
+}
+
 if (Ensure-InstallPopplerLayout -InstallRoot $InstallDir) {
     Write-InstallStep 'pdftotext.exe disponible dans runtime\poppler\' 'Green'
 }

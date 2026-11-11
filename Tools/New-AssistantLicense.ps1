@@ -61,13 +61,12 @@ if (-not (Test-Path -LiteralPath $PrivateKeyPath -PathType Leaf)) {
 
 $expiresUtc = [datetime]::SpecifyKind($ExpiresOn.ToUniversalTime(), [DateTimeKind]::Utc)
 if ($AlertDates.Count -eq 0) {
-    $y = $expiresUtc.Year
+    # Relatif a la date d'expiration reelle (UTC), pas a la date de generation.
+    $expDate = $expiresUtc.Date
     $AlertDates = @(
-        [datetime]::SpecifyKind([datetime]::new($y, 5, 10, 0, 0, 0, [DateTimeKind]::Utc), [DateTimeKind]::Utc)
-        [datetime]::SpecifyKind([datetime]::new($y, 5, 20, 0, 0, 0, [DateTimeKind]::Utc), [DateTimeKind]::Utc)
-        [datetime]::SpecifyKind([datetime]::new($y, 5, 26, 0, 0, 0, [DateTimeKind]::Utc), [DateTimeKind]::Utc)
-        [datetime]::SpecifyKind([datetime]::new($y, 5, 27, 0, 0, 0, [DateTimeKind]::Utc), [DateTimeKind]::Utc)
-        [datetime]::SpecifyKind([datetime]::new($y, 5, 28, 0, 0, 0, [DateTimeKind]::Utc), [DateTimeKind]::Utc)
+        [datetime]::SpecifyKind($expDate.AddDays(-30), [DateTimeKind]::Utc)
+        [datetime]::SpecifyKind($expDate.AddDays(-15), [DateTimeKind]::Utc)
+        [datetime]::SpecifyKind($expDate.AddDays(-5), [DateTimeKind]::Utc)
     )
 }
 

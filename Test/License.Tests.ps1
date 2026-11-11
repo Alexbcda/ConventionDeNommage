@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 Describe 'License module (etape 1)' {
 
     BeforeAll {
@@ -153,8 +153,11 @@ Describe 'License alerts and clock (etape 3)' {
         $script:OutilsContent = Get-Content -LiteralPath $script:OutilsPanelPath -Raw -Encoding UTF8
 
         $script:AlertLic = Join-Path $script:TestRoot3 'alerts.lic'
-        & $script:LicenseTool -Customer 'Alert SA' -ExpiresOn ([datetime]'2027-06-01') `
+        # UTC explicite pour eviter le decalage local → UTC
+        & $script:LicenseTool -Customer 'Alert SA' -ExpiresOn ([datetime]::SpecifyKind([datetime]'2027-06-01', [DateTimeKind]::Utc)) `
             -PrivateKeyPath $script:PrivateKeyPath3 -OutputPath $script:AlertLic | Out-Null
+        $script:AlertExpiresUtc = [datetime]::SpecifyKind([datetime]'2027-06-01', [DateTimeKind]::Utc).Date
+        $script:RepoRoot = $repoRoot
     }
 
     AfterAll {
@@ -174,30 +177,33 @@ Describe 'License alerts and clock (etape 3)' {
         Copy-Item -LiteralPath $script:AlertLic -Destination (Get-LicenseFilePath) -Force
     }
 
-    It 'Alerte 10 mai -> Information' {
-        $s = Get-LicenseStatus -UtcNow ([datetime]'2027-05-10T12:00:00Z')
-        $a = Get-LicenseRenewalAlert -LicenseStatus $s -UtcNow ([datetime]'2027-05-10T12:00:00Z')
+    It 'Alerte J-20 (apres J-30) -> Information' {
+        $now = [datetime]::SpecifyKind($script:AlertExpiresUtc.AddDays(-20).AddHours(12), [DateTimeKind]::Utc)
+        $s = Get-LicenseStatus -UtcNow $now
+        $a = Get-LicenseRenewalAlert -LicenseStatus $s -UtcNow $now
         $a | Should Not BeNullOrEmpty
         $a.Severity | Should Be 'Information'
         ($a.Message -match 'Pensez') | Should Be $true
     }
 
-    It 'Alerte 20 mai -> Warning' {
-        $s = Get-LicenseStatus -UtcNow ([datetime]'2027-05-20T12:00:00Z')
-        $a = Get-LicenseRenewalAlert -LicenseStatus $s -UtcNow ([datetime]'2027-05-20T12:00:00Z')
+    It 'Alerte J-10 (apres J-15) -> Warning' {
+        $now = [datetime]::SpecifyKind($script:AlertExpiresUtc.AddDays(-10).AddHours(12), [DateTimeKind]::Utc)
+        $s = Get-LicenseStatus -UtcNow $now
+        $a = Get-LicenseRenewalAlert -LicenseStatus $s -UtcNow $now
         $a.Severity | Should Be 'Warning'
         ($a.Message -match '15 jours') | Should Be $true
     }
 
-    It 'Alerte 26 mai -> Error' {
-        $s = Get-LicenseStatus -UtcNow ([datetime]'2027-05-26T12:00:00Z')
-        $a = Get-LicenseRenewalAlert -LicenseStatus $s -UtcNow ([datetime]'2027-05-26T12:00:00Z')
+    It 'Alerte J-3 (apres J-5) -> Error' {
+        $now = [datetime]::SpecifyKind($script:AlertExpiresUtc.AddDays(-3).AddHours(12), [DateTimeKind]::Utc)
+        $s = Get-LicenseStatus -UtcNow $now
+        $a = Get-LicenseRenewalAlert -LicenseStatus $s -UtcNow $now
         $a.Severity | Should Be 'Error'
         ($a.Message -match '5 jours') | Should Be $true
     }
 
     It 'Memorisation : une seule alerte par jour (alert-shown.txt)' {
-        $now = [datetime]'2027-05-20T12:00:00Z'
+        $now = [datetime]::SpecifyKind($script:AlertExpiresUtc.AddDays(-10).AddHours(12), [DateTimeKind]::Utc)
         $s = Get-LicenseStatus -UtcNow $now
         $a1 = Get-LicenseRenewalAlert -LicenseStatus $s -UtcNow $now
         $a1 | Should Not BeNullOrEmpty
@@ -225,5 +231,28 @@ Describe 'License alerts and clock (etape 3)' {
         ($script:OutilsContent -match 'btnImportLicence') | Should Be $true
         ($script:OutilsContent -match 'Importer la licence') | Should Be $true
         ($script:OutilsContent -match 'Import-LicenseFile') | Should Be $true
+    }
+
+    It 'AlertDates par defaut : relatifs a ExpiresOn (J-30/J-15/J-5)' {
+        $out = Join-Path $script:TestRoot3 'relative-alerts.lic'
+        $exp = [datetime]::SpecifyKind([datetime]'2027-12-01', [DateTimeKind]::Utc)
+        & $script:LicenseTool -Customer 'Rel SA' -ExpiresOn $exp `
+            -PrivateKeyPath $script:PrivateKeyPath3 -OutputPath $out | Out-Null
+        Copy-Item -LiteralPath $out -Destination (Get-LicenseFilePath) -Force
+        $s = Get-LicenseStatus -UtcNow ([datetime]::SpecifyKind([datetime]'2027-06-01', [DateTimeKind]::Utc))
+        $s.Status | Should Be 'Valid'
+        $dates = @($s.AlertDates | ForEach-Object { ([datetime]$_).ToUniversalTime().Date.ToString('yyyy-MM-dd') })
+        $dates -contains '2027-11-01' | Should Be $true
+        $dates -contains '2027-11-16' | Should Be $true
+        $dates -contains '2027-11-26' | Should Be $true
+        $dates.Count | Should Be 3
+    }
+
+    It 'install_assistant.ps1 : copie license.lic vers LOCALAPPDATA sans ecrasement' {
+        $installPath = Join-Path $script:RepoRoot 'install_assistant.ps1'
+        $content = Get-Content -LiteralPath $installPath -Raw -Encoding UTF8
+        ($content -match 'Join-Path \$env:LOCALAPPDATA ''ASSISTANT\\license''') | Should Be $true
+        ($content -match 'Licence existante conservee') | Should Be $true
+        ($content -match 'license\\license\.lic') | Should Be $true
     }
 }

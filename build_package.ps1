@@ -617,6 +617,21 @@ else {
     Write-BuildWarn 'Dossier templates/ introuvable a la racine du projet.'
 }
 
+Write-BuildStep 'Copie de la licence de deploiement (optionnel)'
+$deployLicenseSrc = Join-Path $repoRoot 'deploy\license\license.lic'
+$packageLicenseDir = Join-Path $outputPath 'license'
+$packageLicenseDest = Join-Path $packageLicenseDir 'license.lic'
+if (Test-Path -LiteralPath $deployLicenseSrc -PathType Leaf) {
+    if (-not (Test-Path -LiteralPath $packageLicenseDir)) {
+        $null = New-Item -ItemType Directory -Path $packageLicenseDir -Force
+    }
+    Copy-Item -LiteralPath $deployLicenseSrc -Destination $packageLicenseDest -Force
+    Write-BuildSuccess 'license\license.lic (depuis deploy\license\)'
+}
+else {
+    Write-BuildWarn 'deploy\license\license.lic absent — package sans licence seed (install affichera un avertissement).'
+}
+
 Write-BuildStep 'Copie du module ImportExcel'
 $importExcelModule = Get-Module -Name ImportExcel -ListAvailable -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($importExcelModule) {
