@@ -5,7 +5,9 @@
 #   Plaque sur la ligne du dessus, collecteur dans la colonne de gauche de la même ligne.
 #   1er service du véhicule = Matin, 2e = Après-midi, 3e = 3ème service. L'heure ne fait que contrôler.
 # - Date affichée : première date reconnue au-dessus du bloc si présente, sinon FallbackVisitDate.
-# - Tournées SB : ancien modèle seulement.
+# - Tournées SB : ancien modèle (sans clients) ; nouveau modèle = tout marqueur "Début de journée"
+#   / heure seule crée un segment (garde+bilan). IsSbTour = aucune instruction (métadonnée seule).
+#   InstructionLines rempli si contenu DATE sans (id) Nom (ex. ROVALTERRE).
 
 function NormalizeText {
     <#
@@ -498,19 +500,64 @@ function Get-CnsTourneePrimaryTextFromExcelOrderSlot {
     return $null
 }
 
+function Test-CnsExcelCellIsHourOnlyMarker {
+    <#
+    .SYNOPSIS
+        Cellule DATE = heure seule (ex: 13H30, 7H, 13:30), sans "Début de journée".
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$CellRaw)
+    $cell = (NormalizeText -TextIn $CellRaw).Trim()
+    if ([string]::IsNullOrWhiteSpace($cell)) { return $false }
+    if ($cell -match '(?i)d[eé]but\s+de\s+journ[eé]e') { return $false }
+    if ($cell -match '(?i)^\d{1,2}\s*[hH]\s*\d{0,2}$') { return $true }
+    if ($cell -match '^\d{1,2}:\d{2}$') { return $true }
+    return $false
+}
+
 function Test-CnsExcelCellIsDebutJournee {
     param([AllowNull()][AllowEmptyString()][string]$CellRaw)
     $cell = (NormalizeText -TextIn $CellRaw).Trim()
     if ([string]::IsNullOrWhiteSpace($cell)) { return $false }
-    return ($cell -match '(?i)d[eé]but\s+de\s+journ[eé]e')
+    if ($cell -match '(?i)d[eé]but\s+de\s+journ[eé]e') { return $true }
+    # Évolution future : cellule DATE = heure seule (ex: 13H30, 7H, 13:30).
+    return (Test-CnsExcelCellIsHourOnlyMarker -CellRaw $cell)
+}
+
+function Get-CnsExcelDebutJourneeTime {
+    <#
+    .SYNOPSIS
+        Heure (+ minutes optionnelles) depuis "Début de journée …" ou heure seule.
+        Retourne @{ Hour; Minute; Display } ou $null.
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$CellRaw)
+    $cell = (NormalizeText -TextIn $CellRaw).Trim()
+    if ([string]::IsNullOrWhiteSpace($cell)) { return $null }
+
+    $m = [regex]::Match($cell, '(?i)d[eé]but\s+de\s+journ[eé]e\s+(\d{1,2})\s*[hH]?\s*:?\s*(\d{2})?')
+    if (-not $m.Success) {
+        $m = [regex]::Match($cell, '(?i)^(\d{1,2})\s*[hH]\s*(\d{2})?$')
+    }
+    if (-not $m.Success) {
+        $m = [regex]::Match($cell, '^(\d{1,2}):(\d{2})$')
+    }
+    if (-not $m.Success) { return $null }
+
+    [int]$h = 0
+    [int]$min = 0
+    try { $h = [int]$m.Groups[1].Value } catch { return $null }
+    if ($m.Groups.Count -gt 2 -and $m.Groups[2].Success -and -not [string]::IsNullOrWhiteSpace([string]$m.Groups[2].Value)) {
+        try { $min = [int]$m.Groups[2].Value } catch { $min = 0 }
+    }
+    if ($h -lt 0 -or $h -gt 23 -or $min -lt 0 -or $min -gt 59) { return $null }
+    [string]$display = if ($min -gt 0) { ('{0}H{1}' -f $h, $min.ToString('00')) } else { ('{0}H' -f $h) }
+    return [pscustomobject]@{ Hour = $h; Minute = $min; Display = $display }
 }
 
 function Get-CnsExcelDebutJourneeHour {
     param([AllowNull()][AllowEmptyString()][string]$CellRaw)
-    $cell = (NormalizeText -TextIn $CellRaw).Trim()
-    $m = [regex]::Match($cell, '(?i)d[eé]but\s+de\s+journ[eé]e\s+(\d{1,2})')
-    if (-not $m.Success) { return $null }
-    return [int]$m.Groups[1].Value
+    $t = Get-CnsExcelDebutJourneeTime -CellRaw $CellRaw
+    if ($null -eq $t) { return $null }
+    return [int]$t.Hour
 }
 
 function Get-CnsExcelImmatriculationToken {
@@ -570,7 +617,22 @@ function Add-CnsExcelDebutJourneeTourStarts {
     $markerRows = [System.Collections.Generic.List[int]]::new()
     for ($r = [int]$StartZero; $r -le [int]$MaxZ; $r++) {
         $cell = Get-PlanningGridCellRaw -Sheet $Sheet -RowZeroBased $r -ColZeroBased $ColZeroDate -SheetColCount $SheetColCount
-        if (Test-CnsExcelCellIsDebutJournee -CellRaw $cell) { [void]$markerRows.Add($r) }
+        if (-not (Test-CnsExcelCellIsDebutJournee -CellRaw $cell)) { continue }
+        # Heure seule : exiger un collecteur à gauche (évite faux positifs).
+        if (Test-CnsExcelCellIsHourOnlyMarker -CellRaw $cell) {
+            $leftRaw = ''
+            if ($ColLeftMeta -ge 0) {
+                $leftRaw = (NormalizeText -TextIn (Get-PlanningGridCellRaw -Sheet $Sheet -RowZeroBased $r -ColZeroBased $ColLeftMeta -SheetColCount $SheetColCount)).Trim()
+            }
+            if ([string]::IsNullOrWhiteSpace($leftRaw)) { continue }
+            if (Get-Command Test-CnsExcelTourneeMetaIsSentinel -ErrorAction SilentlyContinue) {
+                if (Test-CnsExcelTourneeMetaIsSentinel -Text $leftRaw) { continue }
+            }
+            if (Get-Command Test-CnsExcelTourneeMetaLooksLikeVehicule -ErrorAction SilentlyContinue) {
+                if (Test-CnsExcelTourneeMetaLooksLikeVehicule -Text $leftRaw) { continue }
+            }
+        }
+        [void]$markerRows.Add($r)
     }
 
     [string]$currentPlaque = ''
@@ -584,7 +646,10 @@ function Add-CnsExcelDebutJourneeTourStarts {
         [int]$row = $markerRows[$i]
         [int]$nextRow = if ($i + 1 -lt $markerRows.Count) { $markerRows[$i + 1] } else { $MaxZ + 1 }
         $markerCell = Get-PlanningGridCellRaw -Sheet $Sheet -RowZeroBased $row -ColZeroBased $ColZeroDate -SheetColCount $SheetColCount
-        $hour = Get-CnsExcelDebutJourneeHour -CellRaw $markerCell
+        $debutTime = Get-CnsExcelDebutJourneeTime -CellRaw $markerCell
+        $hour = if ($null -eq $debutTime) { $null } else { [int]$debutTime.Hour }
+        $minute = if ($null -eq $debutTime) { 0 } else { [int]$debutTime.Minute }
+        $hourDisplay = if ($null -eq $debutTime) { '-' } else { [string]$debutTime.Display }
 
         # Nouveau modèle : plaque + numéro de parc Excel entre parenthèses (ex: "FR-418-CS (13)" -> "13").
         [string]$plateToken = ''
@@ -611,8 +676,14 @@ function Add-CnsExcelDebutJourneeTourStarts {
         if ($ColLeftMeta -ge 0) {
             $rawCollector = (NormalizeText -TextIn (Get-PlanningGridCellRaw -Sheet $Sheet -RowZeroBased $row -ColZeroBased $ColLeftMeta -SheetColCount $SheetColCount)).Trim()
         }
+        [bool]$collectorNamedOnThisMarker = $false
         if (-not [string]::IsNullOrWhiteSpace($rawCollector)) {
             $currentCollector = $rawCollector
+            $collectorNamedOnThisMarker = $true
+        }
+        else {
+            # Défense : ne pas hériter du collecteur précédent (ex. Franck) sur un marqueur sans nom.
+            $currentCollector = ''
         }
 
         [string]$rankLabel = Get-CnsExcelServiceLabelFromRank -Rank $serviceRank
@@ -625,6 +696,8 @@ function Add-CnsExcelDebutJourneeTourStarts {
 
         [int]$firstClientZ = -1
         [int]$lastClientZ = -1
+        [int]$firstContentZ = -1
+        [int]$lastContentZ = -1
         [int]$emptyStreak = 0
         for ($u = $row + 1; $u -lt $nextRow; $u++) {
             $cellU = Get-PlanningGridCellRaw -Sheet $Sheet -RowZeroBased $u -ColZeroBased $ColZeroDate -SheetColCount $SheetColCount
@@ -636,12 +709,60 @@ function Add-CnsExcelDebutJourneeTourStarts {
             }
             $emptyStreak = 0
             if (Test-CnsExcelCellIsDebutJournee -CellRaw $cellU) { break }
+            # Contenu DATE non vide (mission libre éventuelle) — n'altère pas le critère (id) Nom.
+            if ($firstContentZ -lt 0) { $firstContentZ = $u }
+            $lastContentZ = $u
             if (Test-PlanningExcelDateColumnHasClientLine -CellRaw $cellU) {
                 if ($firstClientZ -lt 0) { $firstClientZ = $u }
                 $lastClientZ = $u
             }
         }
-        if ($firstClientZ -lt 0) { continue }
+        # Marqueur orphelin (régression Franck) : pas de (id), pas d'instruction, pas de nom à gauche
+        # → ignorer comme avant le continue historique. Sinon : ODM / mission libre / SB nommé.
+        if ($firstClientZ -lt 0 -and $firstContentZ -lt 0 -and -not $collectorNamedOnThisMarker) {
+            continue
+        }
+
+        # Sans (id) Nom : segment si instruction libre (Raphaël) ou SB nommé (nom à gauche).
+        [bool]$noOdmClient = ($firstClientZ -lt 0)
+        $instructionLines = [System.Collections.Generic.List[string]]::new()
+        if ($noOdmClient) {
+            if ($firstContentZ -ge 0) {
+                $firstClientZ = $firstContentZ
+                $lastClientZ = $lastContentZ
+                for ($ix = $firstContentZ; $ix -le $lastContentZ; $ix++) {
+                    $rawInst = [string](Get-PlanningGridCellRaw -Sheet $Sheet -RowZeroBased $ix -ColZeroBased $ColZeroDate -SheetColCount $SheetColCount)
+                    $leftInst = ''
+                    if ($ColLeftMeta -ge 0) {
+                        $leftInst = (NormalizeText -TextIn (Get-PlanningGridCellRaw -Sheet $Sheet -RowZeroBased $ix -ColZeroBased $ColLeftMeta -SheetColCount $SheetColCount)).Trim()
+                    }
+                    foreach ($ln in @($rawInst -split "`r`n|`n|`r")) {
+                        $tln = (NormalizeText -TextIn $ln).Trim()
+                        if ([string]::IsNullOrWhiteSpace($tln)) { continue }
+                        $label = ($tln -split '\|')[0].Trim()
+                        if ([string]::IsNullOrWhiteSpace($label)) { continue }
+                        $looksLikeVeh = $false
+                        if (-not [string]::IsNullOrWhiteSpace($leftInst) -and (Get-Command Test-CnsExcelTourneeMetaLooksLikeVehicule -ErrorAction SilentlyContinue)) {
+                            $looksLikeVeh = [bool](Test-CnsExcelTourneeMetaLooksLikeVehicule -Text $leftInst)
+                        }
+                        if (-not [string]::IsNullOrWhiteSpace($leftInst) -and -not $looksLikeVeh) {
+                            [void]$instructionLines.Add(('{0} — {1}' -f $leftInst, $label))
+                        }
+                        else {
+                            [void]$instructionLines.Add($label)
+                        }
+                        break
+                    }
+                }
+            }
+            else {
+                # Marqueur seul : ancrage sur la ligne collecteur / Début de journée.
+                $firstClientZ = $row
+                $lastClientZ = $row
+            }
+        }
+        # Métadonnée seulement : n'empêche jamais garde/bilan.
+        [bool]$isSbTourFlag = $noOdmClient -and ($instructionLines.Count -eq 0)
 
         [string]$collecteur = $currentCollector
         if ([string]::IsNullOrWhiteSpace($collecteur)) { $collecteur = 'INCONNU' }
@@ -651,7 +772,12 @@ function Add-CnsExcelDebutJourneeTourStarts {
         [bool]$structOk = (-not [string]::IsNullOrWhiteSpace($currentCollector)) -and (-not [string]::IsNullOrWhiteSpace($currentPlaque))
 
         [string]$perspective = $rankLabel
-        Write-Host ("[EXCEL-PARSE] Service {0} L{1}-L{2} Collecteur={3} Plaque={4} Parc={5} Rang={6} Debut={7}" -f $rankLabel, ($firstClientZ + 1), ($lastClientZ + 1), $collecteur, $currentPlaque, $currentParc, $serviceRank, $(if ($null -eq $hour) { '-' } else { '{0}H' -f $hour })) -ForegroundColor Cyan
+        if ($noOdmClient) {
+            Write-Host ("[EXCEL-PARSE] Service {0} L{1}-L{2} Collecteur={3} Plaque={4} Parc={5} Rang={6} Debut={7} NoODM=True SB={8} Instructions={9}" -f $rankLabel, ($firstClientZ + 1), ($lastClientZ + 1), $collecteur, $currentPlaque, $currentParc, $serviceRank, $hourDisplay, $isSbTourFlag, $instructionLines.Count) -ForegroundColor Magenta
+        }
+        else {
+            Write-Host ("[EXCEL-PARSE] Service {0} L{1}-L{2} Collecteur={3} Plaque={4} Parc={5} Rang={6} Debut={7}" -f $rankLabel, ($firstClientZ + 1), ($lastClientZ + 1), $collecteur, $currentPlaque, $currentParc, $serviceRank, $hourDisplay) -ForegroundColor Cyan
+        }
         [void]$TourStarts.Add([pscustomobject]@{
             SortRowOneBased        = [int]($firstClientZ + 1)
             FirstClientRowOneBased = [int]($firstClientZ + 1)
@@ -665,9 +791,11 @@ function Add-CnsExcelDebutJourneeTourStarts {
             ServiceLabel           = $rankLabel
             ServiceRank            = [int]$serviceRank
             ServiceDebutHour       = $hour
+            ServiceDebutMinute     = [int]$minute
             Perspective            = $perspective
             TourneeComplete        = [bool]$structOk
-            IsSbTour               = $false
+            IsSbTour               = [bool]$isSbTourFlag
+            InstructionLines       = @($instructionLines.ToArray())
         })
     }
 }
@@ -893,8 +1021,15 @@ function Get-PlanningExcelTourneeCoverSegments {
             }
         }
 
+        $instCountCreate = 0
+        if ($null -ne $ts.PSObject.Properties['InstructionLines'] -and $null -ne $ts.InstructionLines) {
+            $instCountCreate = @($ts.InstructionLines).Count
+        }
         if ($isSb) {
-            Write-Host ("[TOURNEE-CREATE] Segment={0} SB (sans ODM) L{1} Complete={2} Collecteur={3} Vehicule={4}" -f ($segments.Count + 1), $lo1, $ts.TourneeComplete, $collecteurSeg, $vehiculeSeg) -ForegroundColor Magenta
+            Write-Host ("[TOURNEE-CREATE] Segment={0} SB (aucune instruction) L{1} Complete={2} Collecteur={3} Vehicule={4}" -f ($segments.Count + 1), $lo1, $ts.TourneeComplete, $collecteurSeg, $vehiculeSeg) -ForegroundColor Magenta
+        }
+        elseif ($instCountCreate -gt 0 -and $orderList.Count -eq 0) {
+            Write-Host ("[TOURNEE-CREATE] Segment={0} MissionLibre L{1}-L{2} Complete={3} Instructions={4} Service={5} Plaque={6}" -f ($segments.Count + 1), $lo1, $hi1, $ts.TourneeComplete, $instCountCreate, $(try { [string]$ts.ServiceLabel } catch { '' }), $(try { [string]$ts.Plaque } catch { '' })) -ForegroundColor Magenta
         }
         else {
             Write-Host ("[TOURNEE-CREATE] Segment={0} Clients L{1}-L{2} Complete={3} OrderCount={4} Service={5} Plaque={6}" -f ($segments.Count + 1), $lo1, $hi1, $ts.TourneeComplete, $orderList.Count, $(try { [string]$ts.ServiceLabel } catch { '' }), $(try { [string]$ts.Plaque } catch { '' })) -ForegroundColor Magenta
@@ -917,6 +1052,15 @@ function Get-PlanningExcelTourneeCoverSegments {
         if ($null -ne $ts.PSObject.Properties['ServiceDebutHour'] -and $null -ne $ts.ServiceDebutHour) {
             try { $debutHourSeg = [int]$ts.ServiceDebutHour } catch { $debutHourSeg = $null }
         }
+        [int]$debutMinuteSeg = 0
+        if ($null -ne $ts.PSObject.Properties['ServiceDebutMinute'] -and $null -ne $ts.ServiceDebutMinute) {
+            try { $debutMinuteSeg = [int]$ts.ServiceDebutMinute } catch { $debutMinuteSeg = 0 }
+        }
+
+        $instructionLinesSeg = @()
+        if ($null -ne $ts.PSObject.Properties['InstructionLines'] -and $null -ne $ts.InstructionLines) {
+            $instructionLinesSeg = @($ts.InstructionLines)
+        }
 
         [void]$segments.Add([pscustomobject]@{
             SegmentIndex    = ($segments.Count + 1)
@@ -927,6 +1071,7 @@ function Get-PlanningExcelTourneeCoverSegments {
             ServiceLabel      = $serviceSeg
             ServiceRank       = $rankSeg
             ServiceDebutHour  = $debutHourSeg
+            ServiceDebutMinute = $debutMinuteSeg
             Perspective       = $perspectiveSeg
             TourDate          = $ts.TourDate
             DisplayDateJM     = [string]$ts.DisplayDateJM
@@ -934,6 +1079,7 @@ function Get-PlanningExcelTourneeCoverSegments {
             TourneeComplete   = [bool]$ts.TourneeComplete
             SpecialFlags      = @($specialAgg.ToArray())
             IsSbTour          = [bool]$isSb
+            InstructionLines  = @($instructionLinesSeg)
             SortRowOneBased   = $(try { [int]$ts.SortRowOneBased } catch { $lo1 })
         })
     }
@@ -979,6 +1125,7 @@ function Get-PlanningExcelTourneeCoverSegments {
             ServiceLabel      = ''
             ServiceRank       = 0
             ServiceDebutHour  = $null
+            ServiceDebutMinute = 0
             Perspective       = ''
             TourDate          = $FallbackVisitDate.Date
             DisplayDateJM     = $fd
@@ -986,6 +1133,7 @@ function Get-PlanningExcelTourneeCoverSegments {
             TourneeComplete   = $false
             SpecialFlags      = @($specialFb.ToArray())
             IsSbTour          = $false
+            InstructionLines  = @()
             SortRowOneBased   = 0
         })
     }

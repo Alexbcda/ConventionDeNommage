@@ -248,6 +248,415 @@ function Get-CnsStep5RawLinesForPhysicalPage {
     return $null
 }
 
+function ConvertTo-CnsFtBracketDisplayLabel {
+    <#
+    .SYNOPSIS
+        Nettoie le libelle FT : garde UNIQUEMENT le texte avant le premier [ (ASCII ou pleine chasse).
+    .EXAMPLE
+        "FT CHAMBERY GRAND VERGER [2953] - N°8785" -> "FT CHAMBERY GRAND VERGER"
+    #>
+    param(
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$RawLabel
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RawLabel)) {
+        return ''
+    }
+
+    $t = [string]$RawLabel.Trim()
+
+    if ($t -match '^(.*?)\s*[\[［].*$') {
+        $t = $Matches[1].Trim()
+    }
+
+    $t = [regex]::Replace($t, '\s+', ' ').Trim()
+
+    if (Get-Command Repair-CnsClientNumeroSignText -ErrorAction SilentlyContinue) {
+        $t = Repair-CnsClientNumeroSignText -Text $t
+    }
+    $t = $t -replace '(?i)&apos;', "'"
+
+    return $t
+}
+
+function Test-CnsFtCollectionPointLabelEligible {
+    <#
+    .SYNOPSIS
+        Vrai si le libelle point de collecte commence par FT (insensible a la casse).
+    #>
+    param(
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$Label
+    )
+    if ([string]::IsNullOrWhiteSpace($Label)) { return $false }
+    return ([string]$Label).Trim() -match '(?i)^FT\s+'
+}
+
+function Test-CnsBioDechetsLabelEligible {
+    <#
+    .SYNOPSIS
+        Vrai si le texte ODM mentionne "Collecte de Bio dechets" (casse/accents indifferents).
+    .NOTES
+        Etape 1 Bio-dechets : detection seule — une page temporaire sera inseree en STEP 5.
+        Une seule detection par page (appelant deduplique via HashSet RawPage).
+    #>
+    param(
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$Text
+    )
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+    $norm = ConvertTo-CnsMetierMatchNormalizedText -Text $Text
+    if ([string]::IsNullOrWhiteSpace($norm)) { return $false }
+    return [bool]($norm -match 'collecte\s+de\s+bio[\s\-]*dechets?')
+}
+
+function Test-CnsStep5FragSliceRequiresBioDechetsDocument {
+    <#
+    .SYNOPSIS
+        Detection Bio-dechets STEP 5 sur le texte ODM (lignes etape 1, sinon pe.Lines / pdftotext slice).
+    #>
+    param(
+        [AllowNull()][AllowEmptyString()][string]$FragSlicePdfPath,
+        [AllowEmptyCollection()]
+        [string[]]$PrecomputedRawLines = $null,
+        [hashtable]$PdfRawLinesByPage = $null,
+        [int]$RawPageNumOneBased = 0
+    )
+    $candidates = [System.Collections.Generic.List[string[]]]::new()
+    if ($null -ne $PrecomputedRawLines -and @($PrecomputedRawLines).Count -gt 0) {
+        [void]$candidates.Add([string[]]@($PrecomputedRawLines))
+    }
+    if ($RawPageNumOneBased -gt 0) {
+        $fromStep1 = Get-CnsStep5RawLinesForPhysicalPage -PageNumberOneBased $RawPageNumOneBased -PdfRawLinesByPage $PdfRawLinesByPage
+        if ($null -ne $fromStep1 -and @($fromStep1).Count -gt 0) {
+            [void]$candidates.Add([string[]]@($fromStep1))
+        }
+    }
+    if ($candidates.Count -lt 1) {
+        if (-not [string]::IsNullOrWhiteSpace($FragSlicePdfPath) -and (Test-Path -LiteralPath $FragSlicePdfPath -PathType Leaf)) {
+            if (Get-Command Get-CnsStep5PdftotextLinesFromSinglePagePdf -ErrorAction SilentlyContinue) {
+                $fallback = @(Get-CnsStep5PdftotextLinesFromSinglePagePdf -SinglePagePdfPath $FragSlicePdfPath)
+                if ($fallback.Count -gt 0) { [void]$candidates.Add([string[]]$fallback) }
+            }
+        }
+    }
+    if ($candidates.Count -lt 1) { return $false }
+    $hit = $false
+    foreach ($rawLines in @($candidates)) {
+        $blob = (($rawLines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' ')
+        if (Test-CnsBioDechetsLabelEligible -Text $blob) { $hit = $true; break }
+    }
+    if ($hit) {
+        Write-Host ("[STEP5-BIO] Collecte de Bio dechets detectee (page physique {0})" -f $(if ($RawPageNumOneBased -gt 0) { $RawPageNumOneBased } else { (Split-Path -Leaf $FragSlicePdfPath) })) -ForegroundColor DarkCyan
+    }
+    return $hit
+}
+function Resolve-CnsFtCollectionPointLabelOrNull {
+    param(
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$Label,
+        [switch]$FtDebug
+    )
+    if (-not (Test-CnsFtCollectionPointLabelEligible -Label $Label)) {
+        if ($FtDebug -and -not [string]::IsNullOrWhiteSpace($Label)) {
+            Write-Host ("[FT] Label rejete (ne commence pas par FT) : {0}" -f $Label) -ForegroundColor DarkYellow
+        }
+        return $null
+    }
+    return ([string]$Label).Trim()
+}
+
+function Get-CnsFtCollectionPointLabelFromPageEntity {
+    <#
+    .SYNOPSIS
+        Reconstruit le nom du point de collecte FT via ClientNameLines (bbox step 1)
+        et Get-ClientNameFromLines (meme logique que le certificat de destruction).
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        $PageEntity,
+
+        [Parameter(Mandatory = $true)]
+        $WorkOrderEntity,
+
+        [switch]$FtDebug
+    )
+
+    $cnLines = @()
+    if ($PageEntity.PSObject.Properties['ClientNameLines'] -and $null -ne $PageEntity.ClientNameLines) {
+        $cnLines = @($PageEntity.ClientNameLines)
+    }
+
+    if ($FtDebug) {
+        Write-Host ("[FT-DEBUG] ClientNameLines.Count = {0}" -f $cnLines.Count) -ForegroundColor Cyan
+        foreach ($i in 0..($cnLines.Count - 1)) {
+            Write-Host ("[FT-DEBUG] Ligne {0} : {1}" -f $i, $cnLines[$i]) -ForegroundColor Gray
+        }
+    }
+
+    if ($cnLines.Count -lt 1) {
+        if ($FtDebug) { Write-Host '[FT-DEBUG] Pas de ClientNameLines - fallback sur ClientName' -ForegroundColor Yellow }
+        $fallback = [string]$PageEntity.ClientName
+        if (-not [string]::IsNullOrWhiteSpace($fallback)) {
+            return (Resolve-CnsFtCollectionPointLabelOrNull -Label (ConvertTo-CnsFtBracketDisplayLabel -RawLabel $fallback) -FtDebug:$FtDebug)
+        }
+        return $null
+    }
+
+    $hasFtSignal = $false
+    foreach ($line in $cnLines) {
+        if (-not [string]::IsNullOrWhiteSpace($line) -and ([string]$line).Trim() -match '(?i)^FT\s+') {
+            $hasFtSignal = $true
+            break
+        }
+    }
+    if (-not $hasFtSignal) {
+        $clientNameProbe = [string]$PageEntity.ClientName
+        if (-not [string]::IsNullOrWhiteSpace($clientNameProbe) -and $clientNameProbe.Trim() -match '(?i)^FT\s+') {
+            $hasFtSignal = $true
+        }
+    }
+    if (-not $hasFtSignal) {
+        if ($FtDebug) { Write-Host '[FT-DEBUG] Aucun signal FT dans ClientNameLines/ClientName' -ForegroundColor Yellow }
+        return $null
+    }
+
+    $clientId = [string]$WorkOrderEntity.ClientID
+    if ([string]::IsNullOrWhiteSpace($clientId)) {
+        foreach ($line in $cnLines) {
+            if ($line -match '(?i)N°?\s*(\d{4,8})') {
+                $clientId = $Matches[1]
+                if ($FtDebug) { Write-Host ("[FT-DEBUG] ClientID extrait des lignes : {0}" -f $clientId) -ForegroundColor Yellow }
+                break
+            }
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($clientId)) {
+        if ($FtDebug) { Write-Host '[FT-DEBUG] Pas de ClientID - fallback sur ClientName' -ForegroundColor Yellow }
+        $fallback = [string]$PageEntity.ClientName
+        if (-not [string]::IsNullOrWhiteSpace($fallback)) {
+            return (Resolve-CnsFtCollectionPointLabelOrNull -Label (ConvertTo-CnsFtBracketDisplayLabel -RawLabel $fallback) -FtDebug:$FtDebug)
+        }
+        return $null
+    }
+
+    $reconstructedName = $null
+    Initialize-CnsPdfMetierEntityExtractorAccess
+
+    if (Get-Command Get-ClientNameFromLines -ErrorAction SilentlyContinue) {
+        try {
+            $reconstructedName = Get-ClientNameFromLines -Lines $cnLines -ClientId $clientId
+            if ($FtDebug -and -not [string]::IsNullOrWhiteSpace($reconstructedName)) {
+                Write-Host ("[FT-DEBUG] Reconstruction Get-ClientNameFromLines : {0}" -f $reconstructedName) -ForegroundColor Green
+            }
+        }
+        catch {
+            Write-Warning ("[FT] Erreur Get-ClientNameFromLines : {0}" -f $_.Exception.Message)
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($reconstructedName)) {
+        $reconstructedName = [string]$WorkOrderEntity.ClientName
+        if ([string]::IsNullOrWhiteSpace($reconstructedName)) {
+            $reconstructedName = [string]$PageEntity.ClientName
+        }
+        if ($FtDebug) { Write-Host ("[FT-DEBUG] Repli sur ClientName : {0}" -f $reconstructedName) -ForegroundColor Yellow }
+    }
+
+    $cleanedName = ConvertTo-CnsFtBracketDisplayLabel -RawLabel $reconstructedName
+
+    if ($FtDebug) {
+        Write-Host ("[FT-DEBUG] Avant nettoyage : {0}" -f $reconstructedName) -ForegroundColor Gray
+        Write-Host ("[FT-DEBUG] Apres nettoyage : {0}" -f $cleanedName) -ForegroundColor Green
+    }
+
+    return (Resolve-CnsFtCollectionPointLabelOrNull -Label $cleanedName -FtDebug:$FtDebug)
+}
+
+function ConvertTo-CnsFtCollectionPointDisplayLabel {
+    <#
+    .SYNOPSIS
+        Normalise le libelle FT : supprime crochets (ASCII ou pleine chasse), N°, suffixes apres tiret.
+    #>
+    param(
+        [AllowEmptyString()]
+        [string]$Value
+    )
+    if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
+    $t = ([string]$Value).Trim()
+    if ($t -notmatch '^(?i)FT\b') { return $t }
+
+    # Cas PDF mal decoupe : "FT - N°8785GRAND VERGER" -> "FT GRAND VERGER"
+    if ($t -match '^(?i)FT\s+-\s*N[°ºoO]?\s*\d+(?<agency>[A-Za-z].*)$') {
+        $agency = ([string]$matches.agency).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($agency)) {
+            return ('FT {0}' -f $agency) -replace '\s{2,}', ' '
+        }
+    }
+
+    $cleaned = $t -replace '(?i)\s*[\[［][^\]］]*[\]］]\s*.*$', ''
+    if ([string]::IsNullOrWhiteSpace($cleaned)) { $cleaned = $t }
+
+    $cleaned = $cleaned -replace '(?i)\s*-\s*N[°ºoO]?\s*\d.*$', ''
+    $cleaned = $cleaned -replace '\s*-.*$', ''
+    $cleaned = ($cleaned -replace '\s{2,}', ' ').Trim()
+
+    if ($cleaned -match '^(?i)FT\s*$') { return $t.Trim() }
+    $cleaned = $cleaned -replace '(?i)&apos;', "'"
+    return $cleaned
+}
+
+function Get-CnsFtCollectionPointLabelFromRawLines {
+    <#
+    .SYNOPSIS
+        Extrait le premier libelle « FT <agence> » (ligne commencant par FT + espace).
+        Ne s'appuie pas sur l'ID client.
+    #>
+    param(
+        [AllowEmptyCollection()]
+        [string[]]$RawLines
+    )
+    if ($null -eq $RawLines -or $RawLines.Count -lt 1) { return $null }
+    foreach ($ln in @($RawLines)) {
+        if ([string]::IsNullOrWhiteSpace($ln)) { continue }
+        $t = ([string]$ln).Trim()
+        if ($t -match '^(?i)FT\s+') {
+            $rawLabel = $t
+            $cleaned = ConvertTo-CnsFtCollectionPointDisplayLabel -Value $rawLabel
+            if (-not [string]::IsNullOrWhiteSpace($cleaned)) {
+                if ($cleaned -ne $rawLabel -and (Get-Command Write-Log -ErrorAction SilentlyContinue)) {
+                    Write-Log '[FT] Libelle nettoye' 'INFO' @{ raw = $rawLabel; cleaned = $cleaned }
+                }
+                return $cleaned
+            }
+        }
+    }
+    return $null
+}
+
+function Get-CnsStep5FragSliceFtCollectionPointLabel {
+    <#
+    .SYNOPSIS
+        Libelle point de collecte FT pour une page ODM.
+        Priorite 1 : bbox (ClientNameLines) + Get-ClientNameFromLines (comme certificat)
+        Priorite 2 : PageEntity.ClientName deja fusionne
+        Priorite 3 : RawLines layout (fallback)
+        Priorite 4 : pdftotext slice (dernier recours)
+    #>
+    param(
+        [AllowNull()][AllowEmptyString()][string]$FragSlicePdfPath,
+        [AllowEmptyCollection()]
+        [string[]]$PrecomputedRawLines = $null,
+        [AllowEmptyCollection()]
+        [string[]]$PdfRawLines = $null,
+        [hashtable]$PdfRawLinesByPage = $null,
+        [int]$RawPageNumOneBased = 0,
+        [AllowNull()]
+        $PageEntity = $null,
+        [AllowNull()]
+        $WorkOrderEntity = $null,
+        [switch]$FtDebug
+    )
+
+    if ($null -ne $PageEntity -and $null -ne $WorkOrderEntity) {
+        $bboxLabel = Get-CnsFtCollectionPointLabelFromPageEntity -PageEntity $PageEntity -WorkOrderEntity $WorkOrderEntity -FtDebug:$FtDebug
+        $bboxLabel = Resolve-CnsFtCollectionPointLabelOrNull -Label $bboxLabel -FtDebug:$FtDebug
+        if (-not [string]::IsNullOrWhiteSpace($bboxLabel)) {
+            if ($FtDebug) { Write-Host ("[FT] Label via bbox + Get-ClientNameFromLines : {0}" -f $bboxLabel) -ForegroundColor Green }
+            return $bboxLabel
+        }
+    }
+
+    if ($null -ne $PageEntity) {
+        $clientName = [string]$PageEntity.ClientName
+        if (-not [string]::IsNullOrWhiteSpace($clientName) -and $clientName -match '(?i)^FT\s+') {
+            $cleaned = ConvertTo-CnsFtBracketDisplayLabel -RawLabel $clientName
+            $cleaned = Resolve-CnsFtCollectionPointLabelOrNull -Label $cleaned -FtDebug:$FtDebug
+            if (-not [string]::IsNullOrWhiteSpace($cleaned)) {
+                if ($FtDebug) { Write-Host ("[FT] Label via PageEntity.ClientName : {0}" -f $cleaned) -ForegroundColor Cyan }
+                return $cleaned
+            }
+        }
+    }
+
+    $rawLines = @()
+    if ($null -ne $PdfRawLines -and @($PdfRawLines).Count -gt 0) {
+        $rawLines = @($PdfRawLines)
+    }
+    elseif ($null -ne $PrecomputedRawLines -and @($PrecomputedRawLines).Count -gt 0) {
+        $rawLines = @($PrecomputedRawLines)
+    }
+    elseif ($RawPageNumOneBased -gt 0) {
+        $fromStep1 = Get-CnsStep5RawLinesForPhysicalPage -PageNumberOneBased $RawPageNumOneBased -PdfRawLinesByPage $PdfRawLinesByPage
+        if ($null -ne $fromStep1 -and @($fromStep1).Count -gt 0) {
+            $rawLines = @($fromStep1)
+        }
+    }
+
+    if ($rawLines.Count -gt 0) {
+        foreach ($ln in $rawLines) {
+            if ([string]::IsNullOrWhiteSpace($ln)) { continue }
+            $trimmed = ([string]$ln).Trim()
+            if ($trimmed -match '(?i)^FT\s+') {
+                $cleaned = ConvertTo-CnsFtBracketDisplayLabel -RawLabel $trimmed
+                $cleaned = Resolve-CnsFtCollectionPointLabelOrNull -Label $cleaned -FtDebug:$FtDebug
+                if (-not [string]::IsNullOrWhiteSpace($cleaned)) {
+                    if ($FtDebug) { Write-Host ("[FT] Label via RawLines layout : {0}" -f $cleaned) -ForegroundColor Yellow }
+                    return $cleaned
+                }
+            }
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($FragSlicePdfPath) -and (Test-Path -LiteralPath $FragSlicePdfPath -PathType Leaf)) {
+        $sliceLines = @(Get-CnsStep5PdftotextLinesFromSinglePagePdf -SinglePagePdfPath $FragSlicePdfPath)
+        foreach ($ln in $sliceLines) {
+            if ([string]::IsNullOrWhiteSpace($ln)) { continue }
+            $trimmed = ([string]$ln).Trim()
+            if ($trimmed -match '(?i)^FT\s+') {
+                $cleaned = ConvertTo-CnsFtBracketDisplayLabel -RawLabel $trimmed
+                $cleaned = Resolve-CnsFtCollectionPointLabelOrNull -Label $cleaned -FtDebug:$FtDebug
+                if (-not [string]::IsNullOrWhiteSpace($cleaned)) {
+                    if ($FtDebug) { Write-Host ("[FT] Label via fallback pdftotext : {0}" -f $cleaned) -ForegroundColor DarkYellow }
+                    return $cleaned
+                }
+            }
+        }
+    }
+
+    if ($FtDebug) { Write-Host '[FT] Aucun label FT trouve' -ForegroundColor Red }
+    return $null
+}
+
+function Test-CnsStep5FragSliceRequiresFtDocument {
+    param(
+        [AllowNull()][AllowEmptyString()][string]$FragSlicePdfPath,
+        [AllowEmptyCollection()]
+        [string[]]$PrecomputedRawLines = $null,
+        [hashtable]$PdfRawLinesByPage = $null,
+        [int]$RawPageNumOneBased = 0,
+        [AllowNull()]
+        $PageEntity = $null,
+        [AllowNull()]
+        $WorkOrderEntity = $null,
+        [switch]$FtDebug
+    )
+    $label = Get-CnsStep5FragSliceFtCollectionPointLabel -FragSlicePdfPath $FragSlicePdfPath `
+        -PrecomputedRawLines $PrecomputedRawLines -PdfRawLinesByPage $PdfRawLinesByPage -RawPageNumOneBased $RawPageNumOneBased `
+        -PageEntity $PageEntity -WorkOrderEntity $WorkOrderEntity -FtDebug:$FtDebug
+    if (Test-CnsFtCollectionPointLabelEligible -Label $label) {
+        Write-Host ("[STEP5-FT] Point de collecte FT detecte : {0} (page {1})" -f $label, $(if ($RawPageNumOneBased -gt 0) { $RawPageNumOneBased } else { '?' })) -ForegroundColor DarkCyan
+        return $true
+    }
+    return $false
+}
+
 function Test-CnsStep5FragSliceRequiresCeaDocument {
     <#
     .SYNOPSIS
@@ -324,6 +733,141 @@ function Repair-CnsClientDisplayNameForCover {
     }
     $t = $t -replace '&apos;', "'"
     return $t
+}
+
+function ConvertTo-CnsCoverClientDisplayLabel {
+    <#
+    .SYNOPSIS
+        Nettoie le nom client pour la page de garde : texte avant le premier [ uniquement.
+    #>
+    param(
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$Name
+    )
+    if ([string]::IsNullOrWhiteSpace($Name)) { return '' }
+    $t = ([string]$Name).Trim()
+    if ($t -match '^(.*?)\s*\[.*$') {
+        $t = $Matches[1].Trim()
+    }
+    $t = [regex]::Replace($t, '\s+', ' ').Trim()
+    # Retire le suffixe ODM " - N°12345" / " – N°12345".
+    $t = [regex]::Replace($t, '(?i)\s*[-–—]\s*N[°ºo]\s*\d+\s*$', '').Trim()
+    if (Get-Command Repair-CnsClientNumeroSignText -ErrorAction SilentlyContinue) {
+        $t = Repair-CnsClientNumeroSignText -Text $t
+    }
+    $t = $t -replace '&apos;', "'"
+    return $t
+}
+
+function Remove-CnsCoverPrestationVehiculeSuffix {
+    <#
+    .SYNOPSIS
+        Retire le suffixe (véhicule …) d'un libellé ou d'une ligne mémo garde.
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Detail)
+    if ([string]::IsNullOrWhiteSpace($Detail)) { return $Detail }
+    return ([regex]::Replace(([string]$Detail).Trim(), '(?i)\s*\(véhicule\s+[^)]+\)\s*$', '')).Trim()
+}
+
+function Format-CnsCoverGardePrestationMemoLine {
+    <#
+    .SYNOPSIS
+        Mémo garde Collecte Ponctuelle : "[Client] [Prestation]" ;
+        si Track (DEEE/piles/…) : suffixe " => BSD".
+    #>
+    param(
+        [AllowNull()][AllowEmptyString()][string]$Detail,
+        [AllowNull()][AllowEmptyString()][string]$Client
+    )
+    [string]$det = Remove-CnsCoverPrestationVehiculeSuffix -Detail ([string]$Detail)
+    [string]$cl = ConvertTo-CnsCoverClientDisplayLabel -Name ([string]$Client)
+    if ([string]::IsNullOrWhiteSpace($cl)) { $cl = 'Non specifie' }
+    if ([string]::IsNullOrWhiteSpace($det)) { return '' }
+    $line = ("{0} {1}" -f $cl, $det)
+    $detNorm = ''
+    if (Get-Command ConvertTo-CnsMetierMatchNormalizedText -ErrorAction SilentlyContinue) {
+        $detNorm = ConvertTo-CnsMetierMatchNormalizedText -Text $det
+    }
+    else {
+        $detNorm = $det.ToLowerInvariant()
+    }
+    if ($detNorm -match 'deee|pile|batterie|cartouche|ampoule|neon|tube') {
+        if ($line -notmatch '(?i)=>\s*(faire\s+)?BSD\s*$') {
+            $line = ($line.TrimEnd() + ' => BSD')
+        }
+    }
+    return (Remove-CnsCoverPrestationVehiculeSuffix -Detail $line)
+}
+
+function Get-CnsCoverGardeTrackDechetCollecteFragment {
+    <#
+    .SYNOPSIS
+        Fragment "Collecte …" pour mémo Track (ex: "Collecte de piles", "Collecte DEEE").
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Detail)
+    [string]$det = Remove-CnsCoverPrestationVehiculeSuffix -Detail ([string]$Detail)
+    if ([string]::IsNullOrWhiteSpace($det)) { return '' }
+    $norm = ''
+    if (Get-Command ConvertTo-CnsMetierMatchNormalizedText -ErrorAction SilentlyContinue) {
+        $norm = ConvertTo-CnsMetierMatchNormalizedText -Text $det
+    }
+    else {
+        $norm = $det.ToLowerInvariant()
+    }
+    if ($norm -match 'deee') { return 'Collecte DEEE' }
+    if ($norm -match 'pile') { return 'Collecte de piles' }
+    if ($norm -match 'batterie') { return 'Collecte de piles' }
+    if ($norm -match 'cartouche' -or $norm -match 'encre') { return 'Collecte de cartouches d''encre' }
+    if ($norm -match 'ampoule') { return 'Collecte d''ampoules' }
+    if ($norm -match 'neon|néon|tube') { return 'Collecte de néons/tubes' }
+    if ($det -match '(?i)^collecte\s+(.+)$') {
+        return ('Collecte {0}' -f $Matches[1].Trim())
+    }
+    return $det.Trim()
+}
+
+function Format-CnsCoverGardeTrackDechetMemoLine {
+    <#
+    .SYNOPSIS
+        Mémo garde Track Déchets : "[Client] Collecte de [type] => BSD".
+    #>
+    param(
+        [AllowNull()][AllowEmptyString()][string]$Detail,
+        [AllowNull()][AllowEmptyString()][string]$Client
+    )
+    [string]$cl = ConvertTo-CnsCoverClientDisplayLabel -Name ([string]$Client)
+    if ([string]::IsNullOrWhiteSpace($cl)) { $cl = 'Non specifie' }
+    [string]$frag = Get-CnsCoverGardeTrackDechetCollecteFragment -Detail $Detail
+    if ([string]::IsNullOrWhiteSpace($frag)) { return '' }
+    return ('{0} {1} => BSD' -f $cl, $frag)
+}
+
+function Test-CnsCoverClientExcludedFromDacInstruction {
+    <#
+    .SYNOPSIS
+        True si point CEA SLE / N°24531 (masqué sur la garde sauf Track / Ponctuel / Destruction).
+        Réutilise Test-CnsBioDechetsDacExcludedFromLines si dispo.
+    #>
+    param(
+        [AllowNull()][AllowEmptyString()][string]$ClientName,
+        [AllowEmptyCollection()][string[]]$RawLines = @()
+    )
+    $probe = New-Object System.Collections.Generic.List[string]
+    if (-not [string]::IsNullOrWhiteSpace($ClientName)) {
+        [void]$probe.Add(([string]$ClientName).Trim())
+    }
+    foreach ($ln in @($RawLines)) {
+        if (-not [string]::IsNullOrWhiteSpace($ln)) { [void]$probe.Add([string]$ln) }
+    }
+    if ($probe.Count -lt 1) { return $false }
+    if (Get-Command Test-CnsBioDechetsDacExcludedFromLines -ErrorAction SilentlyContinue) {
+        return [bool](Test-CnsBioDechetsDacExcludedFromLines -Lines @($probe))
+    }
+    $blob = ($probe -join ' ')
+    if ($blob -match '(?i)N[°ºo]\s*24531|\b24531\b') { return $true }
+    if ($blob -match '(?i)CEA\s*.*Service\s+Logistique\s+et\s+Environnement') { return $true }
+    return $false
 }
 
 function Test-CnsPdfClientDisplayNameLooksPolluted {
@@ -436,11 +980,33 @@ function Get-CnsPonctuellePrestationDisplayLabelFromServiceType {
     if ([string]::IsNullOrWhiteSpace($norm)) { return $null }
 
     $m = [regex]::Match($raw, '(?i)\b(Collecte|D[eéè]pose|Livraison|Fourniture)\s+Ponctuel\b.*$')
-    if (-not $m.Success) { return $null }
+    if (-not $m.Success) {
+        # Essuie-mains : souvent "Collecte de Essuie-mains" (sans mot Ponctuel) → mémo ponctuel normal.
+        if ($norm -match '(?i)\bcollecte\s+de\s+essuie[\s\-]*mains\b') {
+            return 'Collecte Ponctuel de Essuie-mains'
+        }
+        return $null
+    }
+
+    # Track / DEEE uniquement sur mots-clés explicites.
+    # "vrac", "alveole", "papier", "carton" seuls → libellé métier (pas DEEE).
+    if ($norm -match 'pile|batterie') {
+        return 'Collecte de piles'
+    }
+    if ($norm -match 'deee|cartouche|ampoule|neon|néon|tube') {
+        return 'Collecte DEEE'
+    }
 
     $label = $m.Value.Trim()
     $label = [regex]::Replace($label, '(?i)\bSac\s+\d+L[^/]*(?=/\d|\s+(?:Bouteilles|Canettes|Essuie|Verre|Multi|Papier|Carton))', '')
     $label = [regex]::Replace($label, '(?i)\s*/\d+\s*kg\s*', ' ')
+    # Elise Matériel collé après "Ponctuel de" (Bac 240L [fermé], Vrac, Alvéole).
+    # On conserve le matériau métier (Papier, Carton, DIB, Multi déchets, …).
+    $label = [regex]::Replace(
+        $label,
+        '(?i)(?<=\b(?:Collecte|D[eéè]pose|Livraison|Fourniture)\s+Ponctuel\s+de)\s+(?:Vrac|Alv[eé]oles?|Bac\s*\d+\s*L?(?:\s+ferm[eé]s?)?)\b\s*',
+        ' '
+    )
     $label = [regex]::Replace($label, '\s+', ' ').Trim()
 
     $labelNorm = ConvertTo-CnsMetierMatchNormalizedText -Text $label
@@ -464,7 +1030,7 @@ function Test-CnsServiceTypeIsPonctuellePrestationLine {
 function Test-CnsPonctuellePrestationTypeIndicatesSpecificWaste {
     <#
     .SYNOPSIS
-        True si la prestation ponctuelle concerne des déchets spécifiques (immatriculation véhicule sur la garde).
+        True si la prestation ponctuelle concerne des déchets spécifiques (dédup track / ponctuelle sur la garde).
     #>
     param([AllowNull()][AllowEmptyString()][string]$Type)
     if ([string]::IsNullOrWhiteSpace($Type)) { return $false }
@@ -476,22 +1042,93 @@ function Test-CnsPonctuellePrestationTypeIndicatesSpecificWaste {
 function Get-CnsVehiculeImmatriculationByNumeroParc {
     param([AllowNull()][AllowEmptyString()][string]$NumeroParc)
     if ([string]::IsNullOrWhiteSpace($NumeroParc)) { return $null }
-    if (Get-Command Get-VehiculeByNumeroParc -ErrorAction SilentlyContinue) {
-        try {
-            $vehicule = Get-VehiculeByNumeroParc -NumeroParc $NumeroParc
-            if ($null -ne $vehicule) {
-                $immat = ''
-                try { $immat = [string]$vehicule.immatriculation } catch { }
-                if (-not [string]::IsNullOrWhiteSpace($immat)) {
-                    return $immat.Trim()
-                }
+    [string]$parc = ([string]$NumeroParc).Trim()
+    $parc = [regex]::Replace($parc, '\s+', ' ').Trim()
+    if ([string]::IsNullOrWhiteSpace($parc)) { return $null }
+    if (-not (Get-Command Get-VehiculeByNumeroParc -ErrorAction SilentlyContinue)) { return $null }
+    try {
+        $vehicule = Get-VehiculeByNumeroParc -NumeroParc $parc
+        if ($null -ne $vehicule) {
+            $immat = ''
+            try { $immat = [string]$vehicule.immatriculation } catch { }
+            if (-not [string]::IsNullOrWhiteSpace($immat)) {
+                return $immat.Trim()
             }
         }
-        catch {
-            Write-Warning ("[METIER-PDF] Get-VehiculeByNumeroParc echoue : {0}" -f $_.Exception.Message)
-        }
+    }
+    catch {
+        Write-Warning ("[METIER-PDF] Get-VehiculeByNumeroParc echoue : {0}" -f $_.Exception.Message)
     }
     return $null
+}
+
+function Format-CnsVehiculeParcCoverLabel {
+    <#
+    .SYNOPSIS
+        Libellé page de garde pour un numero_parc issu de la base (ex: "Camion 13").
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$NumeroParc)
+    if ([string]::IsNullOrWhiteSpace($NumeroParc)) { return '' }
+    [string]$parc = ([string]$NumeroParc).Trim()
+    $parc = [regex]::Replace($parc, '\s+', ' ').Trim()
+    if ([string]::IsNullOrWhiteSpace($parc)) { return '' }
+    if ($parc -match '^(?i)(camion|electrique|électrique|gaz)\b') { return $parc }
+    if ($parc -match '^\d+$') { return ('Camion {0}' -f $parc) }
+    return $parc
+}
+
+function Get-CnsVehiculeByImmatriculation {
+    <#
+    .SYNOPSIS
+        Wrapper métier : véhicule actif par plaque (normalisation gérée en base).
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Immatriculation)
+    if ([string]::IsNullOrWhiteSpace($Immatriculation)) { return $null }
+    if (-not (Get-Command Get-VehiculeByImmatriculation -ErrorAction SilentlyContinue)) { return $null }
+    try {
+        return (Get-VehiculeByImmatriculation -Immatriculation $Immatriculation)
+    }
+    catch {
+        Write-Warning ("[METIER-PDF] Get-VehiculeByImmatriculation echoue : {0}" -f $_.Exception.Message)
+        return $null
+    }
+}
+
+function Resolve-CnsTourneeCoverVehicleFromPlaque {
+    <#
+    .SYNOPSIS
+        Résout CamionLine + plaque pour la garde à partir de la plaque Excel / planning.
+        Ne fabrique jamais un faux "Camion N" si le véhicule est absent de la base.
+    #>
+    param(
+        [AllowNull()][AllowEmptyString()][string]$Plaque,
+        [switch]$WriteGuardWarning
+    )
+    [string]$plaque = if ([string]::IsNullOrWhiteSpace($Plaque)) { '' } else { ([string]$Plaque).Trim() }
+    [string]$camionLine = ''
+    [string]$numeroParc = ''
+    [bool]$found = $false
+    if (-not [string]::IsNullOrWhiteSpace($plaque)) {
+        $veh = Get-CnsVehiculeByImmatriculation -Immatriculation $plaque
+        if ($null -ne $veh) {
+            $found = $true
+            try { $numeroParc = [string]$veh.numero_parc } catch { $numeroParc = '' }
+            $camionLine = Format-CnsVehiculeParcCoverLabel -NumeroParc $numeroParc
+            try {
+                $dbImmat = [string]$veh.immatriculation
+                if (-not [string]::IsNullOrWhiteSpace($dbImmat)) { $plaque = $dbImmat.Trim() }
+            } catch { }
+        }
+        elseif ($WriteGuardWarning) {
+            Write-Host ("[GARDE] Véhicule introuvable pour la plaque {0}" -f $plaque) -ForegroundColor Yellow
+        }
+    }
+    return [pscustomobject]@{
+        Found      = $found
+        NumeroParc = $numeroParc
+        CamionLine = $camionLine
+        Plaque     = $plaque
+    }
 }
 
 function Get-CnsNumeroParcForExcelOrderIndex {
@@ -665,11 +1302,14 @@ function Get-CnsPdfPageTrackDechetEntries {
         if ($ln -match 'pile(s)?' -or $compact -match 'piles?') {
             $detail = 'Collecte de piles'
         }
-        elseif ($ln -match 'deee' -or $compact -match 'deee') {
-            $detail = 'Collecte DEEE'
-        }
         elseif (($ln -match 'cartouche' -and $ln -match 'encre') -or ($compact -match 'cartouche' -and $compact -match 'encre')) {
             $detail = 'Collecte cartouches encre'
+        }
+        elseif ($ln -match 'neon|néon|tube' -or $compact -match 'neon|néon|tube') {
+            $detail = 'Collecte Néons / tubes'
+        }
+        elseif ($ln -match 'deee' -or $compact -match 'deee') {
+            $detail = 'Collecte DEEE'
         }
 
         if ([string]::IsNullOrWhiteSpace($detail)) { continue }
@@ -684,11 +1324,14 @@ function Get-CnsPdfPageTrackDechetEntries {
         if ($norm -match 'pile(s)?' -or $normCompact -match 'piles?') {
             $detail = 'Collecte de piles'
         }
-        elseif ($norm -match 'deee' -or $normCompact -match 'deee') {
-            $detail = 'Collecte DEEE'
-        }
         elseif (($norm -match 'cartouche' -and $norm -match 'encre') -or ($normCompact -match 'cartouche' -and $normCompact -match 'encre')) {
             $detail = 'Collecte cartouches encre'
+        }
+        elseif ($norm -match 'neon|néon|tube' -or $normCompact -match 'neon|néon|tube') {
+            $detail = 'Collecte Néons / tubes'
+        }
+        elseif ($norm -match 'deee' -or $normCompact -match 'deee') {
+            $detail = 'Collecte DEEE'
         }
         if (-not [string]::IsNullOrWhiteSpace($detail)) {
             $key = ('{0}|{1}' -f $detail, $client)
@@ -710,8 +1353,7 @@ function Get-CnsPdfPagePonctuellePrestationEntries {
     #>
     param(
         [AllowNull()] $PageEntity,
-        [AllowNull()] $WorkOrderEntity,
-        [AllowNull()][AllowEmptyString()][string]$VehiculeImmatriculation = $null
+        [AllowNull()] $WorkOrderEntity
     )
     $client = Get-CnsPdfPageClientDisplayName -PageEntity $PageEntity -WorkOrderEntity $WorkOrderEntity
     if ([string]::IsNullOrWhiteSpace($client)) { $client = 'Non specifie' }
@@ -749,14 +1391,10 @@ function Get-CnsPdfPagePonctuellePrestationEntries {
         $key = $odm
         if (-not $seen.Add($key)) { continue }
 
-        $hasWaste = Test-CnsPonctuellePrestationTypeIndicatesSpecificWaste -Type $displayLabel
-        $displayType = $displayLabel
-        if ($hasWaste -and -not [string]::IsNullOrWhiteSpace($VehiculeImmatriculation)) {
-            $displayType = ('{0} (véhicule {1})' -f $displayLabel, $VehiculeImmatriculation.Trim())
-        }
+        $hasWaste = Test-CnsPonctuellePrestationTypeIndicatesSpecificWaste -Type $type
 
         [void]$found.Add([pscustomobject]@{
-            Detail   = $displayType
+            Detail   = $displayLabel
             Client   = $client
             ODM      = $odm
             HasWaste = $hasWaste
@@ -769,8 +1407,7 @@ function Get-CnsPdfPagePonctuellePrestationEntries {
 function Get-CnsPdfPageMetierAnalysis {
     param(
         [AllowNull()] $PageEntity,
-        [AllowNull()] $WorkOrderEntity,
-        [AllowNull()][AllowEmptyString()][string]$VehiculeImmatriculation = $null
+        [AllowNull()] $WorkOrderEntity
     )
     $client = Get-CnsPdfPageClientDisplayName -PageEntity $PageEntity -WorkOrderEntity $WorkOrderEntity
     $needsCert = Test-CnsPdfPageRequiresDestructionCertificate -PageEntity $PageEntity -WorkOrderEntity $WorkOrderEntity
@@ -778,7 +1415,7 @@ function Get-CnsPdfPageMetierAnalysis {
         RequiresDestructionCertificate = $needsCert
         RequiresCeaDocument            = $false
         TrackDechetEntries             = @(Get-CnsPdfPageTrackDechetEntries -PageEntity $PageEntity -WorkOrderEntity $WorkOrderEntity)
-        PonctuellePrestationEntries    = @(Get-CnsPdfPagePonctuellePrestationEntries -PageEntity $PageEntity -WorkOrderEntity $WorkOrderEntity -VehiculeImmatriculation $VehiculeImmatriculation)
+        PonctuellePrestationEntries    = @(Get-CnsPdfPagePonctuellePrestationEntries -PageEntity $PageEntity -WorkOrderEntity $WorkOrderEntity)
         DestructionMemoClient          = if ($needsCert) { $client } else { $null }
     }
 }
@@ -855,6 +1492,8 @@ function Get-CnsTourneeMetierMemoLinesForBlock {
     <#
     .SYNOPSIS
         Mémos garde tournée agrégés depuis les ODM PDF du bloc (hors PdfFallback / __PRE__).
+        Regroupe par client (en-tête) puis prestations indentées ; tri alpha des clients.
+        Inclut les points FT en blocs client (en-tête) + « Faire inventaire » indenté.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -868,20 +1507,14 @@ function Get-CnsTourneeMetierMemoLinesForBlock {
         [AllowEmptyCollection()]
         [object[]]$WorkOrders = @(),
         [AllowEmptyCollection()]
-        [object[]]$PdfEntities = @(),
-        [AllowEmptyCollection()]
-        [object[]]$ExcelOrder = @(),
-        [AllowEmptyCollection()]
-        [object[]]$Segments = @(),
-        [AllowNull()]
-        [hashtable]$ExcelOrderIndexToSegmentIndex = $null
+        [object[]]$PdfEntities = @()
     )
     $destructionClients = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
     $trackSeen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
-    $trackLines = New-Object System.Collections.Generic.List[string]
+    $trackLines = New-Object System.Collections.Generic.List[object]
     $ponctuelleSeen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
-    $ponctuelleLines = New-Object System.Collections.Generic.List[string]
-    $immatByParc = @{}
+    $ponctuelleLines = New-Object System.Collections.Generic.List[object]
+    $ftLabels = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
 
     $pairs = @($SortedGsPairs)
     for ($pn = [int]$MainFrom1; $pn -le [int]$MainTo1; $pn++) {
@@ -902,60 +1535,38 @@ function Get-CnsTourneeMetierMemoLinesForBlock {
         $wo = Resolve-CnsWorkOrderEntityFromPdfPage -RawPageNumOneBased $rawPn -WorkOrders $WorkOrders -PdfEntities $PdfEntities
         $pe = Get-CnsPdfPageEntityByPhysicalPage -PageNumberOneBased $rawPn -PdfEntities $PdfEntities
 
-        [int]$excelOrderIdx = 0
-        if ($null -ne $ln) {
-            try { $excelOrderIdx = [int]$ln.ExcelSourceOrder } catch { $excelOrderIdx = 0 }
-        }
-        $numeroParc = Get-CnsNumeroParcForExcelOrderIndex -ExcelOrderIndex $excelOrderIdx `
-            -ExcelOrder $ExcelOrder -Segments $Segments -ExcelOrderIndexToSegmentIndex $ExcelOrderIndexToSegmentIndex
-        $vehiculeImmat = $null
-        if (-not [string]::IsNullOrWhiteSpace($numeroParc)) {
-            if ($immatByParc.ContainsKey($numeroParc)) {
-                $vehiculeImmat = $immatByParc[$numeroParc]
-            }
-            else {
-                $vehiculeImmat = Get-CnsVehiculeImmatriculationByNumeroParc -NumeroParc $numeroParc
-                $immatByParc[$numeroParc] = $vehiculeImmat
-            }
-        }
-
-        $analysis = Get-CnsPdfPageMetierAnalysis -PageEntity $pe -WorkOrderEntity $wo -VehiculeImmatriculation $vehiculeImmat
+        $analysis = Get-CnsPdfPageMetierAnalysis -PageEntity $pe -WorkOrderEntity $wo
 
         if (-not [string]::IsNullOrWhiteSpace($analysis.DestructionMemoClient)) {
             [void]$destructionClients.Add($analysis.DestructionMemoClient.Trim())
         }
-        $trackSuffix = ''
-        if (-not [string]::IsNullOrWhiteSpace($vehiculeImmat)) {
-            $trackSuffix = (' (véhicule {0})' -f $vehiculeImmat.Trim())
-        }
         foreach ($tr in @($analysis.TrackDechetEntries)) {
             if ($null -eq $tr) { continue }
-            [string]$det = [string]$tr.Detail
-            [string]$cl = Repair-CnsClientDisplayNameForCover -Text ([string]$tr.Client)
+            [string]$det = Remove-CnsCoverPrestationVehiculeSuffix -Detail ([string]$tr.Detail)
+            [string]$cl = [string]$tr.Client
             if ([string]::IsNullOrWhiteSpace($det)) { continue }
             if ([string]::IsNullOrWhiteSpace($cl)) { $cl = 'Non specifie' }
             $key = ('{0}|{1}' -f $det, $cl)
             if ($trackSeen.Add($key)) {
-                [void]$trackLines.Add(("{0} - {1}{2}" -f $det, $cl, $trackSuffix))
+                [void]$trackLines.Add([pscustomobject]@{ Detail = $det; Client = $cl })
             }
         }
         foreach ($pp in @($analysis.PonctuellePrestationEntries)) {
             if ($null -eq $pp) { continue }
-            [string]$det = ([string]$pp.Detail).Trim()
-            [string]$cl = Repair-CnsClientDisplayNameForCover -Text ([string]$pp.Client)
+            [string]$det = Remove-CnsCoverPrestationVehiculeSuffix -Detail ([string]$pp.Detail)
+            [string]$cl = [string]$pp.Client
             [string]$odm = ''
             try { $odm = ([string]$pp.ODM).Trim() } catch { }
             if ([string]::IsNullOrWhiteSpace($det)) { continue }
             if ([string]::IsNullOrWhiteSpace($cl)) { $cl = 'Non specifie' }
 
             if ($pp.HasWaste) {
-                $detNorm = ConvertTo-CnsMetierMatchNormalizedText -Text $det
                 $skipAsTrackDup = $false
                 foreach ($tr in @($analysis.TrackDechetEntries)) {
                     if ($null -eq $tr) { continue }
                     [string]$trDet = [string]$tr.Detail
-                    if ($trDet -eq 'Collecte DEEE' -and $detNorm -match 'deee') { $skipAsTrackDup = $true; break }
-                    if ($trDet -eq 'Collecte de piles' -and $detNorm -match 'pile') { $skipAsTrackDup = $true; break }
+                    if ($trDet -eq 'Collecte DEEE' -and $det -eq 'Collecte DEEE') { $skipAsTrackDup = $true; break }
+                    if ($trDet -eq 'Collecte de piles' -and $det -eq 'Collecte de piles') { $skipAsTrackDup = $true; break }
                 }
                 if ($skipAsTrackDup) { continue }
             }
@@ -963,20 +1574,144 @@ function Get-CnsTourneeMetierMemoLinesForBlock {
             $key = $odm
             if ([string]::IsNullOrWhiteSpace($key)) { continue }
             if ($ponctuelleSeen.Add($key)) {
-                [void]$ponctuelleLines.Add(("{0} - {1}" -f $cl, $det))
+                [void]$ponctuelleLines.Add([pscustomobject]@{ Detail = $det; Client = $cl })
+            }
+        }
+
+        # Instruction garde : Inventaire FT (texte pur, aucun comptage)
+        if (Get-Command Get-CnsStep5FragSliceFtCollectionPointLabel -ErrorAction SilentlyContinue) {
+            $peLines = @()
+            if ($null -ne $pe -and $null -ne $pe.PSObject.Properties['Lines'] -and $null -ne $pe.Lines) {
+                $peLines = @($pe.Lines)
+            }
+            $ftLabel = Get-CnsStep5FragSliceFtCollectionPointLabel `
+                -FragSlicePdfPath $null `
+                -PdfRawLines $peLines `
+                -RawPageNumOneBased $rawPn `
+                -PageEntity $pe `
+                -WorkOrderEntity $wo
+            if (Test-CnsFtCollectionPointLabelEligible -Label $ftLabel) {
+                [void]$ftLabels.Add(([string]$ftLabel).Trim())
             }
         }
     }
 
-    $out = New-Object System.Collections.Generic.List[string]
-    foreach ($tl in @($trackLines)) {
-        [void]$out.Add($tl)
+    # Regroupement par client : en-tête + prestations indentées (4 espaces).
+    [string]$memoIndent = '    '
+    $dedupSeen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $byClient = New-Object 'System.Collections.Generic.Dictionary[string,System.Collections.Generic.List[string]]' ([StringComparer]::OrdinalIgnoreCase)
+    # Track / Ponctuel / Destruction uniquement (pas FT) — requis pour afficher le CEA SLE.
+    $clientsWithSpecificMemo = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($tr in $trackLines) {
+        if ($null -eq $tr) { continue }
+        [string]$det = Remove-CnsCoverPrestationVehiculeSuffix -Detail ([string]$tr.Detail)
+        if ([string]::IsNullOrWhiteSpace($det)) { continue }
+        [string]$cl = ConvertTo-CnsCoverClientDisplayLabel -Name ([string]$tr.Client)
+        if ([string]::IsNullOrWhiteSpace($cl)) { $cl = 'Non specifie' }
+        [string]$frag = ''
+        try {
+            $frag = Get-CnsCoverGardeTrackDechetCollecteFragment -Detail $det
+        }
+        catch {
+            Write-Warning ("[GARDE-MEMO] Track memo ignore : {0}" -f $_.Exception.Message)
+            continue
+        }
+        if ([string]::IsNullOrWhiteSpace($frag)) { continue }
+        [string]$body = ('{0} => BSD' -f $frag)
+        [string]$key = ('TRACK|{0}|{1}' -f $cl, $det)
+        if (-not $dedupSeen.Add($key)) { continue }
+        if (-not $byClient.ContainsKey($cl)) {
+            $byClient[$cl] = New-Object System.Collections.Generic.List[string]
+        }
+        [void]$byClient[$cl].Add($body)
+        [void]$clientsWithSpecificMemo.Add($cl)
     }
-    foreach ($pl in @($ponctuelleLines)) {
-        [void]$out.Add($pl)
+    foreach ($pp in $ponctuelleLines) {
+        if ($null -eq $pp) { continue }
+        [string]$det = Remove-CnsCoverPrestationVehiculeSuffix -Detail ([string]$pp.Detail)
+        if ([string]::IsNullOrWhiteSpace($det)) { continue }
+        [string]$cl = ConvertTo-CnsCoverClientDisplayLabel -Name ([string]$pp.Client)
+        if ([string]::IsNullOrWhiteSpace($cl)) { $cl = 'Non specifie' }
+        [string]$body = $det.Trim()
+        try {
+            $detNorm = ''
+            if (Get-Command ConvertTo-CnsMetierMatchNormalizedText -ErrorAction SilentlyContinue) {
+                $detNorm = ConvertTo-CnsMetierMatchNormalizedText -Text $body
+            }
+            else {
+                $detNorm = $body.ToLowerInvariant()
+            }
+            if ($detNorm -match 'deee|pile|batterie|cartouche|ampoule|neon|tube') {
+                if ($body -notmatch '(?i)=>\s*(faire\s+)?BSD\s*$') {
+                    $body = ($body + ' => BSD')
+                }
+            }
+        }
+        catch {
+            Write-Warning ("[GARDE-MEMO] Ponctuel memo ignore : {0}" -f $_.Exception.Message)
+            continue
+        }
+        [string]$key = ('PONT|{0}|{1}' -f $cl, $det)
+        if (-not $dedupSeen.Add($key)) { continue }
+        if (-not $byClient.ContainsKey($cl)) {
+            $byClient[$cl] = New-Object System.Collections.Generic.List[string]
+        }
+        [void]$byClient[$cl].Add($body)
+        [void]$clientsWithSpecificMemo.Add($cl)
     }
     foreach ($dc in @($destructionClients)) {
-        [void]$out.Add(("Certificat de destruction : {0}" -f $dc))
+        [string]$cl = ConvertTo-CnsCoverClientDisplayLabel -Name $dc
+        if ([string]::IsNullOrWhiteSpace($cl)) { continue }
+        [string]$key = ('DEST|{0}' -f $cl)
+        if (-not $dedupSeen.Add($key)) { continue }
+        if (-not $byClient.ContainsKey($cl)) {
+            $byClient[$cl] = New-Object System.Collections.Generic.List[string]
+        }
+        [void]$byClient[$cl].Add('Certificat de destruction')
+        [void]$clientsWithSpecificMemo.Add($cl)
+    }
+
+    # FT : même hiérarchie visuelle (client gras / ligne indentée), texte fixe « Faire inventaire ».
+    foreach ($ftLabel in @($ftLabels)) {
+        if ([string]::IsNullOrWhiteSpace($ftLabel)) { continue }
+        [string]$ftClean = ($ftLabel.Trim() -replace '(?i)&apos;', "'")
+        if (Get-Command ConvertTo-CnsFtBracketDisplayLabel -ErrorAction SilentlyContinue) {
+            $ftClean = ConvertTo-CnsFtBracketDisplayLabel -RawLabel $ftClean
+        }
+        [string]$cl = ConvertTo-CnsCoverClientDisplayLabel -Name $ftClean
+        if ([string]::IsNullOrWhiteSpace($cl)) { continue }
+        # CEA SLE : FT seul ne justifie pas l'affichage garde.
+        if ((Get-Command Test-CnsCoverClientExcludedFromDacInstruction -ErrorAction SilentlyContinue) -and
+            (Test-CnsCoverClientExcludedFromDacInstruction -ClientName $cl) -and
+            (-not $clientsWithSpecificMemo.Contains($cl))) {
+            continue
+        }
+        [string]$key = ('FT|{0}' -f $cl)
+        if (-not $dedupSeen.Add($key)) { continue }
+        if (-not $byClient.ContainsKey($cl)) {
+            $byClient[$cl] = New-Object System.Collections.Generic.List[string]
+        }
+        [void]$byClient[$cl].Add('Faire inventaire')
+    }
+
+    $out = New-Object System.Collections.Generic.List[string]
+    [int]$clientBlockIx = 0
+    foreach ($clientName in @($byClient.Keys | Sort-Object)) {
+        if ((Get-Command Test-CnsCoverClientExcludedFromDacInstruction -ErrorAction SilentlyContinue) -and
+            (Test-CnsCoverClientExcludedFromDacInstruction -ClientName $clientName) -and
+            (-not $clientsWithSpecificMemo.Contains($clientName))) {
+            continue
+        }
+        if ($clientBlockIx -gt 0) {
+            [void]$out.Add('')
+        }
+        [void]$out.Add([string]$clientName)
+        foreach ($bodyLine in @($byClient[$clientName])) {
+            if ([string]::IsNullOrWhiteSpace($bodyLine)) { continue }
+            [void]$out.Add(($memoIndent + [string]$bodyLine))
+        }
+        $clientBlockIx++
     }
     return @($out.ToArray())
 }

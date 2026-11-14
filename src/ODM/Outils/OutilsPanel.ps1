@@ -63,6 +63,47 @@ function Find-OutilsDescendantControlByName {
     return $null
 }
 
+function Update-OutilsLicenceStatusLabel {
+    param([Parameter(Mandatory = $true)][System.Windows.Forms.Label]$Label)
+    $Label.Font = [System.Drawing.Font]::new('Segoe UI', 9)
+    if (-not (Get-Command Get-LicenseStatus -ErrorAction SilentlyContinue)) {
+        $Label.Text = 'Module licence non disponible.'
+        $Label.ForeColor = [System.Drawing.Color]::DarkRed
+        return
+    }
+    $s = Get-LicenseStatus
+    switch ([string]$s.Status) {
+        'Missing' {
+            $Label.Text = 'Aucune licence installee. Contactez votre administrateur.'
+            $Label.ForeColor = [System.Drawing.Color]::DarkRed
+        }
+        'Valid' {
+            $exp = ([datetime]$s.ExpiresOn).ToUniversalTime().Date
+            $days = [int]($exp - [datetime]::UtcNow.Date).TotalDays
+            $Label.Text = ("Client : {0}  |  Expiration : {1:yyyy-MM-dd}  |  Jours restants : {2}  |  Statut : Valid" -f `
+                    [string]$s.Customer, $exp, $days)
+            if ($days -le 30) {
+                $Label.ForeColor = $script:CouleurOrange
+            }
+            else {
+                $Label.ForeColor = $script:CouleurVert
+            }
+        }
+        'Expired' {
+            $expTxt = if ($null -ne $s.ExpiresOn) {
+                ([datetime]$s.ExpiresOn).ToUniversalTime().ToString('yyyy-MM-dd')
+            }
+            else { '?' }
+            $Label.Text = ("Client : {0}  |  Expiration : {1}  |  Statut : Expired" -f [string]$s.Customer, $expTxt)
+            $Label.ForeColor = [System.Drawing.Color]::DarkRed
+        }
+        default {
+            $Label.Text = ("Statut licence : {0}. Contactez votre administrateur." -f [string]$s.Status)
+            $Label.ForeColor = [System.Drawing.Color]::DarkRed
+        }
+    }
+}
+
 function Show-OutilsPanel {
     $panel = [System.Windows.Forms.Panel]::new()
     $panel.Dock = 'Fill'
@@ -208,21 +249,22 @@ function Show-OutilsPanel {
     $grpLicence.Name = 'grpLicence'
     $grpLicence.Text = 'Licence'
     $grpLicence.Location = [System.Drawing.Point]::new(0, 220)
-    $grpLicence.Size = [System.Drawing.Size]::new(700, 100)
+    $grpLicence.Size = [System.Drawing.Size]::new(700, 120)
     $grpLicence.Font = $script:PoliceTitre3
 
-    $lblLicenceInfo = [System.Windows.Forms.Label]::new()
-    $lblLicenceInfo.Text = 'Remplacer le fichier de licence (.lic) sans passer par une console.'
-    $lblLicenceInfo.Font = $script:PoliceLabelSecondaireFenetre
-    $lblLicenceInfo.Location = [System.Drawing.Point]::new(15, 25)
-    $lblLicenceInfo.Size = [System.Drawing.Size]::new(650, 25)
-    $grpLicence.Controls.Add($lblLicenceInfo)
+    $lblLicenceStatus = [System.Windows.Forms.Label]::new()
+    $lblLicenceStatus.Name = 'lblLicenceStatus'
+    $lblLicenceStatus.Location = [System.Drawing.Point]::new(15, 25)
+    $lblLicenceStatus.Size = [System.Drawing.Size]::new(670, 40)
+    $lblLicenceStatus.AutoSize = $false
+    $grpLicence.Controls.Add($lblLicenceStatus)
+    Update-OutilsLicenceStatusLabel -Label $lblLicenceStatus
 
     $btnImportLicence = [System.Windows.Forms.Button]::new()
     $btnImportLicence.Name = 'btnImportLicence'
     $btnImportLicence.Text = 'Importer la licence'
     $btnImportLicence.Size = [System.Drawing.Size]::new(260, 40)
-    $btnImportLicence.Location = [System.Drawing.Point]::new(15, 50)
+    $btnImportLicence.Location = [System.Drawing.Point]::new(15, 70)
     $btnImportLicence.BackColor = $script:CouleurOrange
     $btnImportLicence.ForeColor = $script:CouleurBlanc
     $btnImportLicence.FlatStyle = 'Flat'
@@ -247,6 +289,17 @@ function Show-OutilsPanel {
                     [System.Windows.Forms.MessageBoxIcon]::Error
                 ) | Out-Null
                 return
+            }
+
+            $statusLbl = $null
+            foreach ($ctrl in @($this.Parent.Controls)) {
+                if ($ctrl -is [System.Windows.Forms.Label] -and [string]$ctrl.Name -eq 'lblLicenceStatus') {
+                    $statusLbl = $ctrl
+                    break
+                }
+            }
+            if ($null -ne $statusLbl) {
+                Update-OutilsLicenceStatusLabel -Label $statusLbl
             }
 
             $restart = [System.Windows.Forms.MessageBox]::Show(
@@ -396,7 +449,7 @@ function Show-OutilsPanel {
         $panel.Controls.Add($grpSuperviseur)
     }
 
-    $grpVideoY = if ($showSuperviseurOutils) { 390 } else { 330 }
+    $grpVideoY = if ($showSuperviseurOutils) { 405 } else { 355 }
     $grpVideo = [System.Windows.Forms.GroupBox]::new()
     $grpVideo.Name = 'grpVideo'
     $grpVideo.Text = 'Video de demonstration'

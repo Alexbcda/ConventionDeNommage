@@ -58,6 +58,101 @@ $_cnsCeaPointsExcel = Join-Path $PSScriptRoot 'CnsCeaPointsCollecteExcel.ps1'
 if (Test-Path -LiteralPath $_cnsCeaPointsExcel) {
     . $_cnsCeaPointsExcel
 }
+$_cnsFtTemplate = Join-Path $PSScriptRoot 'CnsFtTemplate.ps1'
+if (Test-Path -LiteralPath $_cnsFtTemplate) {
+    . $_cnsFtTemplate
+}
+$_cnsDacTemplate = Join-Path $PSScriptRoot 'CnsDacTemplate.ps1'
+if (Test-Path -LiteralPath $_cnsDacTemplate) {
+    . $_cnsDacTemplate
+}
+
+function script:Move-CnsLastFragItemBeforeIndex {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.List[string]]$Frag,
+        [Parameter(Mandatory = $true)]
+        [int]$BeforeIndex
+    )
+    $last = $Frag.Count - 1
+    if ($last -lt 1 -or $BeforeIndex -lt 0 -or $BeforeIndex -gt $last) { return }
+    $item = $Frag[$last]
+    $Frag.RemoveAt($last)
+    if ($BeforeIndex -gt $Frag.Count) { $BeforeIndex = $Frag.Count }
+    $Frag.Insert($BeforeIndex, $item)
+}
+
+function Invoke-CnsAppendFtDocumentToFrag {
+    <#
+    .SYNOPSIS
+        Genere et insere le document FT avant la page ODM (etape 5).
+    .OUTPUTS
+        $true si le PDF FT a ete ajoute au fragment.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.List[string]]$Frag,
+        [Parameter(Mandatory = $true)]
+        [string]$TmpDir,
+        [Parameter(Mandatory = $true)]
+        [int]$BlockIndex,
+        [Parameter(Mandatory = $true)]
+        [int]$SliceIndex,
+        [Parameter(Mandatory = $true)]
+        [int]$ReorderPage,
+        [Parameter(Mandatory = $true)]
+        [int]$RawPageNum,
+        [Parameter(Mandatory = $true)]
+        [string]$PointCollecteLabel,
+        [AllowNull()]
+        $WorkOrderEntity,
+        [AllowNull()]
+        $PageEntity,
+        [AllowNull()]
+        $GsPair,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$FinalOrderToLine,
+        [Parameter(Mandatory = $true)]
+        [array]$Segments,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$OrderToSeg,
+        [Parameter(Mandatory = $true)]
+        [datetime]$VisitDate,
+        [AllowNull()][scriptblock]$ProgressCallback,
+        [Parameter(Mandatory = $true)]
+        [string]$TChildCore
+    )
+    if ([string]::IsNullOrWhiteSpace($PointCollecteLabel)) { return $false }
+    if (-not (Test-CnsFtCollectionPointLabelEligible -Label $PointCollecteLabel)) {
+        Write-Warning ("[FT-POINTS] Injection ignoree — le point de collecte ne commence pas par FT : {0}" -f $PointCollecteLabel)
+        return $false
+    }
+    if (-not (Get-Command New-CnsFtPdfFromExcelTemplate -ErrorAction SilentlyContinue)) {
+        Write-Warning '[FT-POINTS] Module FT non charge — document non injecte.'
+        return $false
+    }
+
+    $ftOut = Join-Path $TmpDir ('ft_{0:D3}_{1:D5}.pdf' -f $BlockIndex, $SliceIndex)
+    $segMetaFt = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $GsPair -FinalOrderToLine $FinalOrderToLine `
+        -Segments $Segments -ExcelOrderIndexToSegmentIndex $OrderToSeg -VisitDate $VisitDate
+    $phFt = @{}
+    foreach ($entry in (Get-CnsFtPlaceholders -WorkOrderEntity $WorkOrderEntity -PageEntity $PageEntity `
+            -SegmentMeta $segMetaFt -VisitDate $VisitDate -PointCollecte $PointCollecteLabel).GetEnumerator()) {
+        $phFt[[string]$entry.Key] = [string]$entry.Value
+    }
+    $ftPdf = New-CnsFtPdfFromExcelTemplate -OutPdfPath $ftOut -Placeholders $phFt
+    if (-not [string]::IsNullOrWhiteSpace($ftPdf) -and (Test-Path -LiteralPath $ftPdf)) {
+        [void]$Frag.Add($ftPdf)
+        Add-TourneeCompositionGeneratedDocCount
+        Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
+            -Detail ("{0}Generation document FT... [OK]" -f ($TChildCore + '│   └── '))
+        Write-Host ("[STEP5-METIER] Document FT injecte avant page reorder #{0} (RawPage={1}, point={2}, fichier={3})." -f `
+                $ReorderPage, $RawPageNum, $PointCollecteLabel, (Split-Path -Leaf $ftPdf)) -ForegroundColor Green
+        return $true
+    }
+    Write-Warning ("[FT-POINTS] Generation FT echouee pour RawPage={0} — point={1}." -f $RawPageNum, $PointCollecteLabel)
+    return $false
+}
 
 function Invoke-CnsGhostscriptDirect {
     <#
@@ -224,11 +319,12 @@ function Ensure-CnsGhostscriptOutputDirectory {
     return $true
 }
 
-function ConvertTo-CnsPsHelveticaParenBody {
+function ConvertTo-CnsPsWinAnsiParenBody {
     <#
     .SYNOPSIS
-        Corps d'une chaine PostScript entre parentheses pour Helvetica (WinAnsi/Latin-1 safe : ASCII + deaccentuation).
-        Echappe \, (, ). Le signe ° (U+00B0) est emis en \260 (WinAnsi).
+        Corps d'une chaine PostScript entre parentheses, encodee WinAnsi/Latin-1 (accents conserves).
+        Normalise tirets/guillemets/apostrophes/symboles hors Latin-1 affichable ; echappe \, (, ).
+        Degre ° -> \260. Glyphes Latin-1 restants (accents) emis en octal (ex. e-aigu -> \351).
     #>
     param([AllowNull()][AllowEmptyString()][string]$Text)
     $t = Sanitize-CnsCoverTextForGhostscript -Text $Text
@@ -236,30 +332,143 @@ function ConvertTo-CnsPsHelveticaParenBody {
         $t = Repair-CnsClientNumeroSignText -Text $t
     }
     if ([string]::IsNullOrEmpty($t)) { return '' }
-    $d = $t.Normalize([System.Text.NormalizationForm]::FormD)
+    # Entites XML/HTML residuelles (ex. FT ST MARTIN D&apos;HERES)
+    $t = $t -replace '(?i)&amp;', '&'
+    $t = $t -replace '(?i)&apos;', "'"
+    $t = $t -replace '(?i)&quot;', '"'
+    $t = $t -replace '(?i)&#39;', "'"
+    $t = $t -replace '(?i)&#x27;', "'"
+
+    # FormC : caracteres precomposes (e-aigu, i-circonflexe) pour mapping Latin-1
+    $t = $t.Normalize([System.Text.NormalizationForm]::FormC)
+    # Recomposition explicite si FormC laisse des suites base + marque (Benoî̂t etc.)
+    foreach ($pair in @(
+            @(('a' + [char]0x0302), [char]0x00E2), @(('A' + [char]0x0302), [char]0x00C2),
+            @(('e' + [char]0x0302), [char]0x00EA), @(('E' + [char]0x0302), [char]0x00CA),
+            @(('i' + [char]0x0302), [char]0x00EE), @(('I' + [char]0x0302), [char]0x00CE),
+            @(('o' + [char]0x0302), [char]0x00F4), @(('O' + [char]0x0302), [char]0x00D4),
+            @(('u' + [char]0x0302), [char]0x00FB), @(('U' + [char]0x0302), [char]0x00DB),
+            @(('a' + [char]0x0300), [char]0x00E0), @(('A' + [char]0x0300), [char]0x00C0),
+            @(('e' + [char]0x0300), [char]0x00E8), @(('E' + [char]0x0300), [char]0x00C8),
+            @(('u' + [char]0x0300), [char]0x00F9), @(('U' + [char]0x0300), [char]0x00D9),
+            @(('a' + [char]0x0301), [char]0x00E1), @(('e' + [char]0x0301), [char]0x00E9),
+            @(('E' + [char]0x0301), [char]0x00C9), @(('i' + [char]0x0301), [char]0x00ED),
+            @(('o' + [char]0x0301), [char]0x00F3), @(('u' + [char]0x0301), [char]0x00FA),
+            @(('a' + [char]0x0308), [char]0x00E4), @(('e' + [char]0x0308), [char]0x00EB),
+            @(('i' + [char]0x0308), [char]0x00EF), @(('o' + [char]0x0308), [char]0x00F6),
+            @(('u' + [char]0x0308), [char]0x00FC), @(('y' + [char]0x0308), [char]0x00FF),
+            @(('c' + [char]0x0327), [char]0x00E7), @(('C' + [char]0x0327), [char]0x00C7)
+        )) {
+        $t = $t.Replace([string]$pair[0], [string]$pair[1])
+    }
+
+    # --- Normalisation caracteres speciaux (PS 5.1 : pas de `u{...}) ---
+    # Tirets typographiques
+    $t = $t.Replace([string][char]0x2014, '-').Replace([string][char]0x2013, '-').Replace([string][char]0x2212, '-')
+    # Guillemets
+    $t = $t.Replace([string][char]0x00AB, '"').Replace([string][char]0x00BB, '"')
+    $t = $t.Replace([string][char]0x201C, '"').Replace([string][char]0x201D, '"')
+    $t = $t.Replace([string][char]0x201E, '"').Replace([string][char]0x201F, '"')
+    # Apostrophes / primes courbes
+    $t = $t.Replace([string][char]0x2018, "'").Replace([string][char]0x2019, "'")
+    $t = $t.Replace([string][char]0x02BC, "'").Replace([string][char]0x00B4, "'").Replace([string][char]0x2032, "'")
+    # Espaces / separates
+    $t = $t.Replace([string][char]0x00A0, ' ').Replace([string][char]0x202F, ' ').Replace([string][char]0x2009, ' ')
+    $t = $t.Replace([string][char]0x00AD, '')  # soft hyphen
+    # Point median
+    $t = $t.Replace([string][char]0x00B7, '.')
+    # Symboles hors rendu simple
+    $t = $t.Replace([string][char]0x20AC, 'EUR')
+    $t = $t.Replace([string][char]0x00A9, '(c)').Replace([string][char]0x00AE, '(R)')
+    $t = $t.Replace([string][char]0x2122, '(TM)')
+    # Ligatures
+    $t = $t.Replace([string][char]0x0152, 'OE').Replace([string][char]0x0153, 'oe')
+    # Lettres speciales (approx. ASCII ; accents FR restants via octal Latin-1)
+    $t = $t.Replace([string][char]0x00C5, 'A').Replace([string][char]0x00E5, 'a')  # Å å
+    $t = $t.Replace([string][char]0x00D1, 'N').Replace([string][char]0x00F1, 'n')  # Ñ ñ
+    $t = $t.Replace([string][char]0x00FF, 'y').Replace([string][char]0x0178, 'Y')  # ÿ Ÿ
+    $t = $t.Replace([string][char]0x0154, 'R').Replace([string][char]0x0155, 'r')  # Ŕ ŕ
+    $t = $t.Replace([string][char]0x00D8, 'OE').Replace([string][char]0x00F8, 'oe')  # Ø ø
+    $t = $t.Replace([string][char]0x00C6, 'AE').Replace([string][char]0x00E6, 'ae')  # Æ æ
+
     $sb = [System.Text.StringBuilder]::new()
-    foreach ($ch in $d.ToCharArray()) {
+    foreach ($ch in $t.ToCharArray()) {
+        [int]$o = [int][char]$ch
+        if ($o -lt 32) { continue }
+        # Marques combinantes residuelles : ne pas emettre '?' (evite Benoi?)
         if ([System.Globalization.CharUnicodeInfo]::GetUnicodeCategory($ch) -eq [System.Globalization.UnicodeCategory]::NonSpacingMark) {
             continue
         }
-        [int]$o = [int][char]$ch
-        if ($o -lt 32) { continue }
-        if ($o -eq 0x2019 -or $o -eq 0x2018) {
-            [void]$sb.Append("'")
-            continue
-        }
+        # Degre / ordinal masculin (N°)
         if ($o -eq 0x00B0 -or $o -eq 0x00BA) {
             [void]$sb.Append('\260')
             continue
         }
+        # Circonflexes FR explicites (Benoît, Forêt, Hôpital) — ISOLatin1 / WinAnsi
+        if ($o -eq 0x00EA) { [void]$sb.Append('\352'); continue }  # ê
+        if ($o -eq 0x00EE) { [void]$sb.Append('\356'); continue }  # î
+        if ($o -eq 0x00F4) { [void]$sb.Append('\364'); continue }  # ô
+        if ($o -eq 0x00FB) { [void]$sb.Append('\373'); continue }  # û
+        if ($o -eq 0x00CA) { [void]$sb.Append('\312'); continue }  # Ê
+        if ($o -eq 0x00CE) { [void]$sb.Append('\316'); continue }  # Î
+        if ($o -eq 0x00D4) { [void]$sb.Append('\324'); continue }  # Ô
+        if ($o -eq 0x00DB) { [void]$sb.Append('\333'); continue }  # Û
         if ($o -ge 32 -and $o -le 126) {
             if ($ch -eq '\' -or $ch -eq '(' -or $ch -eq ')') { [void]$sb.Append('\') }
             [void]$sb.Append($ch)
             continue
         }
+        # Latin-1 restant (accents FR, etc.) : meme code point octal pour ISOLatin1Encoding
+        if ($o -ge 0xA0 -and $o -le 0xFF) {
+            $oct = [Convert]::ToString($o, 8).PadLeft(3, '0')
+            [void]$sb.Append('\' + $oct)
+            continue
+        }
         [void]$sb.Append('?')
     }
     return $sb.ToString()
+}
+
+function ConvertTo-CnsPsHelveticaParenBody {
+    <#
+    .SYNOPSIS
+        Alias historique : delegue a ConvertTo-CnsPsWinAnsiParenBody (accents WinAnsi).
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Text)
+    return (ConvertTo-CnsPsWinAnsiParenBody -Text $Text)
+}
+
+function Get-CnsCoverPostScriptFontProlog {
+    <#
+    .SYNOPSIS
+        Definitions PS : reencodage ISOLatin1 + polices Arial-Cover (repli Helvetica si Arial absent).
+    .NOTES
+        Ghostscript n'expose pas toujours /WinAnsiEncoding ; ISOLatin1Encoding couvre les accents FR.
+        Sous Windows, les TTF Arial sont souvent nommes ArialMT / Arial-BoldMT.
+    #>
+    return @'
+/CnsCoverDefineLatin1Font {
+  findfont
+  dup length dict begin
+  { 1 index /FID ne {def} {pop pop} ifelse } forall
+  /Encoding ISOLatin1Encoding def
+  currentdict
+  end
+  definefont pop
+} bind def
+{
+  /Arial-Cover /ArialMT CnsCoverDefineLatin1Font
+  /Arial-Bold-Cover /Arial-BoldMT CnsCoverDefineLatin1Font
+} stopped {
+  {
+    /Arial-Cover /Arial CnsCoverDefineLatin1Font
+    /Arial-Bold-Cover /Arial-Bold CnsCoverDefineLatin1Font
+  } stopped {
+    /Arial-Cover /Helvetica CnsCoverDefineLatin1Font
+    /Arial-Bold-Cover /Helvetica-Bold CnsCoverDefineLatin1Font
+  } if
+} if
+'@
 }
 
 function Get-CnsGhostscriptPermitFileArgs {
@@ -332,10 +541,22 @@ function Get-CnsGhostscriptPermitFileReadArgs {
 }
 
 function Get-CnsCoverPdfwriteQualityArgs {
+    <#
+    .SYNOPSIS
+        Args Ghostscript pdfwrite. Defaut /printer (pages de garde, fusion rapide).
+        -HighQuality => /prepress (certificats / rendu haute qualite).
+    #>
+    param([switch]$HighQuality)
+    if ($HighQuality.IsPresent) {
+        return @(
+            '-dPDFSETTINGS=/prepress',
+            '-dEmbedAllFonts=true',
+            '-dSubsetFonts=false'
+        )
+    }
     return @(
-        '-dPDFSETTINGS=/prepress',
-        '-dEmbedAllFonts=true',
-        '-dSubsetFonts=false'
+        '-dPDFSETTINGS=/printer',
+        '-dEmbedAllFonts=true'
     )
 }
 
@@ -439,6 +660,12 @@ function Get-CnsGhostscriptPdfwriteArgumentList {
     [void]$gsArgs.AddRange([string[]]@('-dNOPAUSE', '-dBATCH', '-sDEVICE=pdfwrite'))
     [void]$gsArgs.Add("--permit-file-read=$tempLit")
     [void]$gsArgs.Add("--permit-file-write=$tempLit")
+    $winFonts = Join-Path $env:SystemRoot 'Fonts'
+    if (Test-Path -LiteralPath $winFonts -PathType Container) {
+        $fontsLit = Convert-CnsFilesystemPathToGhostscriptPathLiteral -Path ([System.IO.Path]::GetFullPath($winFonts))
+        [void]$gsArgs.Add("-sFONTPATH=$fontsLit")
+        [void]$gsArgs.Add("--permit-file-read=$fontsLit")
+    }
     if (-not $MinimalQuality.IsPresent) {
         [void]$gsArgs.AddRange([string[]](Get-CnsCoverPdfwriteQualityArgs))
     }
@@ -546,8 +773,8 @@ function Write-CnsPostScriptPdfPage {
     .SYNOPSIS
         Ghostscript : .ps mono-page -> PDF A4 (595x842).
     .NOTES
-        # Utilisation de Helvetica pour compatibilite maximale Ghostscript (polices base PDF, sans CIDFont / TTF / CIDFMAP).
-        # Execution via appel direct (&) — Start-Process + redirection peut bloquer la creation du PDF sur certains postes.
+        Polices Arial (WinAnsi) si disponibles via FONTPATH Windows ; sinon repli Helvetica reencode.
+        Execution via appel direct (&) — Start-Process + redirection peut bloquer la creation du PDF sur certains postes.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -557,7 +784,7 @@ function Write-CnsPostScriptPdfPage {
         [switch]$SkipTrailingShowpage,
         [string]$LogContext = 'cover'
     )
-    $prolog = "<< /PageSize [595 842] >> setpagedevice`n"
+    $prolog = "<< /PageSize [595 842] >> setpagedevice`n" + (Get-CnsCoverPostScriptFontProlog) + "`n"
     $runId = [Guid]::NewGuid().ToString('N')
     $psPath = [System.IO.Path]::GetFullPath((Join-Path $env:TEMP ("cn_cover_{0}.ps" -f $runId)))
     $footer = if ($SkipTrailingShowpage.IsPresent) { "`r`n" } else { "`r`nshowpage`r`n" }
@@ -640,476 +867,6 @@ function Write-CnsPostScriptPdfPage {
     }
 }
 
-function Split-CnsCoverTextToMaxWidth {
-    param(
-        [AllowNull()][AllowEmptyString()][string]$Text,
-        [int]$MaxLen = 88
-    )
-    if ([string]::IsNullOrWhiteSpace($Text)) { return @() }
-    $words = @(([string]$Text).Trim() -split '\s+')
-    $lines = [System.Collections.Generic.List[string]]::new()
-    $current = ''
-    foreach ($w in @($words)) {
-        if ([string]::IsNullOrWhiteSpace($w)) { continue }
-        if ([string]::IsNullOrWhiteSpace($current)) {
-            $current = $w
-            continue
-        }
-        if (($current.Length + 1 + $w.Length) -le $MaxLen) {
-            $current = "$current $w"
-        }
-        else {
-            [void]$lines.Add($current)
-            $current = $w
-        }
-    }
-    if (-not [string]::IsNullOrWhiteSpace($current)) {
-        [void]$lines.Add($current)
-    }
-    return @($lines.ToArray())
-}
-
-function Get-CnsCoverGapVerticalCost {
-    param([string]$Kind)
-    switch ($Kind) {
-        'G12' { return 12 }
-        'G15' { return 15 }
-        'G20' { return 20 }
-        'G25' { return 25 }
-        'S8'  { return 8 }
-        'S15' { return 15 }
-        'BLK' { return 8 }
-        default { return 0 }
-    }
-}
-
-function Get-CnsCoverElementVerticalCost {
-    param(
-        $Element,
-        [int]$PageWidth = 612
-    )
-    if ($null -eq $Element) { return 0 }
-    $kind = [string]$Element.Kind
-    $txt = [string]$Element.Text
-    $gap = Get-CnsCoverGapVerticalCost -Kind $kind
-    if ($gap -gt 0) { return $gap }
-
-    switch ($kind) {
-        'TC12' {
-            $n = @((Split-CnsCoverTextToMaxWidth -Text $txt -MaxLen 72)).Count
-            if ($n -lt 1) { return 14 }
-            return (14 * $n)
-        }
-        'T12' {
-            $n = @((Split-CnsCoverTextToMaxWidth -Text $txt -MaxLen 85)).Count
-            if ($n -lt 1) { return 11 }
-            return (11 * $n)
-        }
-        'B11' {
-            $n = @((Split-CnsCoverTextToMaxWidth -Text $txt -MaxLen 85)).Count
-            if ($n -lt 1) { return 11 }
-            return (11 * $n)
-        }
-        { $_ -in @('H10', 'VE', 'I10', 'N10') } {
-            $n = @((Split-CnsCoverTextToMaxWidth -Text $txt -MaxLen 85)).Count
-            if ($n -lt 1) { return 10 }
-            return (10 * $n)
-        }
-        default {
-            if ([string]::IsNullOrWhiteSpace($txt)) { return 0 }
-            $n = @((Split-CnsCoverTextToMaxWidth -Text $txt -MaxLen 85)).Count
-            if ($n -lt 1) { return 10 }
-            return (10 * $n)
-        }
-    }
-}
-
-function Build-CnsMismatchCoverPostScriptFromElements {
-    <#
-    .SYNOPSIS
-        Page(s) de garde non-matches : polices compactes, pagination, message de troncature si besoin.
-    #>
-    param(
-        [AllowEmptyCollection()][object[]]$Elements,
-        [Parameter(Mandatory = $true)][int]$StartY,
-        [Parameter(Mandatory = $true)][int]$MinY,
-        [int]$PageWidth = 612,
-        [switch]$Multipage
-    )
-    if ($null -eq $Elements -or @($Elements).Count -lt 1) { return '' }
-
-    $elList = @($Elements)
-    $parts = New-Object System.Collections.Generic.List[string]
-    [int]$xLeft = 50
-    [int]$xIndent = 70
-    [int]$idx = 0
-    [int]$pageNum = 1
-    $truncationDrawn = $false
-
-    function script:Add-CnsCoverPsTextAtX {
-        param(
-            [string]$Text,
-            [string]$FontName,
-            [int]$FontSize,
-            [int]$X,
-            [int]$LineStep,
-            $PartsList,
-            [ref]$YRef,
-            [int]$YMin
-        )
-        if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
-        $textForPs = [string]$Text
-        if (Get-Command Repair-CnsClientNumeroSignText -ErrorAction SilentlyContinue) {
-            $textForPs = Repair-CnsClientNumeroSignText -Text $textForPs
-        }
-        $drew = $false
-        $wrapped = @(Split-CnsCoverTextToMaxWidth -Text $textForPs -MaxLen 85)
-        foreach ($wl in @($wrapped)) {
-            if ($YRef.Value -lt $YMin) { return $drew }
-            $lit = ConvertTo-CnsPsHelveticaParenBody -Text $wl
-            [void]$PartsList.Add("/$FontName findfont $FontSize scalefont setfont`n$X $($YRef.Value) moveto`n($lit) show")
-            $YRef.Value -= $LineStep
-            $drew = $true
-        }
-        return $drew
-    }
-
-    function script:Add-CnsCoverPsTextCentered {
-        param(
-            [string]$Text,
-            [string]$FontName,
-            [int]$FontSize,
-            [int]$LineStep,
-            $PartsList,
-            [ref]$YRef,
-            [int]$YMin,
-            [int]$PageW
-        )
-        if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
-        $textForPs = [string]$Text
-        if (Get-Command Repair-CnsClientNumeroSignText -ErrorAction SilentlyContinue) {
-            $textForPs = Repair-CnsClientNumeroSignText -Text $textForPs
-        }
-        $drew = $false
-        $wrapped = @(Split-CnsCoverTextToMaxWidth -Text $textForPs -MaxLen 72)
-        foreach ($wl in @($wrapped)) {
-            if ($YRef.Value -lt $YMin) { return $drew }
-            $lit = ConvertTo-CnsPsHelveticaParenBody -Text $wl
-            [void]$PartsList.Add(@"
-/$FontName findfont $FontSize scalefont setfont
-($lit) dup stringwidth pop $PageW exch sub 2 div $($YRef.Value) moveto show
-"@)
-            $YRef.Value -= $LineStep
-            $drew = $true
-        }
-        return $drew
-    }
-
-    function script:Render-CnsCoverElement {
-        param(
-            $Element,
-            $PartsList,
-            [ref]$YRef,
-            [int]$YMin,
-            [int]$PageW,
-            [int]$XLeft,
-            [int]$XIndent
-        )
-        if ($null -eq $Element) { return $true }
-        $kind = [string]$Element.Kind
-        $txt = [string]$Element.Text
-        switch ($kind) {
-            'TC12' {
-                return (script:Add-CnsCoverPsTextCentered -Text $txt -FontName 'Helvetica-Bold' -FontSize 14 -LineStep 14 `
-                    -PartsList $PartsList -YRef $YRef -YMin $YMin -PageW $PageW)
-            }
-            'T12' {
-                return (script:Add-CnsCoverPsTextAtX -Text $txt -FontName 'Helvetica-Bold' -FontSize 10 -X $XLeft -LineStep 11 `
-                    -PartsList $PartsList -YRef $YRef -YMin $YMin)
-            }
-            'H10' {
-                return (script:Add-CnsCoverPsTextAtX -Text $txt -FontName 'Helvetica' -FontSize 9 -X $XLeft -LineStep 10 `
-                    -PartsList $PartsList -YRef $YRef -YMin $YMin)
-            }
-            'VE' {
-                return (script:Add-CnsCoverPsTextAtX -Text $txt -FontName 'Helvetica' -FontSize 9 -X $XLeft -LineStep 10 `
-                    -PartsList $PartsList -YRef $YRef -YMin $YMin)
-            }
-            'B11' {
-                return (script:Add-CnsCoverPsTextAtX -Text $txt -FontName 'Helvetica-Bold' -FontSize 10 -X $XLeft -LineStep 11 `
-                    -PartsList $PartsList -YRef $YRef -YMin $YMin)
-            }
-            'I10' {
-                return (script:Add-CnsCoverPsTextAtX -Text $txt -FontName 'Helvetica' -FontSize 9 -X $XIndent -LineStep 10 `
-                    -PartsList $PartsList -YRef $YRef -YMin $YMin)
-            }
-            'N10' {
-                return (script:Add-CnsCoverPsTextAtX -Text $txt -FontName 'Helvetica' -FontSize 9 -X $XLeft -LineStep 10 `
-                    -PartsList $PartsList -YRef $YRef -YMin $YMin)
-            }
-            { $_ -in @('S8', 'S15', 'G12', 'G15', 'G20', 'G25', 'BLK') } {
-                $YRef.Value -= (Get-CnsCoverGapVerticalCost -Kind $kind)
-                return $true
-            }
-            default {
-                if ([string]::IsNullOrWhiteSpace($txt)) { return $true }
-                return (script:Add-CnsCoverPsTextAtX -Text $txt -FontName 'Helvetica' -FontSize 9 -X $XLeft -LineStep 10 `
-                    -PartsList $PartsList -YRef $YRef -YMin $YMin)
-            }
-        }
-    }
-
-    function script:Add-CnsCoverTruncationNotice {
-        param(
-            [int]$RemainingCount,
-            $PartsList,
-            [int]$YMin
-        )
-        if ($RemainingCount -lt 1) { return }
-        $truncMsg = "... et $RemainingCount autre(s) ODM non affiche(s) (voir fichier diagnostic)"
-        $lit = ConvertTo-CnsPsHelveticaParenBody -Text $truncMsg
-        $yMsg = $YMin + 10
-        [void]$PartsList.Add("/Helvetica findfont 9 scalefont setfont`n$xLeft $yMsg moveto`n($lit) show")
-    }
-
-    while ($idx -lt $elList.Count) {
-        if ($pageNum -gt 1) {
-            [void]$parts.Add('showpage')
-            $contTitle = '=== SYNTHESE DES ODM NON MATCHES (suite) ==='
-            $litCont = ConvertTo-CnsPsHelveticaParenBody -Text $contTitle
-            [void]$parts.Add("/Helvetica-Bold findfont 14 scalefont setfont`n50 780 moveto`n($litCont) show")
-        }
-
-        [int]$y = $StartY
-        [int]$startIdx = $idx
-        while ($idx -lt $elList.Count) {
-            $el = $elList[$idx]
-            $cost = Get-CnsCoverElementVerticalCost -Element $el -PageWidth $PageWidth
-            if (($y - $cost) -lt $MinY) {
-                break
-            }
-            $null = script:Render-CnsCoverElement -Element $el -PartsList $parts -YRef ([ref]$y) -YMin $MinY `
-                -PageW $PageWidth -XLeft $xLeft -XIndent $xIndent
-            $idx++
-        }
-
-        if ($idx -eq $startIdx) {
-            if (-not $truncationDrawn) {
-                $remaining = $elList.Count - $idx
-                script:Add-CnsCoverTruncationNotice -RemainingCount $remaining -PartsList $parts -YMin $MinY
-                $truncationDrawn = $true
-            }
-            break
-        }
-
-        if ($idx -lt $elList.Count) {
-            $pageNum++
-            if (-not $Multipage) {
-                if (-not $truncationDrawn) {
-                    $remaining = $elList.Count - $idx
-                    script:Add-CnsCoverTruncationNotice -RemainingCount $remaining -PartsList $parts -YMin $MinY
-                    $truncationDrawn = $true
-                }
-                break
-            }
-        }
-    }
-
-    if ($idx -lt $elList.Count -and -not $truncationDrawn) {
-        $remaining = $elList.Count - $idx
-        script:Add-CnsCoverTruncationNotice -RemainingCount $remaining -PartsList $parts -YMin $MinY
-    }
-
-    if ($parts.Count -lt 1) { return '' }
-    $body = ($parts.ToArray()) -join "`n"
-    if ($pageNum -gt 1 -or ($body -match '(?m)^showpage\s*$')) {
-        return ($body + "`nshowpage")
-    }
-    return $body
-}
-
-function Expand-CnsCoverDiagnosticLinesForPostScript {
-    param(
-        [AllowEmptyCollection()][string[]]$Lines,
-        [int]$MaxLen = 88
-    )
-    $expanded = [System.Collections.Generic.List[string]]::new()
-    foreach ($line in @($Lines)) {
-        if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        $wrapped = @(Split-CnsCoverTextToMaxWidth -Text $line -MaxLen $MaxLen)
-        if ($wrapped.Count -lt 1) { continue }
-        [void]$expanded.Add($wrapped[0])
-        for ($wi = 1; $wi -lt $wrapped.Count; $wi++) {
-            [void]$expanded.Add(('    {0}' -f $wrapped[$wi]))
-        }
-    }
-    return @($expanded.ToArray())
-}
-
-function Build-CnsGlobalMismatchCoverSimplePostScript {
-    param(
-        [Parameter(Mandatory = $true)][int]$TotalOdmCount,
-        [Parameter(Mandatory = $true)][int]$UnmatchedOdmCount,
-        [int]$Section1Count = -1,
-        [int]$Section2Count = -1,
-        [int]$Section3Count = -1,
-        [switch]$AllMatched
-    )
-    $parts = [System.Collections.Generic.List[string]]::new()
-    [void]$parts.Add('/Helvetica-Bold findfont 14 scalefont setfont')
-    [void]$parts.Add('50 780 moveto')
-    [void]$parts.Add(('({0}) show' -f (ConvertTo-CnsPsHelveticaParenBody -Text 'ASSISTANT - Synthese des ODM')))
-    [void]$parts.Add('/Helvetica findfont 10 scalefont setfont')
-    [int]$y = 750
-    foreach ($lineText in @(
-            ("Nombre total d'ODM : $TotalOdmCount")
-        )) {
-        $lit = ConvertTo-CnsPsHelveticaParenBody -Text $lineText
-        if (-not [string]::IsNullOrWhiteSpace($lit)) {
-            [void]$parts.Add("50 $y moveto")
-            [void]$parts.Add(("($lit) show"))
-            $y -= 22
-        }
-    }
-    $hasSectionCounts = ($Section1Count -ge 0 -or $Section2Count -ge 0 -or $Section3Count -ge 0)
-    if ($hasSectionCounts) {
-        foreach ($lineText in @(
-                ("Section 1 : $([Math]::Max(0, $Section1Count)) EXCEL SANS ODM")
-                ("Section 2 : $([Math]::Max(0, $Section2Count)) ODM DIFFERENTS D'EXCEL")
-                ("Section 3 : $([Math]::Max(0, $Section3Count)) ODM ABSENTS D'EXCEL")
-            )) {
-            $lit = ConvertTo-CnsPsHelveticaParenBody -Text $lineText
-            if (-not [string]::IsNullOrWhiteSpace($lit)) {
-                [void]$parts.Add("50 $y moveto")
-                [void]$parts.Add(("($lit) show"))
-                $y -= 22
-            }
-        }
-    }
-    else {
-        $lit = ConvertTo-CnsPsHelveticaParenBody -Text ("ODM PDF sans correspondance Excel : $UnmatchedOdmCount")
-        if (-not [string]::IsNullOrWhiteSpace($lit)) {
-            [void]$parts.Add("50 $y moveto")
-            [void]$parts.Add(("($lit) show"))
-            $y -= 22
-        }
-    }
-    if ($AllMatched) {
-        $lit = ConvertTo-CnsPsHelveticaParenBody -Text 'Tous les ODM ont ete matches avec succes.'
-        if (-not [string]::IsNullOrWhiteSpace($lit)) {
-            [void]$parts.Add("50 $y moveto")
-            [void]$parts.Add(("($lit) show"))
-        }
-    }
-    return ($parts.ToArray() -join "`n")
-}
-
-function New-CnsGlobalMismatchCoverPdf {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$OutPdfPath,
-        [Parameter(Mandatory = $true)]
-        [int]$TotalOdmCount,
-        [Parameter(Mandatory = $true)]
-        [int]$UnmatchedOdmCount,
-        [AllowEmptyCollection()]
-        [string[]]$DetailLines = @(),
-        [AllowEmptyCollection()]
-        [object[]]$CoverElements = @(),
-        [int]$Section1Count = -1,
-        [int]$Section2Count = -1,
-        [int]$Section3Count = -1,
-        [switch]$AllMatched
-    )
-    $mainTitle = '=== SYNTHESE DES ODM NON MATCHES ==='
-    $lTotal = "Nombre total d'ODM (groupes extraits du PDF) : $TotalOdmCount"
-    $tMain = ConvertTo-CnsPsHelveticaParenBody -Text $mainTitle
-    $tTotal = ConvertTo-CnsPsHelveticaParenBody -Text $lTotal
-    $bodyParts = [System.Collections.Generic.List[string]]::new()
-    $pageW = 595
-    $hasSectionCounts = ($Section1Count -ge 0 -or $Section2Count -ge 0 -or $Section3Count -ge 0)
-    if ($hasSectionCounts) {
-        $s1 = [Math]::Max(0, $Section1Count)
-        $s2 = [Math]::Max(0, $Section2Count)
-        $s3 = [Math]::Max(0, $Section3Count)
-        $lSec1 = "Section 1 : $s1 EXCEL SANS ODM"
-        $lSec2 = "Section 2 : $s2 ODM DIFFERENTS D'EXCEL"
-        $lSec3 = "Section 3 : $s3 ODM ABSENTS D'EXCEL"
-        $tSec1 = ConvertTo-CnsPsHelveticaParenBody -Text $lSec1
-        $tSec2 = ConvertTo-CnsPsHelveticaParenBody -Text $lSec2
-        $tSec3 = ConvertTo-CnsPsHelveticaParenBody -Text $lSec3
-        [void]$bodyParts.Add(@"
-/Helvetica-Bold findfont 14 scalefont setfont
-($tMain) dup stringwidth pop $pageW exch sub 2 div 780 moveto show
-/Helvetica findfont 10 scalefont setfont
-50 745 moveto
-($tTotal) show
-50 720 moveto
-($tSec1) show
-50 695 moveto
-($tSec2) show
-50 670 moveto
-($tSec3) show
-"@)
-    }
-    else {
-        $lLegacy = "Nombre d'ODM PDF sans correspondance Excel : $UnmatchedOdmCount"
-        $tLegacy = ConvertTo-CnsPsHelveticaParenBody -Text $lLegacy
-        [void]$bodyParts.Add(@"
-/Helvetica-Bold findfont 14 scalefont setfont
-($tMain) dup stringwidth pop $pageW exch sub 2 div 780 moveto show
-/Helvetica findfont 10 scalefont setfont
-50 745 moveto
-($tTotal) show
-50 720 moveto
-($tLegacy) show
-"@)
-    }
-
-    $detailStartY = 650
-    $detailMinY = 35
-    $detailPs = ''
-    if (@($CoverElements).Count -gt 0) {
-        $detailPs = Build-CnsMismatchCoverPostScriptFromElements -Elements @($CoverElements) `
-            -StartY $detailStartY -MinY $detailMinY -Multipage
-    }
-    elseif (@($DetailLines).Count -gt 0) {
-        $flatDetail = @(Expand-CnsCoverDiagnosticLinesForPostScript -Lines @($DetailLines))
-        if ($flatDetail.Count -gt 0) {
-            $detailPs = Build-CnsCoverTextLinesPostScriptAppend -Lines $flatDetail -StartY $detailStartY -LineStep 10 -MinY $detailMinY -FontName 'Helvetica' -FontSize 9
-        }
-    }
-    if (-not [string]::IsNullOrWhiteSpace($detailPs)) {
-        [void]$bodyParts.Add($detailPs)
-    }
-    elseif ($AllMatched) {
-        $okMsg = 'Tous les ODM ont ete matches avec succes.'
-        $tOk = ConvertTo-CnsPsHelveticaParenBody -Text $okMsg
-        [void]$bodyParts.Add("/Helvetica findfont 9 scalefont setfont`n50 $detailStartY moveto`n($tOk) show")
-    }
-
-    $body = ($bodyParts.ToArray()) -join "`n"
-    $skipTrailingShow = ($detailPs -match '(?m)showpage\s*$')
-    if ($env:CN_DEBUG_PIPELINE -in @('1', 'true')) {
-        $preview = $body
-        if ($preview.Length -gt 200) { $preview = $preview.Substring(0, 200) + '...' }
-        script:Write-CnsTourneeLog -Message ("[GHOSTSCRIPT] global-cover body preview : {0}" -f $preview) -Level 'DEBUG'
-    }
-
-    $forceSimple = $env:CN_COVER_PS_SIMPLE -in @('1', 'true', 'yes', 'on')
-    if (-not $forceSimple) {
-        $ok = Write-CnsPostScriptPdfPage -PsBodySansShowpage $body -OutPdfPath $OutPdfPath `
-            -SkipTrailingShowpage:$skipTrailingShow -LogContext 'global-cover'
-        if ($ok) { return $true }
-        script:Write-CnsTourneeLog -Message '[GHOSTSCRIPT] global-cover : syntaxe detaillee en echec — repli PS simplifie' -Level 'WARN'
-    }
-
-    $simpleBody = Build-CnsGlobalMismatchCoverSimplePostScript -TotalOdmCount $TotalOdmCount `
-        -UnmatchedOdmCount $UnmatchedOdmCount -Section1Count $Section1Count `
-        -Section2Count $Section2Count -Section3Count $Section3Count -AllMatched:$AllMatched
-    return (Write-CnsPostScriptPdfPage -PsBodySansShowpage $simpleBody -OutPdfPath $OutPdfPath `
-        -LogContext 'global-cover-simple')
-}
 
 function Format-CnsTourneeCoverDateFrLong {
     <#
@@ -1187,13 +944,17 @@ function Format-CnsTourneeCoverGardeDateTitle {
 function Get-CnsCoverPostScriptFontBlackName {
     <#
     .NOTES
-        Arial-Black non disponible en PostScript Ghostscript standard — Helvetica-Bold equivalent visuel.
+        Nom logique defini dans Get-CnsCoverPostScriptFontProlog (Arial-Bold Latin-1, repli Helvetica-Bold).
     #>
-    return 'Helvetica-Bold'
+    return 'Arial-Bold-Cover'
 }
 
 function Get-CnsCoverPostScriptFontRegularName {
-    return 'Helvetica'
+    <#
+    .NOTES
+        Nom logique defini dans Get-CnsCoverPostScriptFontProlog (Arial Latin-1, repli Helvetica).
+    #>
+    return 'Arial-Cover'
 }
 
 function New-CnsPostScriptRightAlignedTextShowBlock {
@@ -1202,13 +963,396 @@ function New-CnsPostScriptRightAlignedTextShowBlock {
         [Parameter(Mandatory = $true)][string]$FontName,
         [Parameter(Mandatory = $true)][int]$FontSize,
         [Parameter(Mandatory = $true)][int]$RightX,
-        [Parameter(Mandatory = $true)][int]$Y
+        [Parameter(Mandatory = $true)][int]$Y,
+        [switch]$MutedGray
     )
-    $lit = ConvertTo-CnsPsHelveticaParenBody -Text $Text
+    $lit = ConvertTo-CnsPsWinAnsiParenBody -Text $Text
+    $grayOn = if ($MutedGray) { "0.4 setgray`n" } else { '' }
+    $grayOff = if ($MutedGray) { "`n0 setgray" } else { '' }
+    return @"
+$grayOn/$FontName findfont $FontSize scalefont setfont
+($lit) dup stringwidth pop $RightX exch sub $Y moveto show$grayOff
+"@
+}
+
+function script:Get-CnsTourneeCoverServiceDebutHourFromSegment {
+    param([AllowNull()]$Segment)
+    if ($null -eq $Segment) { return $null }
+    if ($null -eq $Segment.PSObject.Properties['ServiceDebutHour']) { return $null }
+    if ($null -eq $Segment.ServiceDebutHour) { return $null }
+    try { return [int]$Segment.ServiceDebutHour } catch { return $null }
+}
+
+function script:Get-CnsTourneeCoverServiceDebutMinuteFromSegment {
+    param([AllowNull()]$Segment)
+    if ($null -eq $Segment) { return 0 }
+    if ($null -eq $Segment.PSObject.Properties['ServiceDebutMinute']) { return 0 }
+    if ($null -eq $Segment.ServiceDebutMinute) { return 0 }
+    try { return [int]$Segment.ServiceDebutMinute } catch { return 0 }
+}
+
+function script:Format-CnsTourneeCoverServiceLine {
+    param(
+        [AllowNull()][AllowEmptyString()][string]$Collecteur,
+        [AllowNull()][AllowEmptyString()][string]$ServiceLabel = $null,
+        $DebutHour = $null,
+        $DebutMinute = $null
+    )
+    $prenom = Get-CnsTourneeCoverCollecteurPrenomDisplay -Collecteur $Collecteur
+    if ([string]::IsNullOrWhiteSpace($prenom)) {
+        $prenom = if ([string]::IsNullOrWhiteSpace($Collecteur)) { '' } else { ([string]$Collecteur).Trim() }
+    }
+    if ([string]::IsNullOrWhiteSpace($prenom)) { return '' }
+    if ($null -ne $DebutHour) {
+        [int]$min = 0
+        if ($null -ne $DebutMinute) { try { $min = [int]$DebutMinute } catch { $min = 0 } }
+        if ($min -gt 0) {
+            return ('{0} | Début {1}H{2}' -f $prenom, [int]$DebutHour, $min.ToString('00'))
+        }
+        return ('{0} | Début {1}H' -f $prenom, [int]$DebutHour)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ServiceLabel)) {
+        return ('{0} | {1}' -f $prenom, $ServiceLabel)
+    }
+    return $prenom
+}
+
+function Get-CnsTourneeCoverVehicleDayPairing {
+    <#
+    .SYNOPSIS
+        Pairing Matin / Après-midi pour un segment nouveau modele.
+        Title* = collecteur de la Perspective courante ; Subtitle* = l'autre creneau.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]$CurrentSegment,
+        [AllowEmptyCollection()][object[]]$AllSegments = @()
+    )
+    if ($null -eq $CurrentSegment) { return $null }
+    [int]$rank = 0
+    [string]$label = ''
+    [string]$perspective = ''
+    try {
+        if ($null -ne $CurrentSegment.PSObject.Properties['ServiceRank']) { $rank = [int]$CurrentSegment.ServiceRank }
+    } catch { $rank = 0 }
+    try {
+        if ($null -ne $CurrentSegment.PSObject.Properties['ServiceLabel']) { $label = [string]$CurrentSegment.ServiceLabel }
+    } catch { $label = '' }
+    try {
+        if ($null -ne $CurrentSegment.PSObject.Properties['Perspective']) { $perspective = [string]$CurrentSegment.Perspective }
+    } catch { $perspective = '' }
+    if ([string]::IsNullOrWhiteSpace($perspective)) { $perspective = $label }
+    if ($rank -lt 1 -and [string]::IsNullOrWhiteSpace($label) -and [string]::IsNullOrWhiteSpace($perspective)) { return $null }
+
+    [string]$plaque = ''
+    [string]$parc = ''
+    try {
+        if ($null -ne $CurrentSegment.PSObject.Properties['Plaque']) { $plaque = ([string]$CurrentSegment.Plaque).Trim() }
+    } catch { }
+    try {
+        if ($null -ne $CurrentSegment.PSObject.Properties['NumeroParc']) { $parc = ([string]$CurrentSegment.NumeroParc).Trim() }
+    } catch { }
+    if ([string]::IsNullOrWhiteSpace($parc)) {
+        try {
+            $candParc = ([string]$CurrentSegment.Vehicule).Trim()
+            # Ne pas prendre une plaque pour un numéro de parc (ex: Vehicule=FR-418-CS sans parenthèses).
+            if (-not [string]::IsNullOrWhiteSpace($candParc) -and $candParc -notmatch '(?i)[A-Z]{1,3}-\d{2,4}-[A-Z]{1,3}' -and $candParc -notmatch '(?i)^(NON\s+SPECIFIE|INCONNU|-)$') {
+                $parc = $candParc
+            }
+        } catch { $parc = '' }
+    }
+
+    $morningSeg = $null
+    $afternoonSeg = $null
+    foreach ($s in @($AllSegments)) {
+        if ($null -eq $s) { continue }
+        [string]$sPlaque = ''
+        [string]$sParc = ''
+        [int]$sRank = 0
+        [string]$sLabel = ''
+        try {
+            if ($null -ne $s.PSObject.Properties['Plaque']) { $sPlaque = ([string]$s.Plaque).Trim() }
+        } catch { }
+        try {
+            if ($null -ne $s.PSObject.Properties['NumeroParc']) { $sParc = ([string]$s.NumeroParc).Trim() }
+        } catch { }
+        if ([string]::IsNullOrWhiteSpace($sParc)) {
+            try { $sParc = ([string]$s.Vehicule).Trim() } catch { $sParc = '' }
+        }
+        try {
+            if ($null -ne $s.PSObject.Properties['ServiceRank']) { $sRank = [int]$s.ServiceRank }
+        } catch { $sRank = 0 }
+        try {
+            if ($null -ne $s.PSObject.Properties['ServiceLabel']) { $sLabel = [string]$s.ServiceLabel }
+        } catch { $sLabel = '' }
+
+        $sameVehicle = $false
+        if (-not [string]::IsNullOrWhiteSpace($plaque) -and -not [string]::IsNullOrWhiteSpace($sPlaque)) {
+            $sameVehicle = [string]::Equals($plaque, $sPlaque, [System.StringComparison]::OrdinalIgnoreCase)
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($parc) -and -not [string]::IsNullOrWhiteSpace($sParc)) {
+            $sameVehicle = [string]::Equals($parc, $sParc, [System.StringComparison]::OrdinalIgnoreCase)
+        }
+        if (-not $sameVehicle) { continue }
+
+        $isMorning = ($sRank -eq 1) -or ($sLabel -match '(?i)^matin')
+        $isAfternoon = ($sRank -eq 2) -or ($sLabel -match '(?i)apr')
+        if ($isMorning -and $null -eq $morningSeg) { $morningSeg = $s }
+        elseif ($isAfternoon -and $null -eq $afternoonSeg) { $afternoonSeg = $s }
+    }
+
+    [string]$morningCollector = ''
+    [string]$afternoonCollector = ''
+    $morningHour = $null
+    $afternoonHour = $null
+    [int]$morningMinute = 0
+    [int]$afternoonMinute = 0
+    if ($null -ne $morningSeg) {
+        try { $morningCollector = [string]$morningSeg.Collecteur } catch { $morningCollector = '' }
+        if (Get-Command Test-CnsExcelTourneeMetaIsSentinel -ErrorAction SilentlyContinue) {
+            if (Test-CnsExcelTourneeMetaIsSentinel -Text $morningCollector) { $morningCollector = '' }
+        }
+        $morningHour = script:Get-CnsTourneeCoverServiceDebutHourFromSegment -Segment $morningSeg
+        $morningMinute = script:Get-CnsTourneeCoverServiceDebutMinuteFromSegment -Segment $morningSeg
+    }
+    if ($null -ne $afternoonSeg) {
+        try { $afternoonCollector = [string]$afternoonSeg.Collecteur } catch { $afternoonCollector = '' }
+        if (Get-Command Test-CnsExcelTourneeMetaIsSentinel -ErrorAction SilentlyContinue) {
+            if (Test-CnsExcelTourneeMetaIsSentinel -Text $afternoonCollector) { $afternoonCollector = '' }
+        }
+        $afternoonHour = script:Get-CnsTourneeCoverServiceDebutHourFromSegment -Segment $afternoonSeg
+        $afternoonMinute = script:Get-CnsTourneeCoverServiceDebutMinuteFromSegment -Segment $afternoonSeg
+    }
+
+    [bool]$morningFree = [string]::IsNullOrWhiteSpace($morningCollector)
+    [bool]$afternoonFree = [string]::IsNullOrWhiteSpace($afternoonCollector)
+    [bool]$isAfternoonPerspective = ($rank -eq 2) -or ($perspective -match '(?i)apr') -or ($label -match '(?i)apr')
+
+    # Ligne 1 (droite) : collecteur principal de la page + heure de début.
+    [string]$titleLine = ''
+    if ($isAfternoonPerspective) {
+        $titleLine = script:Format-CnsTourneeCoverServiceLine -Collecteur $afternoonCollector -ServiceLabel 'Après-midi' -DebutHour $afternoonHour -DebutMinute $afternoonMinute
+        if ([string]::IsNullOrWhiteSpace($titleLine)) {
+            $titleLine = script:Format-CnsTourneeCoverServiceLine -Collecteur ([string]$CurrentSegment.Collecteur) -ServiceLabel 'Après-midi' `
+                -DebutHour (script:Get-CnsTourneeCoverServiceDebutHourFromSegment -Segment $CurrentSegment) `
+                -DebutMinute (script:Get-CnsTourneeCoverServiceDebutMinuteFromSegment -Segment $CurrentSegment)
+        }
+    }
+    else {
+        $titleLine = script:Format-CnsTourneeCoverServiceLine -Collecteur $morningCollector -ServiceLabel 'Matin' -DebutHour $morningHour -DebutMinute $morningMinute
+        if ([string]::IsNullOrWhiteSpace($titleLine)) {
+            $titleLine = script:Format-CnsTourneeCoverServiceLine -Collecteur ([string]$CurrentSegment.Collecteur) -ServiceLabel 'Matin' `
+                -DebutHour (script:Get-CnsTourneeCoverServiceDebutHourFromSegment -Segment $CurrentSegment) `
+                -DebutMinute (script:Get-CnsTourneeCoverServiceDebutMinuteFromSegment -Segment $CurrentSegment)
+        }
+    }
+
+    # Ligne service sous le véhicule : uniquement l'AUTRE créneau (pas le collecteur principal déjà en titre).
+    [string]$serviceDetailLine = ''
+    if ($isAfternoonPerspective) {
+        [string]$morningName = 'Libre'
+        if (-not $morningFree) {
+            $morningName = Get-CnsTourneeCoverCollecteurPrenomDisplay -Collecteur $morningCollector
+            if ([string]::IsNullOrWhiteSpace($morningName)) { $morningName = ([string]$morningCollector).Trim() }
+        }
+        $serviceDetailLine = ('Matin : {0}' -f $morningName)
+    }
+    else {
+        [string]$afternoonName = 'Libre'
+        if (-not $afternoonFree) {
+            $afternoonName = Get-CnsTourneeCoverCollecteurPrenomDisplay -Collecteur $afternoonCollector
+            if ([string]::IsNullOrWhiteSpace($afternoonName)) { $afternoonName = ([string]$afternoonCollector).Trim() }
+        }
+        $serviceDetailLine = ('Après-midi : {0}' -f $afternoonName)
+    }
+
+    # Numéro de parc : extrait des parenthèses Excel (ex: "FR-418-CS (13)" -> "13"). Pas de lookup DB.
+    [string]$camionLine = ''
+    if (-not [string]::IsNullOrWhiteSpace($parc)) {
+        if ($parc -match '^(?i)camion\b') {
+            $camionLine = $parc
+        }
+        else {
+            $camionLine = ('Camion {0}' -f $parc)
+        }
+    }
+
+    return [pscustomobject]@{
+        Perspective           = $(if ($isAfternoonPerspective) { 'Après-midi' } else { 'Matin' })
+        MorningCollecteur     = $morningCollector
+        AfternoonCollecteur   = $afternoonCollector
+        MorningDebutHour      = $morningHour
+        AfternoonDebutHour    = $afternoonHour
+        MorningIsFree         = $morningFree
+        AfternoonIsFree       = $afternoonFree
+        Plaque                = $plaque
+        NumeroParc            = $parc
+        TitleLine             = $titleLine
+        SubtitleLine          = $serviceDetailLine
+        ServiceDetailLine     = $serviceDetailLine
+        SubtitleIsFree        = $false
+        CamionLine            = $camionLine
+    }
+}
+
+function New-CnsPostScriptCenteredTextShowBlock {
+    <#
+    .SYNOPSIS
+        Bloc PostScript pour texte centre horizontalement (garde tournee SB, etc.).
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Text,
+        [string]$FontName = 'Arial-Cover',
+        [int]$FontSize = 12,
+        [int]$Y = 730,
+        [int]$PageWidth = 595
+    )
+    if ([string]::IsNullOrWhiteSpace($Text)) { return '' }
+    $textForPs = [string]$Text
+    if (Get-Command Repair-CnsClientNumeroSignText -ErrorAction SilentlyContinue) {
+        $textForPs = Repair-CnsClientNumeroSignText -Text $textForPs
+    }
+    $lit = ConvertTo-CnsPsWinAnsiParenBody -Text $textForPs
     return @"
 /$FontName findfont $FontSize scalefont setfont
-($lit) dup stringwidth pop $RightX exch sub $Y moveto show
+($lit) dup stringwidth pop $PageWidth exch sub 2 div $Y moveto show
 "@
+}
+
+function Get-CnsDacBioCoverInstructionText {
+    # Texte métier (sans préfixe d'indent) ; l'assemblage ajoute «     » pour le rendu Normal 10.
+    return 'Reporter sur le DAC le poids de chaque bac et le nombre total de bacs collectés. Après pesée, apposer un DAC sur chaque bac. Si plusieurs bacs proviennent du même point de collecte, numéroter les DAC : 1/3, 2/3, 3/3, etc.'
+}
+
+function Split-CnsCoverTextToWrappedLines {
+    <#
+    .SYNOPSIS
+        Coupe un texte long en lignes (~MaxChars) pour la page de garde PostScript.
+        Conserve l'indentation de tête (prestations groupées sous un client).
+    #>
+    param(
+        [AllowNull()][AllowEmptyString()][string]$Text,
+        [int]$MaxChars = 78
+    )
+    if ([string]::IsNullOrWhiteSpace($Text)) { return @() }
+    $raw = [string]$Text
+    $indent = ''
+    $mInd = [regex]::Match($raw, '^(\s+)')
+    if ($mInd.Success) { $indent = $mInd.Groups[1].Value }
+    $t = $raw.Trim()
+    [int]$maxContent = [Math]::Max(8, $MaxChars - $indent.Length)
+    if ($t.Length -le $maxContent) { return @($indent + $t) }
+
+    $out = New-Object System.Collections.Generic.List[string]
+    $words = @($t -split '\s+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $buf = ''
+    foreach ($w in $words) {
+        if ([string]::IsNullOrWhiteSpace($buf)) {
+            $buf = $w
+            continue
+        }
+        $candidate = $buf + ' ' + $w
+        if ($candidate.Length -le $maxContent) {
+            $buf = $candidate
+        }
+        else {
+            [void]$out.Add($indent + $buf)
+            $buf = $w
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($buf)) { [void]$out.Add($indent + $buf) }
+    return @($out.ToArray())
+}
+
+function Get-CnsBioDechetsCoverMemoLinesViaStep5Detection {
+    <#
+    .SYNOPSIS
+        Mémos garde Bio : même détection que les DAC (Test-CnsStep5FragSliceRequiresBioDechetsDocument + PdfRawLinesByPage).
+        Retourne les noms de points Bio puis l'instruction DAC (une fois).
+    #>
+    param(
+        [Parameter(Mandatory = $true)][int]$MainFrom1,
+        [Parameter(Mandatory = $true)][int]$MainTo1,
+        [Parameter(Mandatory = $true)][object[]]$SortedGsPairs,
+        [Parameter(Mandatory = $true)][hashtable]$FinalOrderToLine,
+        [AllowEmptyCollection()][object[]]$WorkOrders = @(),
+        [AllowEmptyCollection()][object[]]$PdfEntities = @(),
+        [hashtable]$PdfRawLinesByPage = $null
+    )
+    if (-not (Get-Command Test-CnsStep5FragSliceRequiresBioDechetsDocument -ErrorAction SilentlyContinue)) {
+        return @()
+    }
+
+    $names = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $pairs = @($SortedGsPairs)
+    for ($pn = [int]$MainFrom1; $pn -le [int]$MainTo1; $pn++) {
+        $idx = $pn - 1
+        if ($idx -lt 0 -or $idx -ge $pairs.Count) { continue }
+        $gsPair = $pairs[$idx]
+        try { $fo = [int]$gsPair.FinalOrder } catch { continue }
+        $ln = $FinalOrderToLine[$fo]
+        if ($null -ne $ln) {
+            $src = [string]$ln.Source
+            if ($src -eq 'PdfFallback') { continue }
+        }
+        [int]$rawPn = 0
+        try { $rawPn = [int]$gsPair.RawPageNum } catch { $rawPn = 0 }
+        if ($rawPn -lt 1) { continue }
+
+        $precomputed = @()
+        if (Get-Command Get-CnsStep5RawLinesForPhysicalPage -ErrorAction SilentlyContinue) {
+            $fromStep1 = Get-CnsStep5RawLinesForPhysicalPage -PageNumberOneBased $rawPn -PdfRawLinesByPage $PdfRawLinesByPage
+            if ($null -ne $fromStep1) { $precomputed = @($fromStep1) }
+        }
+
+        $isBio = [bool](Test-CnsStep5FragSliceRequiresBioDechetsDocument `
+                -FragSlicePdfPath $null `
+                -PdfRawLinesByPage $PdfRawLinesByPage `
+                -RawPageNumOneBased $rawPn `
+                -PrecomputedRawLines $precomputed)
+        if (-not $isBio) { continue }
+
+        $wo = $null
+        $pe = $null
+        if (Get-Command Resolve-CnsWorkOrderEntityFromPdfPage -ErrorAction SilentlyContinue) {
+            $wo = Resolve-CnsWorkOrderEntityFromPdfPage -RawPageNumOneBased $rawPn -WorkOrders $WorkOrders -PdfEntities $PdfEntities
+        }
+        if (Get-Command Get-CnsPdfPageEntityByPhysicalPage -ErrorAction SilentlyContinue) {
+            $pe = Get-CnsPdfPageEntityByPhysicalPage -PageNumberOneBased $rawPn -PdfEntities $PdfEntities
+        }
+
+        [string]$client = ''
+        if ($null -ne $wo) {
+            try { $client = [string]$wo.ClientName } catch { }
+        }
+        if ([string]::IsNullOrWhiteSpace($client) -and $null -ne $pe) {
+            try { $client = [string]$pe.ClientName } catch { }
+        }
+        if (Get-Command ConvertTo-CnsCoverClientDisplayLabel -ErrorAction SilentlyContinue) {
+            $client = ConvertTo-CnsCoverClientDisplayLabel -Name $client
+        }
+        if ([string]::IsNullOrWhiteSpace($client)) { $client = 'Point de collecte Bio' }
+        $clientKey = $client.Trim()
+        $ceaExcluded = $false
+        if (Get-Command Test-CnsCoverClientExcludedFromDacInstruction -ErrorAction SilentlyContinue) {
+            $ceaExcluded = [bool](Test-CnsCoverClientExcludedFromDacInstruction -ClientName $clientKey -RawLines $precomputed)
+        }
+        elseif (Get-Command Test-CnsBioDechetsDacExcludedFromLines -ErrorAction SilentlyContinue) {
+            $ceaExcluded = [bool](Test-CnsBioDechetsDacExcludedFromLines -Lines (@($clientKey) + @($precomputed)))
+        }
+        # CEA SLE : totalement masqué de la liste DAC garde (Papier/Carton/DAC seuls).
+        if ($ceaExcluded) { continue }
+        [void]$names.Add($clientKey)
+    }
+
+    if ($names.Count -lt 1) { return @() }
+    $out = New-Object System.Collections.Generic.List[string]
+    foreach ($n in @($names)) {
+        [void]$out.Add([string]$n)
+    }
+    [void]$out.Add(('    ' + (Get-CnsDacBioCoverInstructionText)))
+    return @($out.ToArray())
 }
 
 function Build-CnsCoverTextLinesPostScriptAppend {
@@ -1222,16 +1366,64 @@ function Build-CnsCoverTextLinesPostScriptAppend {
         [int]$LineStep,
         [Parameter(Mandatory = $true)]
         [int]$MinY,
-        [string]$FontName = 'Helvetica',
+        [string]$FontName = 'Arial-Cover',
         [int]$FontSize = 11
     )
     $parts = New-Object System.Collections.Generic.List[string]
     [int]$y = $StartY
     foreach ($line in @($Lines)) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        $lit = ConvertTo-CnsPsHelveticaParenBody -Text $line
+        $lit = ConvertTo-CnsPsWinAnsiParenBody -Text $line
         [void]$parts.Add("/$FontName findfont $FontSize scalefont setfont`n50 $y moveto`n($lit) show")
         $y -= $LineStep
+        if ($y -lt $MinY) { break }
+    }
+    if ($parts.Count -lt 1) { return '' }
+    return (($parts.ToArray()) -join "`n")
+}
+
+function Build-CnsCoverMetierMemoLinesPostScriptAppend {
+    <#
+    .SYNOPSIS
+        Mémos métier garde : client en gras 12, prestations indentées en regular 10, ligne vide = espacement.
+    #>
+    param(
+        [AllowNull()]
+        [AllowEmptyCollection()]
+        [string[]]$Lines,
+        [Parameter(Mandatory = $true)]
+        [int]$StartY,
+        [Parameter(Mandatory = $true)]
+        [int]$MinY,
+        [string]$FontBold = 'Arial-Bold-Cover',
+        [string]$FontRegular = 'Arial-Cover',
+        [int]$HeaderFontSize = 12,
+        [int]$BodyFontSize = 10,
+        [int]$HeaderLineStep = 16,
+        [int]$BodyLineStep = 14,
+        [int]$SpacerStep = 10,
+        [int]$LeftX = 50,
+        [int]$BodyIndentX = 18
+    )
+    $parts = New-Object System.Collections.Generic.List[string]
+    [int]$y = $StartY
+    foreach ($line in @($Lines)) {
+        if ($null -eq $line) { continue }
+        [string]$s = [string]$line
+        if ($s -match '^\s*$') {
+            $y -= [int]$SpacerStep
+            if ($y -lt $MinY) { break }
+            continue
+        }
+        # Indentation logique via espaces en amont ; Trim PS => décalage X pour les prestations.
+        [bool]$isBody = [bool]($s -match '^\s+\S')
+        [string]$fontName = if ($isBody) { $FontRegular } else { $FontBold }
+        [int]$fontSize = if ($isBody) { $BodyFontSize } else { $HeaderFontSize }
+        [int]$step = if ($isBody) { $BodyLineStep } else { $HeaderLineStep }
+        [int]$x = if ($isBody) { ([int]$LeftX + [int]$BodyIndentX) } else { [int]$LeftX }
+        $lit = ConvertTo-CnsPsWinAnsiParenBody -Text $s
+        [void]$parts.Add("/$fontName findfont $fontSize scalefont setfont`n$x $y moveto`n($lit) show")
+        $y -= $step
         if ($y -lt $MinY) { break }
     }
     if ($parts.Count -lt 1) { return '' }
@@ -1265,25 +1457,35 @@ function Build-CnsTourneeHeaderCoverPostScriptBody {
         [Parameter(Mandatory = $true)][string]$Vehicule,
         [AllowNull()][AllowEmptyString()][string]$VehiculeImmatriculation = $null,
         [AllowEmptyCollection()][string[]]$MetierMemoLines = @(),
-        [AllowNull()][AllowEmptyString()][string]$IncompleteBanner = $null
+        [AllowNull()][AllowEmptyString()][string]$IncompleteBanner = $null,
+        [AllowNull()][AllowEmptyString()][string]$CenteredText = $null,
+        [AllowNull()]$VehicleDayPairing = $null
     )
     $fontBlack = Get-CnsCoverPostScriptFontBlackName
     $fontReg = Get-CnsCoverPostScriptFontRegularName
-    $litDate = ConvertTo-CnsPsHelveticaParenBody -Text $DateTitle
+    $litDate = ConvertTo-CnsPsWinAnsiParenBody -Text $DateTitle
     [string]$prenom = Get-CnsTourneeCoverCollecteurPrenomDisplay -Collecteur $Collecteur
-    [string]$vehText = if ([string]::IsNullOrWhiteSpace($Vehicule)) { '' } else { ([string]$Vehicule).Trim() }
-    if (-not [string]::IsNullOrWhiteSpace($vehText) -and -not [string]::IsNullOrWhiteSpace($VehiculeImmatriculation)) {
-        $vehText = ('{0} ({1})' -f $vehText, ([string]$VehiculeImmatriculation).Trim())
-    }
+    [string]$parcText = if ([string]::IsNullOrWhiteSpace($Vehicule)) { '' } else { ([string]$Vehicule).Trim() }
+    [string]$immatText = if ([string]::IsNullOrWhiteSpace($VehiculeImmatriculation)) { '' } else { ([string]$VehiculeImmatriculation).Trim() }
 
     $headerFontSize = 18
+    [int]$immatFontSize = 12
+    [int]$vehImmatLineStep = 18
+    [int]$immatRightIndent = 30
+    [int]$pageWidth = 595
+    [int]$leftX = 50
+    [bool]$hasPairing = $null -ne $VehicleDayPairing
 
     if (-not [string]::IsNullOrWhiteSpace($IncompleteBanner)) {
-        $line1Y = 770
-        $vehY = 740
-        $memoY = 700
+        $dateY = 770
+        # Date + collecteur meme ligne ; sous le prenom : Camion / plaque / service (3 lignes).
+        $titleY = $dateY
+        $vehY = if ($hasPairing) { 742 } else { 740 }
+        $plateY = 724
+        $serviceY = 706
+        $memoY = if ($hasPairing) { 660 } else { 700 }
         $rightX = 550
-        $litBanner = ConvertTo-CnsPsHelveticaParenBody -Text $IncompleteBanner
+        $litBanner = ConvertTo-CnsPsWinAnsiParenBody -Text $IncompleteBanner
         $bannerPs = @"
 /$fontBlack findfont 14 scalefont setfont
 50 835 moveto
@@ -1291,32 +1493,159 @@ function Build-CnsTourneeHeaderCoverPostScriptBody {
 "@
     }
     else {
-        $line1Y = 800
-        $vehY = 770
-        $memoY = 730
+        $dateY = 800
+        $titleY = $dateY
+        $vehY = if ($hasPairing) { 772 } else { 770 }
+        $plateY = 754
+        $serviceY = 736
+        $memoY = if ($hasPairing) { 690 } else { 730 }
         $rightX = 550
         $bannerPs = ''
     }
 
     $prenomPs = ''
-    if (-not [string]::IsNullOrWhiteSpace($prenom)) {
-        $prenomPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $prenom -FontName $fontBlack -FontSize $headerFontSize -RightX $rightX -Y $line1Y
+    $subtitlePs = ''
+    $parcPs = ''
+    $immatPs = ''
+    if ($hasPairing) {
+        [string]$titleLine = ''
+        [string]$serviceDetailLine = ''
+        [string]$camionLine = ''
+        [string]$plaqueLine = ''
+        try { $titleLine = [string]$VehicleDayPairing.TitleLine } catch { $titleLine = '' }
+        try {
+            if ($null -ne $VehicleDayPairing.PSObject.Properties['ServiceDetailLine']) {
+                $serviceDetailLine = [string]$VehicleDayPairing.ServiceDetailLine
+            }
+            else {
+                $serviceDetailLine = [string]$VehicleDayPairing.SubtitleLine
+            }
+        } catch { $serviceDetailLine = '' }
+        try { $camionLine = [string]$VehicleDayPairing.CamionLine } catch { $camionLine = '' }
+        try { $plaqueLine = [string]$VehicleDayPairing.Plaque } catch { $plaqueLine = '' }
+        [string]$parcFromPairing = ''
+        try { $parcFromPairing = [string]$VehicleDayPairing.NumeroParc } catch { $parcFromPairing = '' }
+        if ([string]::IsNullOrWhiteSpace($plaqueLine)) { $plaqueLine = $immatText }
+        if ([string]::IsNullOrWhiteSpace($plaqueLine) -and $parcText -match '(?i)[A-Z]{1,3}-?\d{2,4}-?[A-Z]{1,3}') {
+            $plaqueLine = $parcText
+        }
+
+        # Ligne véhicule : "Camion N" depuis le numéro de parc Excel (parenthèses).
+        if ([string]::IsNullOrWhiteSpace($camionLine)) {
+            [string]$parcExcel = $parcFromPairing
+            if ([string]::IsNullOrWhiteSpace($parcExcel) -and -not [string]::IsNullOrWhiteSpace($parcText) `
+                -and $parcText -notmatch '(?i)[A-Z]{1,3}-?\d{2,4}-?[A-Z]{1,3}' `
+                -and $parcText -notmatch '(?i)^(NON\s+SPECIFIE|INCONNU|-)$') {
+                $parcExcel = $parcText
+            }
+            if (-not [string]::IsNullOrWhiteSpace($parcExcel) -and $parcExcel -notmatch '(?i)^(NON\s+SPECIFIE|INCONNU|-)$') {
+                if ($parcExcel -match '^(?i)camion\b') { $camionLine = $parcExcel }
+                else { $camionLine = ('Camion {0}' -f $parcExcel) }
+            }
+        }
+
+        # Collecteur a droite (Y inchange) + memorise le X du debut du prenom (collectorLeftX)
+        # pour aligner Camion / plaque / service sous la 1re lettre du prenom.
+        if (-not [string]::IsNullOrWhiteSpace($titleLine)) {
+            $litTitle = ConvertTo-CnsPsWinAnsiParenBody -Text $titleLine
+            $prenomPs = @"
+/$fontBlack findfont $headerFontSize scalefont setfont
+($litTitle) dup stringwidth pop $rightX exch sub
+dup /collectorLeftX exch def
+$titleY moveto show
+"@
+        }
+        else {
+            $prenomPs = "/collectorLeftX $rightX def`n"
+        }
+
+        # Sous le prenom : Camion (grande), puis plaque (petite), puis service (petite) — meme X.
+        $blockParts = New-Object System.Collections.Generic.List[string]
+        if (-not [string]::IsNullOrWhiteSpace($camionLine)) {
+            $litCamion = ConvertTo-CnsPsWinAnsiParenBody -Text $camionLine
+            [void]$blockParts.Add(@"
+/$fontBlack findfont $headerFontSize scalefont setfont
+collectorLeftX $vehY moveto
+($litCamion) show
+"@)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($plaqueLine)) {
+            $litPlaque = ConvertTo-CnsPsWinAnsiParenBody -Text $plaqueLine
+            [void]$blockParts.Add(@"
+/$fontReg findfont $immatFontSize scalefont setfont
+collectorLeftX $plateY moveto
+($litPlaque) show
+"@)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($serviceDetailLine)) {
+            $litService = ConvertTo-CnsPsWinAnsiParenBody -Text $serviceDetailLine
+            [void]$blockParts.Add(@"
+/$fontReg findfont $immatFontSize scalefont setfont
+collectorLeftX $serviceY moveto
+($litService) show
+"@)
+        }
+        if ($blockParts.Count -gt 0) {
+            $parcPs = ($blockParts.ToArray() -join "`n")
+        }
+    }
+    else {
+        if (-not [string]::IsNullOrWhiteSpace($prenom)) {
+            $prenomPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $prenom -FontName $fontBlack -FontSize $headerFontSize -RightX $rightX -Y $dateY
+        }
+        if (-not [string]::IsNullOrWhiteSpace($parcText)) {
+            if ($parcText -notmatch '^(?i)camion\b') {
+                $parcLineText = ('Camion {0}' -f $parcText)
+            }
+            else {
+                $parcLineText = $parcText
+            }
+            $parcPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $parcLineText -FontName $fontBlack -FontSize $headerFontSize -RightX $rightX -Y $vehY
+        }
+        if (-not [string]::IsNullOrWhiteSpace($immatText)) {
+            [int]$immatY = $vehY - $vehImmatLineStep
+            [int]$immatRightX = $rightX - $immatRightIndent
+            if ($immatRightX -lt 50) { $immatRightX = 50 }
+            $immatPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $immatText -FontName $fontReg -FontSize $immatFontSize -RightX $immatRightX -Y $immatY
+        }
     }
 
-    $vehPs = ''
-    if (-not [string]::IsNullOrWhiteSpace($vehText)) {
-        $vehPs = New-CnsPostScriptRightAlignedTextShowBlock -Text $vehText -FontName $fontBlack -FontSize $headerFontSize -RightX $rightX -Y $vehY
+    $memoPs = ''
+    if (-not [string]::IsNullOrWhiteSpace($CenteredText)) {
+        $memoPs = New-CnsPostScriptCenteredTextShowBlock -Text $CenteredText -FontName $fontReg -FontSize 12 -Y $memoY -PageWidth $pageWidth
     }
-
-    $memoPs = Build-CnsCoverTextLinesPostScriptAppend -Lines @($MetierMemoLines) -StartY $memoY -LineStep 14 -MinY 72 -FontName $fontReg -FontSize 12
+    else {
+        # Wrap long lines ; conserver lignes vides (espace entre blocs client) et indentation.
+        $wrappedMemos = New-Object System.Collections.Generic.List[string]
+        foreach ($memoLine in @($MetierMemoLines)) {
+            if ($null -eq $memoLine) { continue }
+            if ([string]::IsNullOrWhiteSpace([string]$memoLine)) {
+                [void]$wrappedMemos.Add('')
+                continue
+            }
+            foreach ($chunk in @(Split-CnsCoverTextToWrappedLines -Text $memoLine -MaxChars 78)) {
+                if (-not [string]::IsNullOrWhiteSpace($chunk)) {
+                    [void]$wrappedMemos.Add($chunk)
+                }
+            }
+        }
+        $memoPs = Build-CnsCoverMetierMemoLinesPostScriptAppend `
+            -Lines @($wrappedMemos) `
+            -StartY $memoY `
+            -MinY 72 `
+            -FontBold $fontBlack `
+            -FontRegular $fontReg
+    }
 
     return @"
 $bannerPs
 /$fontBlack findfont $headerFontSize scalefont setfont
-50 $line1Y moveto
+$leftX $dateY moveto
 ($litDate) show
 $prenomPs
-$vehPs
+$parcPs
+$immatPs
+$subtitlePs
 $memoPs
 "@
 }
@@ -1573,13 +1902,16 @@ function New-CnsTourneeHeaderCoverPdf {
         [Parameter(Mandatory = $true)]
         [string]$Collecteur,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Vehicule,
         [AllowNull()][AllowEmptyString()][string]$VehiculeImmatriculation = $null,
         [Parameter()]
         [bool]$TourneeIncomplete = $false,
         [Parameter()]
         [AllowEmptyCollection()]
-        [string[]]$MetierMemoLines = @()
+        [string[]]$MetierMemoLines = @(),
+        [AllowNull()][AllowEmptyString()][string]$CenteredText = $null,
+        [AllowNull()]$VehicleDayPairing = $null
     )
     if ([string]::IsNullOrWhiteSpace($DateJJMMAAAA)) {
         $DateJJMMAAAA = (Get-Date).ToString('dd/MM/yyyy')
@@ -1594,27 +1926,188 @@ function New-CnsTourneeHeaderCoverPdf {
     $dateTitle = Format-CnsTourneeCoverGardeDateTitle -DateJJMMAAAA $DateJJMMAAAA
     $banner = if ($TourneeIncomplete) { 'TOURNEE NON MATCHEE' } else { $null }
     $body = Build-CnsTourneeHeaderCoverPostScriptBody -DateTitle $dateTitle -Collecteur $Collecteur -Vehicule $Vehicule `
-        -VehiculeImmatriculation $VehiculeImmatriculation -MetierMemoLines @($MetierMemoLines) -IncompleteBanner $banner
+        -VehiculeImmatriculation $VehiculeImmatriculation -MetierMemoLines @($MetierMemoLines) -IncompleteBanner $banner `
+        -CenteredText $CenteredText -VehicleDayPairing $VehicleDayPairing
     return (Write-CnsPostScriptPdfPage -PsBodySansShowpage $body -OutPdfPath $OutPdfPath)
+}
+
+function Add-CnsPendingSbTourneeCoversToFrag {
+    <#
+    .SYNOPSIS
+        Insere les gardes (segments hors SEGn PDF) en attente dont SegmentIndex < BeforeSegmentIndex
+        (ou toutes si BeforeSegmentIndex <= 0), puis le bilan de collecte juste apres chaque garde.
+        Tous les collecteurs au planning : avec ou sans instruction / ODM. Pas de banniere SB.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [System.Collections.Generic.List[string]]$Frag,
+
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [System.Collections.Generic.Queue[object]]$PendingSbQueue,
+
+        [Parameter(Mandatory = $true)]
+        [hashtable]$SeenSegments,
+        [Parameter(Mandatory = $true)][string]$TmpDir,
+        [Parameter(Mandatory = $true)][datetime]$VisitDate,
+        [hashtable]$BilanInjectedForSeg = $null,
+        [int]$BeforeSegmentIndex = 0,
+        [ref]$InsertedCountRef = $null,
+        [AllowEmptyCollection()][object[]]$AllSegments = @()
+    )
+    [int]$inserted = 0
+    while ($PendingSbQueue.Count -gt 0) {
+        $peek = $PendingSbQueue.Peek()
+        [int]$segIdx = 0
+        try { $segIdx = [int]$peek.SegmentIndex } catch { $segIdx = 0 }
+        if ($BeforeSegmentIndex -gt 0 -and $segIdx -ge $BeforeSegmentIndex) { break }
+        $null = $PendingSbQueue.Dequeue()
+        if ($segIdx -lt 1) { continue }
+        if ($SeenSegments.ContainsKey($segIdx)) { continue }
+
+        $jj = $VisitDate.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
+        $collecteur = [string]$peek.Collecteur
+        $vehicule = [string]$peek.Vehicule
+        if ([string]::IsNullOrWhiteSpace($collecteur) -or [string]::IsNullOrWhiteSpace($vehicule)) { continue }
+        if (Get-Command Test-CnsExcelTourneeMetaIsSentinel -ErrorAction SilentlyContinue) {
+            if ((Test-CnsExcelTourneeMetaIsSentinel -Text $collecteur) -or (Test-CnsExcelTourneeMetaIsSentinel -Text $vehicule)) { continue }
+        }
+
+        $vehiculeImmat = $null
+        if ($null -ne $peek.PSObject.Properties['Plaque'] -and -not [string]::IsNullOrWhiteSpace([string]$peek.Plaque)) {
+            $vehiculeImmat = ([string]$peek.Plaque).Trim()
+        }
+        elseif (Get-Command Get-CnsVehiculeImmatriculationByNumeroParc -ErrorAction SilentlyContinue) {
+            $vehiculeImmat = Get-CnsVehiculeImmatriculationByNumeroParc -NumeroParc $vehicule
+        }
+
+        $memoLines = @()
+        if ($null -ne $peek.PSObject.Properties['InstructionLines'] -and $null -ne $peek.InstructionLines) {
+            $memoLines = @($peek.InstructionLines | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+        }
+
+        $vehicleDayPairing = $null
+        if (Get-Command Get-CnsTourneeCoverVehicleDayPairing -ErrorAction SilentlyContinue) {
+            $vehicleDayPairing = Get-CnsTourneeCoverVehicleDayPairing -CurrentSegment $peek -AllSegments @($AllSegments)
+        }
+
+        $sbCoverPath = Join-Path $TmpDir ('cover_pending_{0:D3}.pdf' -f $segIdx)
+        $ok = New-CnsTourneeHeaderCoverPdf -OutPdfPath $sbCoverPath `
+            -DateJJMMAAAA $jj `
+            -Collecteur $collecteur `
+            -Vehicule $vehicule `
+            -VehiculeImmatriculation $vehiculeImmat `
+            -TourneeIncomplete:$false `
+            -MetierMemoLines $memoLines `
+            -CenteredText $null `
+            -VehicleDayPairing $vehicleDayPairing
+        if ($ok -and (Test-Path -LiteralPath $sbCoverPath)) {
+            [void]$Frag.Add($sbCoverPath)
+            $SeenSegments[$segIdx] = $true
+            $inserted++
+            Write-Host ("[GARDE] Page de garde generee pour segment {0} : {1} - {2} (memos={3})" -f $segIdx, $collecteur, $vehicule, $memoLines.Count) -ForegroundColor Green
+
+            # Bilan de collecte (PDF separe) — tous segments, avec ou sans ODM.
+            if ($null -ne $BilanInjectedForSeg -and $BilanInjectedForSeg.ContainsKey($segIdx)) {
+                Write-Host ("[BILAN] Deja injecte pour segment {0} — pas de doublon." -f $segIdx) -ForegroundColor DarkGray
+            }
+            elseif (Get-Command New-CnsBilanCollectePdfFromExcelTemplate -ErrorAction SilentlyContinue) {
+                try {
+                    $phBilan = @{}
+                    foreach ($entry in (Get-CnsBilanCollectePlaceholders -SegmentMeta $peek -VisitDate $VisitDate).GetEnumerator()) {
+                        $phBilan[[string]$entry.Key] = [string]$entry.Value
+                    }
+                    $bilanOut = Join-Path $TmpDir ('bilan_pending_{0:D3}.pdf' -f $segIdx)
+                    $bilanPdf = New-CnsBilanCollectePdfFromExcelTemplate -OutPdfPath $bilanOut -Placeholders $phBilan
+                    if (-not [string]::IsNullOrWhiteSpace($bilanPdf) -and (Test-Path -LiteralPath $bilanPdf)) {
+                        if (Get-Command Write-CnsLibreOfficePdfMergeAudit -ErrorAction SilentlyContinue) {
+                            Write-CnsLibreOfficePdfMergeAudit -Phase 'GENERATED' -PdfPath $bilanPdf -DocumentKind 'BILAN-COLLECTE'
+                        }
+                        [void]$Frag.Add($bilanPdf)
+                        if ($null -ne $BilanInjectedForSeg) {
+                            $BilanInjectedForSeg[$segIdx] = $true
+                        }
+                        if (Get-Command Add-TourneeCompositionGeneratedDocCount -ErrorAction SilentlyContinue) {
+                            Add-TourneeCompositionGeneratedDocCount
+                        }
+                        Write-Host ("[BILAN] Bilan de collecte ajoute pour segment {0}" -f $segIdx) -ForegroundColor Green
+                    }
+                    else {
+                        Write-Warning ("[BILAN] Echec generation bilan pour segment {0}" -f $segIdx)
+                    }
+                }
+                catch {
+                    Write-Warning ("[BILAN] Erreur generation bilan segment {0} : {1}" -f $segIdx, $_.Exception.Message)
+                }
+            }
+            else {
+                Write-Warning '[BILAN] Module bilan non charge — injection ignoree.'
+            }
+        }
+        else {
+            Write-Warning ("[GARDE] Echec generation garde segment {0}" -f $segIdx)
+        }
+    }
+    if ($null -ne $InsertedCountRef) {
+        $InsertedCountRef.Value = [int]$InsertedCountRef.Value + $inserted
+    }
+    return $inserted
+}
+
+function New-CnsTemporaryBioDechetsPagePdf {
+    <#
+    .SYNOPSIS
+        Fallback Bio-dechets : PDF mono-page si New-CnsDacPdfFromExcelTemplate est indisponible.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$OutPdfPath
+    )
+    $fontReg = Get-CnsCoverPostScriptFontRegularName
+    $fontBlack = Get-CnsCoverPostScriptFontBlackName
+    $title = 'Page temporaire - Collecte de Bio déchets'
+    $hint = '(fallback — generation DAC Excel indisponible)'
+    $t0 = ConvertTo-CnsPsWinAnsiParenBody -Text $title
+    $t1 = ConvertTo-CnsPsWinAnsiParenBody -Text $hint
+    $body = @"
+/$fontBlack findfont 16 scalefont setfont
+50 780 moveto
+($t0) show
+/$fontReg findfont 11 scalefont setfont
+50 750 moveto
+($t1) show
+"@
+    return [bool](Write-CnsPostScriptPdfPage -PsBodySansShowpage $body -OutPdfPath $OutPdfPath -LogContext 'bio-dechets-tmp')
 }
 
 function New-CnsPrefaceSectionCoverPdf {
     param(
         [Parameter(Mandatory = $true)][string]$OutPdfPath,
         [Parameter(Mandatory = $true)][int]$TotalOdmCount,
-        [Parameter(Mandatory = $true)][int]$UnmatchedOdmCount
+        [Parameter(Mandatory = $true)][int]$UnmatchedOdmCount,
+        [AllowNull()][AllowEmptyString()][string]$DateTitle = $null,
+        [AllowNull()][AllowEmptyString()][string]$DateJJMMAAAA = $null
     )
-    $l0 = 'ODM non matché dans les tournées du date de la tournée depuis le PDF importé'
+    $fontBlack = Get-CnsCoverPostScriptFontBlackName
+    $fontReg = Get-CnsCoverPostScriptFontRegularName
+    if ([string]::IsNullOrWhiteSpace($DateTitle)) {
+        $DateTitle = Format-CnsTourneeCoverGardeDateTitle -DateJJMMAAAA $DateJJMMAAAA
+    }
+    if ([string]::IsNullOrWhiteSpace($DateTitle)) {
+        $DateTitle = '(date non renseignee)'
+    }
+    $unmatchedLabel = if ($UnmatchedOdmCount -gt 1) { 'ODM non matchés' } else { 'ODM non matché' }
+    $l0 = ("{0} dans les tournées du {1}" -f $unmatchedLabel, $DateTitle.Trim())
     $l1 = "Nombre total d'ODM (groupes extraits du PDF) : $TotalOdmCount"
     $l2 = "Nombre d'ODM sans correspondance : $UnmatchedOdmCount"
-    $t0 = ConvertTo-CnsPsHelveticaParenBody -Text $l0
-    $t1 = ConvertTo-CnsPsHelveticaParenBody -Text $l1
-    $t2 = ConvertTo-CnsPsHelveticaParenBody -Text $l2
+    $t0 = ConvertTo-CnsPsWinAnsiParenBody -Text $l0
+    $t1 = ConvertTo-CnsPsWinAnsiParenBody -Text $l1
+    $t2 = ConvertTo-CnsPsWinAnsiParenBody -Text $l2
     $body = @"
-/Helvetica-Bold findfont 11 scalefont setfont
+/$fontBlack findfont 11 scalefont setfont
 50 800 moveto
 ($t0) show
-/Helvetica findfont 11 scalefont setfont
+/$fontReg findfont 11 scalefont setfont
 50 760 moveto
 ($t1) show
 50 730 moveto
@@ -1661,6 +2154,7 @@ function Get-CnsTourneeCoverSegmentMetaForPair {
         DateJJMMAAAA = $defJj
         Collecteur   = '-'
         Vehicule     = '-'
+        ServiceLabel = ''
     }
     try { $fo = [int]$GsPair.FinalOrder } catch { return $out }
     if ($fo -lt 1) { return $out }
@@ -1686,18 +2180,20 @@ function Get-CnsTourneeCoverSegmentMetaForPair {
         catch { }
     }
     if ($null -eq $seg) { return $out }
-    $jj = ''
-    try { $jj = [string]$seg.DisplayDateJM } catch { $jj = '' }
-    if ([string]::IsNullOrWhiteSpace($jj)) {
-        try { $jj = ($seg.TourDate).ToString('dd/MM/yyyy', $inv) } catch { $jj = $defJj }
-    }
-    if ([string]::IsNullOrWhiteSpace($jj)) { $jj = $defJj }
-    $c = ''; $v = ''
+    $jj = $defJj
+    $c = ''; $v = ''; $svc = ''
     try { $c = [string]$seg.Collecteur } catch { }
     try { $v = [string]$seg.Vehicule } catch { }
+    try {
+        if ($null -ne $seg.PSObject.Properties['ServiceLabel']) {
+            $svc = [string]$seg.ServiceLabel
+        }
+    }
+    catch { }
     $out.DateJJMMAAAA = $jj
     $out.Collecteur = if ([string]::IsNullOrWhiteSpace($c)) { '-' } else { $c }
     $out.Vehicule = if ([string]::IsNullOrWhiteSpace($v)) { '-' } else { $v }
+    $out.ServiceLabel = if ([string]::IsNullOrWhiteSpace($svc)) { '' } else { $svc.Trim() }
     return $out
 }
 
@@ -1964,12 +2460,16 @@ function Get-CnsOdmPagePrestationDetectionLabel {
     param(
         $PageEntity,
         $WorkOrderEntity,
-        [bool]$RequiresCea = $false
+        [bool]$RequiresCea = $false,
+        [bool]$RequiresFt = $false,
+        [bool]$RequiresBioDechets = $false
     )
     $parts = [System.Collections.Generic.List[string]]::new()
     $metierPage = Get-CnsPdfPageMetierAnalysis -PageEntity $PageEntity -WorkOrderEntity $WorkOrderEntity
     if ($metierPage.RequiresDestructionCertificate) { [void]$parts.Add('Destruction confidentielle detectee') }
     if ($RequiresCea) { [void]$parts.Add('CEA detecte') }
+    if ($RequiresFt) { [void]$parts.Add('FT detecte') }
+    if ($RequiresBioDechets) { [void]$parts.Add('Bio dechets detecte') }
     foreach ($entry in @($metierPage.TrackDechetEntries)) {
         if ($null -eq $entry) { continue }
         $det = [string]$entry.Detail
@@ -2016,19 +2516,6 @@ function Update-PlanningTourneeStep5Progress {
     catch {
         Write-Warning ("[TOURNEE-UI] ProgressCallback echoue : {0}" -f $_.Exception.Message)
     }
-}
-
-function Update-PlanningTourneeStep5OdmSearchProgress {
-    param(
-        [int]$WoIndex,
-        [int]$TotalWos
-    )
-    if ($TotalWos -lt 1) { $TotalWos = 1 }
-    $safeIndex = [Math]::Max(0, [Math]::Min($WoIndex, $TotalWos))
-    $percent = if ($safeIndex -lt 1) { 0 } else { [math]::Floor(($safeIndex / $TotalWos) * 100) }
-    $detail = "Recherche des ODM sans correspondance... ($safeIndex/$TotalWos - $percent%)"
-    $subRatio = 0.10 + (($safeIndex / $TotalWos) * 0.05)
-    Update-PlanningTourneeStep5Progress -SubRatio $subRatio -Detail $detail
 }
 
 function Write-TourneeCompositionTourStart {
@@ -2249,6 +2736,104 @@ function Add-CnsOdmDuplicateSliceAfterOriginal {
     Write-Host ("[DUPLICATION-ODM] 1 page(s) copiee(s) pour {0} (immediatement apres original)." -f $RunKeyLabel) -ForegroundColor Green
 }
 
+function script:Get-CnsStep5WorkOrderCacheKeyFromGsPair {
+    param(
+        $GsPair,
+        [AllowEmptyCollection()]
+        [object[]]$WorkOrders = @(),
+        [AllowEmptyCollection()]
+        [object[]]$PdfEntities = @()
+    )
+    if ($null -eq $GsPair) { return $null }
+    [int]$rawPn = 0
+    try { $rawPn = [int]$GsPair.RawPageNum } catch { return $null }
+    if ($rawPn -lt 1) { return $null }
+    $wo = $null
+    if (Get-Command Resolve-CnsWorkOrderEntityFromPdfPage -ErrorAction SilentlyContinue) {
+        $wo = Resolve-CnsWorkOrderEntityFromPdfPage -RawPageNumOneBased $rawPn -WorkOrders @($WorkOrders) -PdfEntities @($PdfEntities)
+    }
+    if ($null -eq $wo) { return $null }
+    return Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $wo
+}
+
+function script:Test-CnsStep5FollowingPairSameWorkOrderKey {
+    param(
+        $SortedPairs,
+        [int]$PairIndex,
+        [string]$CurrentKey,
+        [AllowEmptyCollection()]
+        [object[]]$WorkOrders = @(),
+        [AllowEmptyCollection()]
+        [object[]]$PdfEntities = @()
+    )
+    if ([string]::IsNullOrWhiteSpace($CurrentKey)) { return $false }
+    $pairs = @($SortedPairs)
+    $nextIndex = $PairIndex + 1
+    if ($nextIndex -lt 0 -or $nextIndex -ge $pairs.Count) { return $false }
+    $nextKey = script:Get-CnsStep5WorkOrderCacheKeyFromGsPair -GsPair $pairs[$nextIndex] -WorkOrders @($WorkOrders) -PdfEntities @($PdfEntities)
+    if ([string]::IsNullOrWhiteSpace($nextKey)) { return $false }
+    return [string]::Equals($CurrentKey, $nextKey, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function script:Add-CnsDestructionCertificatePdfToFrag {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.List[string]]$Frag,
+        [Parameter(Mandatory = $true)]
+        [string]$TmpDir,
+        $WorkOrderEntity,
+        $GsPair,
+        [int]$BlockIndex,
+        [int]$SliceIndex,
+        [int]$ReorderPage,
+        [string]$WorkOrderCacheKey,
+        [System.Collections.Generic.HashSet[string]]$CertInjectedForWo,
+        [hashtable]$FinalOrderToLine,
+        [array]$Segments,
+        [hashtable]$OrderToSeg,
+        [datetime]$VisitDate,
+        [scriptblock]$ProgressCallback,
+        [string]$TChildCore,
+        [switch]$AfterDuplication
+    )
+    if ([string]::IsNullOrWhiteSpace($WorkOrderCacheKey)) { return $false }
+    if ($null -eq $CertInjectedForWo) { return $false }
+    if (-not $CertInjectedForWo.Add($WorkOrderCacheKey)) { return $false }
+    if (-not (Get-Command New-CnsDestructionCertificatePdfFromExcelTemplate -ErrorAction SilentlyContinue)) {
+        [void]$CertInjectedForWo.Remove($WorkOrderCacheKey)
+        Write-Warning '[DESTRUCTION-CERT] Module Word certificat non charge — injection ignoree.'
+        return $false
+    }
+    $segMeta = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $GsPair -FinalOrderToLine $FinalOrderToLine -Segments $Segments -ExcelOrderIndexToSegmentIndex $OrderToSeg -VisitDate $VisitDate
+    $phTable = @{}
+    foreach ($entry in (Get-CnsDestructionCertificatePlaceholders -WorkOrderEntity $WorkOrderEntity -SegmentMeta $segMeta -VisitDate $VisitDate).GetEnumerator()) {
+        $phTable[[string]$entry.Key] = [string]$entry.Value
+    }
+    $certOut = Join-Path $TmpDir ('cert_dest_{0:D3}_{1:D5}.pdf' -f $BlockIndex, $SliceIndex)
+    $certPdf = New-CnsDestructionCertificatePdfFromExcelTemplate -OutPdfPath $certOut -Placeholders $phTable
+    if ([string]::IsNullOrWhiteSpace($certPdf) -or -not (Test-Path -LiteralPath $certPdf)) {
+        [void]$CertInjectedForWo.Remove($WorkOrderCacheKey)
+        Write-Warning ("[DESTRUCTION-CERT] Generation certificat echouee pour WO={0} — page ODM conservee." -f $WorkOrderCacheKey)
+        return $false
+    }
+    if (Get-Command Write-CnsDestructionCertificatePdfMergeAudit -ErrorAction SilentlyContinue) {
+        Write-CnsDestructionCertificatePdfMergeAudit -Phase 'GENERATED' -PdfPath $certPdf
+    }
+    [void]$Frag.Add($certPdf)
+    Add-TourneeCompositionGeneratedDocCount
+    Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
+        -Detail ("{0}Generation certificat destruction... [OK]" -f ($TChildCore + '│   └── '))
+    $certLeaf = Split-Path -Leaf $certPdf
+    if ($AfterDuplication) {
+        $successLog = ("[DESTRUCTION-CERT] Certificat injecte apres duplication ODM (WO={0}, reorder #{1}, fichier={2})." -f $WorkOrderCacheKey, $ReorderPage, $certLeaf)
+    }
+    else {
+        $successLog = ("[DESTRUCTION-CERT] Certificat injecte apres derniere page ODM reorder #{0} (WO={1}, PDF ODM, fichier={2})." -f $ReorderPage, $WorkOrderCacheKey, $certLeaf)
+    }
+    Write-Host $successLog -ForegroundColor Green
+    return $true
+}
+
 function Invoke-CnsFlushOdmDuplicationRun {
     <#
     .SYNOPSIS
@@ -2264,6 +2849,8 @@ function Invoke-CnsFlushOdmDuplicationRun {
         [hashtable]$PendingCert,
         [AllowNull()]
         [System.Collections.Generic.List[object]]$PendingCea,
+        [AllowNull()]
+        [System.Collections.Generic.List[object]]$PendingFt,
         [Parameter(Mandatory = $true)]
         [string]$RunKeyLabel,
         [Parameter(Mandatory = $true)]
@@ -2274,6 +2861,9 @@ function Invoke-CnsFlushOdmDuplicationRun {
         [Parameter(Mandatory = $false)]
         [AllowNull()]
         [System.Collections.Generic.HashSet[int]]$CeaInjectedForPage,
+        [Parameter(Mandatory = $false)]
+        [AllowNull()]
+        [System.Collections.Generic.HashSet[int]]$FtInjectedForPage,
         [AllowNull()][scriptblock]$ProgressCallback,
         [Parameter(Mandatory = $true)]
         [string]$TChildCore,
@@ -2293,14 +2883,21 @@ function Invoke-CnsFlushOdmDuplicationRun {
     if ($null -eq $CeaInjectedForPage -or -not ($CeaInjectedForPage -is [System.Collections.Generic.HashSet[int]])) {
         $CeaInjectedForPage = [System.Collections.Generic.HashSet[int]]::new()
     }
+    if ($null -eq $FtInjectedForPage -or -not ($FtInjectedForPage -is [System.Collections.Generic.HashSet[int]])) {
+        $FtInjectedForPage = [System.Collections.Generic.HashSet[int]]::new()
+    }
     if ($null -eq $PendingCea) {
         $PendingCea = [System.Collections.Generic.List[object]]::new()
+    }
+    if ($null -eq $PendingFt) {
+        $PendingFt = [System.Collections.Generic.List[object]]::new()
     }
 
     $hasPendingCopies = ($SlicePaths.Count -ge 1)
     $hasPendingCert = ($null -ne $PendingCert)
     $hasPendingCea = ($PendingCea.Count -gt 0)
-    if (-not $hasPendingCopies -and -not $hasPendingCert -and -not $hasPendingCea) { return }
+    $hasPendingFt = ($PendingFt.Count -gt 0)
+    if (-not $hasPendingCopies -and -not $hasPendingCert -and -not $hasPendingCea -and -not $hasPendingFt) { return }
 
     $dupCount = 0
     foreach ($origPath in @($SlicePaths)) {
@@ -2317,41 +2914,13 @@ function Invoke-CnsFlushOdmDuplicationRun {
     }
 
     if ($null -ne $PendingCert) {
-        $woPage = $PendingCert.WorkOrderEntity
-        $gsPair = $PendingCert.GsPair
-        $fi = [int]$PendingCert.BlockIndex
-        $sliceIx = [int]$PendingCert.SliceIndex
-        $pn = [int]$PendingCert.ReorderPage
-        $woCacheKey = [string]$PendingCert.WorkOrderCacheKey
-        if (-not [string]::IsNullOrWhiteSpace($woCacheKey) -and $certInjectedForWo.Add($woCacheKey)) {
-            if (Get-Command New-CnsDestructionCertificatePdfFromExcelTemplate -ErrorAction SilentlyContinue) {
-                $segMeta = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $gsPair -FinalOrderToLine $FinalOrderToLine -Segments $Segments -ExcelOrderIndexToSegmentIndex $OrderToSeg -VisitDate $VisitDate
-                $phTable = @{}
-                foreach ($entry in (Get-CnsDestructionCertificatePlaceholders -WorkOrderEntity $woPage -SegmentMeta $segMeta -VisitDate $VisitDate).GetEnumerator()) {
-                    $phTable[[string]$entry.Key] = [string]$entry.Value
-                }
-                $certOut = Join-Path $TmpDir ('cert_dest_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
-                $certPdf = New-CnsDestructionCertificatePdfFromExcelTemplate -OutPdfPath $certOut -Placeholders $phTable
-                if (-not [string]::IsNullOrWhiteSpace($certPdf) -and (Test-Path -LiteralPath $certPdf)) {
-                    if (Get-Command Write-CnsDestructionCertificatePdfMergeAudit -ErrorAction SilentlyContinue) {
-                        Write-CnsDestructionCertificatePdfMergeAudit -Phase 'GENERATED' -PdfPath $certPdf
-                    }
-                    [void]$Frag.Add($certPdf)
-                    Add-TourneeCompositionGeneratedDocCount
-                    Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
-                        -Detail ("{0}Generation certificat destruction... [OK]" -f ($TChildCore + '│   └── '))
-                    Write-Host ("[DESTRUCTION-CERT] Certificat injecte apres duplication ODM (WO={0}, reorder #{1}, fichier={2})." -f $woCacheKey, $pn, (Split-Path -Leaf $certPdf)) -ForegroundColor Green
-                }
-                else {
-                    [void]$CertInjectedForWo.Remove($woCacheKey)
-                    Write-Warning ("[DESTRUCTION-CERT] Generation certificat echouee pour WO={0} — page ODM conservee." -f $woCacheKey)
-                }
-            }
-            else {
-                [void]$CertInjectedForWo.Remove($woCacheKey)
-                Write-Warning '[DESTRUCTION-CERT] Module Word certificat non charge — injection ignoree.'
-            }
-        }
+        $null = script:Add-CnsDestructionCertificatePdfToFrag -Frag $Frag -TmpDir $TmpDir `
+            -WorkOrderEntity $PendingCert.WorkOrderEntity -GsPair $PendingCert.GsPair `
+            -BlockIndex ([int]$PendingCert.BlockIndex) -SliceIndex ([int]$PendingCert.SliceIndex) `
+            -ReorderPage ([int]$PendingCert.ReorderPage) -WorkOrderCacheKey ([string]$PendingCert.WorkOrderCacheKey) `
+            -CertInjectedForWo $CertInjectedForWo -FinalOrderToLine $FinalOrderToLine -Segments $Segments `
+            -OrderToSeg $OrderToSeg -VisitDate $VisitDate -ProgressCallback $ProgressCallback -TChildCore $TChildCore `
+            -AfterDuplication
     }
 
     foreach ($ceaItem in @($PendingCea)) {
@@ -2394,14 +2963,42 @@ function Invoke-CnsFlushOdmDuplicationRun {
         }
     }
 
+    $pendingFtOrdered = @($PendingFt | Where-Object { $null -ne $_ } | Sort-Object { [int]$_.OdmFragIndex } -Descending)
+    foreach ($ftItem in $pendingFtOrdered) {
+        [int]$rawPnFt = [int]$ftItem.RawPageNum
+        if ($rawPnFt -lt 1) { continue }
+        if (-not $FtInjectedForPage.Add($rawPnFt)) { continue }
+        $fragCountBeforeFt = $Frag.Count
+        $okFt = Invoke-CnsAppendFtDocumentToFrag -Frag $Frag -TmpDir $TmpDir `
+            -BlockIndex ([int]$ftItem.BlockIndex) -SliceIndex ([int]$ftItem.SliceIndex) `
+            -ReorderPage ([int]$ftItem.ReorderPage) -RawPageNum $rawPnFt `
+            -PointCollecteLabel ([string]$ftItem.PointCollecteLabel) `
+            -WorkOrderEntity $ftItem.WorkOrderEntity -PageEntity $ftItem.PageEntity -GsPair $ftItem.GsPair `
+            -FinalOrderToLine $FinalOrderToLine -Segments $Segments -OrderToSeg $OrderToSeg -VisitDate $VisitDate `
+            -ProgressCallback $ProgressCallback -TChildCore $TChildCore
+        if ($okFt -and $Frag.Count -eq ($fragCountBeforeFt + 1)) {
+            $beforeIdx = $Frag.IndexOf([string]$ftItem.SlicePath)
+            if ($beforeIdx -lt 0) {
+                try { $beforeIdx = [int]$ftItem.OdmFragIndex } catch { $beforeIdx = -1 }
+            }
+            if ($beforeIdx -ge 0) {
+                script:Move-CnsLastFragItemBeforeIndex -Frag $Frag -BeforeIndex $beforeIdx
+            }
+        }
+        elseif (-not $okFt) {
+            [void]$FtInjectedForPage.Remove($rawPnFt)
+        }
+    }
+
     $SlicePaths.Clear()
     if ($null -ne $PendingCea) { $PendingCea.Clear() }
+    if ($null -ne $PendingFt) { $PendingFt.Clear() }
 }
 
 function Invoke-PlanningTourneePdfCoverComposition {
     <#
     .SYNOPSIS
-        Recoit le PDF principal deja genere (Reorganiser-PDF), insere page de garde globale + couvertures tournée
+        Recoit le PDF principal deja genere (Reorganiser-PDF), insere couvertures tournée
         et re-extrait les pages du main dans l'ordre pour produire le PDF final au meme chemin.
     .NOTES
         Desactiver : $env:CN_SKIP_TOURNEE_COVERS = '1'
@@ -2589,95 +3186,52 @@ function Invoke-PlanningTourneePdfCoverComposition {
     try {
         $null = New-Item -ItemType Directory -Path $tmpDir -Force -ErrorAction Stop
 
-        Write-CnsStep5ConsoleProgress -Message "`n[PROGRESS] STEP 5 : Composition des pages de garde..." -ForegroundColor Cyan
-        Write-CnsStep5ConsoleProgress -Message '[PROGRESS]   - Creation des pages de garde globales...' -ForegroundColor Gray
-        Update-PlanningTourneeStep5Progress -SubRatio 0.10 -Detail 'Page de garde globale...'
-
-        $globalCov = Join-Path $tmpDir 'cover_global.pdf'
-
-        script:Write-CnsTourneeLog -Message '[TOURNEE] Creation page de garde globale (premiere page du PDF final).' -Level 'INFO'
-        $coverElements = @()
-        $coverAllMatched = $false
-        $coverS1 = -1
-        $coverS2 = -1
-        $coverS3 = -1
-        $odmSearchTotalWos = @($WorkOrders).Count
-        if ($odmSearchTotalWos -lt 1) { $odmSearchTotalWos = 1 }
-        Update-PlanningTourneeStep5OdmSearchProgress -WoIndex 0 -TotalWos $odmSearchTotalWos
-        if (Get-Command Build-PlanningOdmMismatchThreeSectionCoverLines -ErrorAction SilentlyContinue) {
+        if (Get-Command Start-CnsXlsxPdfConversionPool -ErrorAction SilentlyContinue) {
             try {
-                $missingList = @()
-                if ($null -ne $MatchResult -and $null -ne $MatchResult.Missing) {
-                    $missingList = @($MatchResult.Missing)
-                }
-                $orphanWorkOrders = @()
-                if (Get-Command Get-PlanningUnmatchedPdfWorkOrders -ErrorAction SilentlyContinue) {
-                    $orphanWorkOrders = @(Get-PlanningUnmatchedPdfWorkOrders -WorkOrders $WorkOrders -MatchResult $MatchResult)
-                }
-                $hasMissingOrphans = ($missingList.Count -gt 0) -or ($orphanWorkOrders.Count -gt 0)
-
-                if (-not $hasMissingOrphans) {
-                    Write-PlanningTourneeStep5UiLog '🔍 Tous les ODM sont matchés - synthèse simplifiée'
-                    $coverReport = [pscustomobject]@{
-                        Elements       = @()
-                        Lines          = @()
-                        Section1Count  = 0
-                        Section2Count  = 0
-                        Section3Count  = 0
-                        AllMatched     = $true
-                    }
-                }
-                else {
-                    Write-PlanningTourneeStep5UiLog ("🔍 Analyse des ODM sans correspondance ($($missingList.Count) Excel sans ODM, $($orphanWorkOrders.Count) ODM sans Excel)")
-                    $coverReport = Build-PlanningOdmMismatchThreeSectionCoverLines `
-                        -Missing $missingList `
-                        -WorkOrders @($orphanWorkOrders) `
-                        -ExcelOrder @($ExcelOrder) `
-                        -MatchResult $MatchResult `
-                        -TourSegments @($segments) `
-                        -MaxEntriesPerSection 20
-                }
-                $coverAllMatched = [bool]$coverReport.AllMatched
-                $coverS1 = [int]$coverReport.Section1Count
-                $coverS2 = [int]$coverReport.Section2Count
-                $coverS3 = [int]$coverReport.Section3Count
-                if (-not $coverAllMatched -and $null -ne $coverReport.Elements) {
-                    $coverElements = @($coverReport.Elements)
-                }
-                if ($coverAllMatched) {
-                    Update-PlanningTourneeStep5Progress -SubRatio 0.15 -Detail '🔍 Recherche des ODM sans correspondance... — ✅ Tous les ODM ont été matchés'
-                }
-                else {
-                    Update-PlanningTourneeStep5Progress -SubRatio 0.15 -Detail ("🔍 Recherche des ODM sans correspondance... — ✅ Analyse terminée - Section1:$coverS1 Section2:$coverS2 Section3:$coverS3")
-                }
+                $null = Start-CnsXlsxPdfConversionPool
+                Write-Host '[PERF] Pool LibreOffice/Excel demarre pour Step 5' -ForegroundColor Cyan
             }
             catch {
-                Write-Warning ("[TOURNEE] Diagnostic ODM non matches indisponible : {0}" -f $_.Exception.Message)
+                Write-Warning ("[PERF] Demarrage pool XLSX->PDF echoue (fallback mode normal) : {0}" -f $_.Exception.Message)
             }
         }
-        Write-CnsStep5ConsoleProgress -Message '[PROGRESS]   - Page de garde globale...' -ForegroundColor Gray
-        Write-PlanningTourneeStep5UiLog '🎨 Création de la page de synthèse (Ghostscript)...'
-        $gcOk = (New-CnsGlobalMismatchCoverPdf -OutPdfPath $globalCov `
-                -TotalOdmCount $totalODM `
-                -UnmatchedOdmCount $unmatchedCount `
-                -CoverElements $coverElements `
-                -Section1Count $coverS1 `
-                -Section2Count $coverS2 `
-                -Section3Count $coverS3 `
-                -AllMatched:$coverAllMatched)
-        if (-not $gcOk) {
-            throw 'Ghostscript global cover echouee'
-        }
-        [void]$frag.Add($globalCov)
-        script:Write-CnsTourneeLog -Message '[TOURNEE] Page de garde globale OK.' -Level 'INFO'
-        Write-PlanningTourneeStep5UiLog '💾 Sauvegarde de la page de garde...'
+
+        Write-CnsStep5ConsoleProgress -Message "`n[PROGRESS] STEP 5 : Composition des pages de garde..." -ForegroundColor Cyan
+        Write-CnsStep5ConsoleProgress -Message '[PROGRESS]   - Composition des couvertures tournee...' -ForegroundColor Gray
+        Update-PlanningTourneeStep5Progress -SubRatio 0.10 -Detail 'Preparation couvertures tournee...'
+        Update-PlanningTourneeStep5Progress -SubRatio 0.15 -Detail 'Demarrage des pages de garde tournee...'
+        script:Write-CnsTourneeLog -Message '[TOURNEE] Debut des gardes tournee.' -Level 'INFO'
 
         $seenSegments = @{}
         $prefaceAlreadyAdded = $false
         $certInjectedForWo = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+        $classicPendingCertKey = $null
         $ceaInjectedForPage = New-Object 'System.Collections.Generic.HashSet[int]'
+        $ftInjectedForPage = New-Object 'System.Collections.Generic.HashSet[int]'
+        $bioDechetsInjectedForPage = New-Object 'System.Collections.Generic.HashSet[int]'
         $bilanInjectedForSeg = @{}
         $sortedPairsArr = @($SortedGsPairs)
+
+        $segNumsWithPdfCover = [System.Collections.Generic.HashSet[int]]::new()
+        foreach ($blockProbe in @($blocks)) {
+            if ([string]$blockProbe.GroupKey -match '^SEG(\d+)$') {
+                [void]$segNumsWithPdfCover.Add([int]$Matches[1])
+            }
+        }
+        # Tous les segments hors SEGn PDF : garde + bilan (avec ou sans instruction / ODM).
+        $pendingSbQueue = [System.Collections.Generic.Queue[object]]::new()
+        foreach ($segCand in @($segments | Sort-Object { try { [int]$_.SegmentIndex } catch { 0 } })) {
+            if ($null -eq $segCand) { continue }
+            [int]$siCand = 0
+            try { $siCand = [int]$segCand.SegmentIndex } catch { continue }
+            if ($siCand -lt 1) { continue }
+            if ($segNumsWithPdfCover.Contains($siCand)) { continue }
+            if ([string]::IsNullOrWhiteSpace([string]$segCand.Collecteur) -or [string]::IsNullOrWhiteSpace([string]$segCand.Vehicule)) { continue }
+            $pendingSbQueue.Enqueue($segCand)
+        }
+        [int]$sbCoverCount = 0
+        Write-Host ("[GARDE] {0} segment(s) hors SEGn PDF en attente (garde+bilan)" -f $pendingSbQueue.Count) -ForegroundColor Cyan
+
         $fi = 0
         foreach ($blk in @($blocks)) {
             $fi++
@@ -2685,6 +3239,13 @@ function Invoke-PlanningTourneePdfCoverComposition {
             $isLastTour = ($fi -eq $blockTotal)
             $tBranchCore = if ($isLastTour) { '└── ' } else { '├── ' }
             $tChildCore = if ($isLastTour) { '    ' } else { '│   ' }
+
+            if ([string]$blk.GroupKey -match '^SEG(\d+)$') {
+                $null = Add-CnsPendingSbTourneeCoversToFrag -Frag $frag -PendingSbQueue $pendingSbQueue `
+                    -SeenSegments $seenSegments -TmpDir $tmpDir -VisitDate $VisitDate `
+                    -BilanInjectedForSeg $bilanInjectedForSeg -BeforeSegmentIndex ([int]$Matches[1]) `
+                    -InsertedCountRef ([ref]$sbCoverCount) -AllSegments @($segments)
+            }
 
             $segmentName = [string]$blk.GroupKey
             $tourHeaderDetail = $segmentName
@@ -2696,10 +3257,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     $segLabel = [string]$segUi.Collecteur
                     if ([string]::IsNullOrWhiteSpace($segLabel)) { $segLabel = [string]$segUi.Vehicule }
                     if (-not [string]::IsNullOrWhiteSpace($segLabel)) { $segmentName = $segLabel }
-                    $jjUi = [string]$segUi.DisplayDateJM
-                    if ([string]::IsNullOrWhiteSpace($jjUi)) {
-                        try { $jjUi = ($segUi.TourDate).ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture) } catch { $jjUi = $VisitDate.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture) }
-                    }
+                    $jjUi = $VisitDate.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
                     $dateTitleUi = Format-CnsTourneeCoverGardeDateTitle -DateJJMMAAAA $jjUi
                     $tourHeaderDetail = ('{0} - Collecteur : {1}' -f $dateTitleUi, $segLabel)
                 }
@@ -2751,26 +3309,84 @@ function Invoke-PlanningTourneePdfCoverComposition {
                             }
                         }
                         else {
-                            $jj = [string]$seg.DisplayDateJM
-                            if ([string]::IsNullOrWhiteSpace($jj)) {
-                                try { $jj = ($seg.TourDate).ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture) } catch { $jj = $VisitDate.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture) }
-                            }
+                            $jj = $VisitDate.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
                             $inc = $true
                             try { $inc = -not [bool]$seg.TourneeComplete } catch { $inc = $true }
                             Write-Host ("[TOURNEE-COVER] Segment={0} Incomplete={1} Date={2} Collecteur={3} Vehicule={4} PagesBloc={5}" -f $n, $inc, $jj, ([string]$seg.Collecteur), ([string]$seg.Vehicule), (1 + $blk.MainTo1 - $blk.MainFrom1)) -ForegroundColor Cyan
                             Write-PlanningTourneeStep5UiLog ("🔎 Tournée {0}/{1} - Analyse des prestations..." -f $tourneeIndex, $totalTournees)
-                            $metierMemos = @(Get-CnsTourneeMetierMemoLinesForBlock -MainFrom1 ([int]$blk.MainFrom1) -MainTo1 ([int]$blk.MainTo1) `
-                                -SortedGsPairs $sortedPairsArr -FinalOrderToLine $foToLine -WorkOrders $WorkOrders -PdfEntities @($PdfEntities) `
-                                -ExcelOrder @($ExcelOrder) -Segments @($segments) -ExcelOrderIndexToSegmentIndex $orderToSeg)
+                            # Filet : un échec mémos ne doit jamais empêcher la page de garde (collecteur/heure/véhicule).
+                            $metierMemos = @()
+                            try {
+                                $metierMemos = @(Get-CnsTourneeMetierMemoLinesForBlock -MainFrom1 ([int]$blk.MainFrom1) -MainTo1 ([int]$blk.MainTo1) `
+                                    -SortedGsPairs $sortedPairsArr -FinalOrderToLine $foToLine -WorkOrders $WorkOrders -PdfEntities @($PdfEntities))
+                            }
+                            catch {
+                                Write-Warning ("[STEP5-METIER] Segment {0} : echec memos — garde sans prestations. {1}" -f $n, $_.Exception.Message)
+                                $metierMemos = @()
+                            }
+                            # Bio garde : même détection que l'injection DAC (PdfRawLinesByPage), avant création de la couverture.
+                            if (Get-Command Get-CnsBioDechetsCoverMemoLinesViaStep5Detection -ErrorAction SilentlyContinue) {
+                                try {
+                                    $bioCoverMemos = @(Get-CnsBioDechetsCoverMemoLinesViaStep5Detection -MainFrom1 ([int]$blk.MainFrom1) -MainTo1 ([int]$blk.MainTo1) `
+                                            -SortedGsPairs $sortedPairsArr -FinalOrderToLine $foToLine -WorkOrders $WorkOrders -PdfEntities @($PdfEntities) `
+                                            -PdfRawLinesByPage $PdfRawLinesByPage)
+                                    if ($bioCoverMemos.Count -gt 0) {
+                                        if (@($metierMemos).Count -gt 0) {
+                                            $metierMemos = @($metierMemos) + @('') + @($bioCoverMemos)
+                                        }
+                                        else {
+                                            $metierMemos = @($bioCoverMemos)
+                                        }
+                                        Write-Host ("[STEP5-BIO] Segment {0} : {1} ligne(s) garde Bio (detection Step5 / PdfRawLinesByPage)." -f $n, $bioCoverMemos.Count) -ForegroundColor DarkCyan
+                                    }
+                                }
+                                catch {
+                                    Write-Warning ("[STEP5-BIO] Segment {0} : echec memos Bio ignores. {1}" -f $n, $_.Exception.Message)
+                                }
+                            }
                             Write-Host ("[STEP5-METIER] Segment {0} : {1} memo(s) garde tournée (source PDF ODM)." -f $n, $metierMemos.Count) -ForegroundColor DarkCyan
                             Write-PlanningTourneeStep5UiLog ("🎨 Tournée {0}/{1} - Création page de garde..." -f $tourneeIndex, $totalTournees)
                             $vehiculeImmat = $null
-                            $vehiculeNumeroParc = [string]$seg.Vehicule
-                            if (-not [string]::IsNullOrWhiteSpace($vehiculeNumeroParc)) {
-                                $vehiculeImmat = Get-CnsVehiculeImmatriculationByNumeroParc -NumeroParc $vehiculeNumeroParc
+                            $vehiculeNumeroParc = ''
+                            if ($null -ne $seg.PSObject.Properties['NumeroParc']) {
+                                $vehiculeNumeroParc = ([string]$seg.NumeroParc).Trim()
                             }
-                            if (New-CnsTourneeHeaderCoverPdf -OutPdfPath $coverPath -DateJJMMAAAA $jj -Collecteur ([string]$seg.Collecteur) `
-                                -Vehicule $vehiculeNumeroParc -VehiculeImmatriculation $vehiculeImmat -TourneeIncomplete:$inc -MetierMemoLines $metierMemos) {
+                            if ([string]::IsNullOrWhiteSpace($vehiculeNumeroParc) -and $null -ne $seg.PSObject.Properties['Vehicule']) {
+                                $candVeh = ([string]$seg.Vehicule).Trim()
+                                # Nouveau modèle : Vehicule peut être la plaque si pas de parenthèses ; ancien modèle : numéro de parc.
+                                if ($candVeh -notmatch '(?i)[A-Z]{1,3}-\d{2,4}-[A-Z]{1,3}') {
+                                    $vehiculeNumeroParc = $candVeh
+                                }
+                            }
+                            if ($null -ne $seg.PSObject.Properties['Plaque']) {
+                                $plaquePlanning = ([string]$seg.Plaque).Trim()
+                                if (-not [string]::IsNullOrWhiteSpace($plaquePlanning)) {
+                                    $vehiculeImmat = $plaquePlanning
+                                }
+                            }
+                            if ([string]::IsNullOrWhiteSpace($vehiculeImmat) -and -not [string]::IsNullOrWhiteSpace($vehiculeNumeroParc)) {
+                                # Ancien modèle : immat via base à partir du numéro de parc.
+                                if (Get-Command Get-CnsVehiculeImmatriculationByNumeroParc -ErrorAction SilentlyContinue) {
+                                    $vehiculeImmat = Get-CnsVehiculeImmatriculationByNumeroParc -NumeroParc $vehiculeNumeroParc
+                                }
+                            }
+                            if ([string]::IsNullOrWhiteSpace($vehiculeNumeroParc)) {
+                                $vehiculeNumeroParc = 'NON SPECIFIE'
+                            }
+                            $vehicleDayPairing = Get-CnsTourneeCoverVehicleDayPairing -CurrentSegment $seg -AllSegments @($segments)
+                            if ($null -ne $vehicleDayPairing) {
+                                Write-Host ("[GARDE] Perspective={0} Titre=[{1}] Sous-titre=[{2}] {3} / {4}" -f $vehicleDayPairing.Perspective, $vehicleDayPairing.TitleLine, $vehicleDayPairing.SubtitleLine, $vehicleDayPairing.CamionLine, $vehicleDayPairing.Plaque) -ForegroundColor DarkCyan
+                            }
+                            $okCover = New-CnsTourneeHeaderCoverPdf -OutPdfPath $coverPath -DateJJMMAAAA $jj -Collecteur ([string]$seg.Collecteur) `
+                                -Vehicule $vehiculeNumeroParc -VehiculeImmatriculation $vehiculeImmat -TourneeIncomplete:$inc -MetierMemoLines $metierMemos `
+                                -VehicleDayPairing $vehicleDayPairing
+                            if (-not $okCover) {
+                                Write-Warning ("[TOURNEE] Cover segment {0} echouee avec memos/pairing — retry garde minimale." -f $n)
+                                $okCover = New-CnsTourneeHeaderCoverPdf -OutPdfPath $coverPath -DateJJMMAAAA $jj -Collecteur ([string]$seg.Collecteur) `
+                                    -Vehicule $vehiculeNumeroParc -VehiculeImmatriculation $vehiculeImmat -TourneeIncomplete:$inc -MetierMemoLines @() `
+                                    -VehicleDayPairing $null
+                            }
+                            if ($okCover) {
                                 [void]$frag.Add($coverPath)
                                 $coverCreated = $true
                             }
@@ -2786,7 +3402,9 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     Write-Host ('[TOURNEE] Creating cover page for preface / hors segment Excel (cle=' + ([string]$blk.GroupKey) + ')') -ForegroundColor Cyan
                     Write-Host ("[TOURNEE] Pages count (bloque principal) = {0}" -f (1 + $blk.MainTo1 - $blk.MainFrom1)) -ForegroundColor DarkCyan
                     if (-not $prefaceAlreadyAdded) {
-                        if (New-CnsPrefaceSectionCoverPdf -OutPdfPath $coverPath -TotalOdmCount $totalODM -UnmatchedOdmCount $unmatchedCount) {
+                        $prefaceDateJj = $VisitDate.ToString('dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
+                        $prefaceDateTitle = Format-CnsTourneeCoverGardeDateTitle -DateJJMMAAAA $prefaceDateJj
+                        if (New-CnsPrefaceSectionCoverPdf -OutPdfPath $coverPath -TotalOdmCount $totalODM -UnmatchedOdmCount $unmatchedCount -DateTitle $prefaceDateTitle) {
                             [void]$frag.Add($coverPath)
                             $prefaceAlreadyAdded = $true
                             $coverCreated = $true
@@ -2808,6 +3426,7 @@ function Invoke-PlanningTourneePdfCoverComposition {
             $dupRunKey = $null
             $dupPendingCert = $null
             $dupPendingCea = [System.Collections.Generic.List[object]]::new()
+            $dupPendingFt = [System.Collections.Generic.List[object]]::new()
             $emptyDupSliceList = [System.Collections.Generic.List[string]]::new()
 
             $batchFirst = [int]$blk.MainFrom1
@@ -2840,36 +3459,64 @@ function Invoke-PlanningTourneePdfCoverComposition {
                         -OutPdfPath $slicePath -SkipPrepress:$useSkipPrepress)) {
                     throw ("[TOURNEE] Extraction page principale #{0} echouee." -f $pn)
                 }
-                [void]$frag.Add($slicePath)
 
                 $pairIdx = $pn - 1
-                if ($pairIdx -ge 0 -and $pairIdx -lt $sortedPairsArr.Count) {
+                $gsPair = $null
+                $woPage = $null
+                $pePage = $null
+                $rawPnPage = 0
+                $runKey = $null
+                $isDupTarget = $false
+                $currentWoKey = $null
+                $inPair = ($pairIdx -ge 0 -and $pairIdx -lt $sortedPairsArr.Count)
+                if ($inPair) {
                     $gsPair = $sortedPairsArr[$pairIdx]
-                    [int]$rawPnPage = 0
                     try { $rawPnPage = [int]$gsPair.RawPageNum } catch { $rawPnPage = 0 }
-
                     $woPage = Resolve-CnsWorkOrderEntityForStep5 -GsPair $gsPair -FinalOrderToLine $foToLine -OrderToWorkOrder @{} -WorkOrders $WorkOrders -PdfEntities @($PdfEntities)
-                    $pePage = $null
                     if ($rawPnPage -gt 0) {
                         $pePage = Get-CnsPageEntityByPhysicalPage -PageNumberOneBased $rawPnPage -PdfEntities @($PdfEntities)
                     }
-
                     $runKey = Get-CnsOdmDuplicationRunKey -WorkOrderEntity $woPage -PageEntity $pePage
                     $isDupTarget = Test-CnsOdmDuplicationTargetClient -WorkOrderEntity $woPage -PageEntity $pePage
-                    $hasDupMetierPending = ($null -ne $dupPendingCert) -or ($dupPendingCea.Count -gt 0)
-                    if ($hasDupMetierPending -and (
-                            -not $isDupTarget -or
-                            [string]::IsNullOrWhiteSpace($runKey) -or
-                            ($null -ne $dupRunKey -and $runKey -ne $dupRunKey)
-                        )) {
-                        Invoke-CnsFlushOdmDuplicationRun -Frag $frag -SlicePaths $emptyDupSliceList `
-                            -PendingCert $dupPendingCert -PendingCea $dupPendingCea `
-                            -RunKeyLabel $(if ([string]::IsNullOrWhiteSpace($dupRunKey)) { 'client cible' } else { $dupRunKey }) -TmpDir $tmpDir `
-                            -CertInjectedForWo $certInjectedForWo -CeaInjectedForPage $ceaInjectedForPage `
-                            -ProgressCallback $ProgressCallback -TChildCore $tChildCore `
-                            -FinalOrderToLine $foToLine -Segments @($segments) -OrderToSeg $orderToSeg -VisitDate $VisitDate
+                    if ($null -ne $woPage) {
+                        $currentWoKey = Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage
+                    }
+                    if ($null -ne $dupPendingCert) {
+                        $pendingDupKey = [string]$dupPendingCert.WorkOrderCacheKey
+                        $sameDupWo = (-not [string]::IsNullOrWhiteSpace($currentWoKey)) -and [string]::Equals($pendingDupKey, $currentWoKey, [System.StringComparison]::OrdinalIgnoreCase)
+                        if (-not $sameDupWo) {
+                            $null = script:Add-CnsDestructionCertificatePdfToFrag -Frag $frag -TmpDir $tmpDir `
+                                -WorkOrderEntity $dupPendingCert.WorkOrderEntity -GsPair $dupPendingCert.GsPair `
+                                -BlockIndex ([int]$dupPendingCert.BlockIndex) -SliceIndex ([int]$dupPendingCert.SliceIndex) `
+                                -ReorderPage ([int]$dupPendingCert.ReorderPage) -WorkOrderCacheKey $pendingDupKey `
+                                -CertInjectedForWo $certInjectedForWo -FinalOrderToLine $foToLine -Segments @($segments) `
+                                -OrderToSeg $orderToSeg -VisitDate $VisitDate -ProgressCallback $ProgressCallback -TChildCore $tChildCore `
+                                -AfterDuplication
+                            $dupPendingCert = $null
+                        }
+                    }
+                }
+
+                [void]$frag.Add($slicePath)
+                $odmFragIndex = $frag.Count - 1
+
+                if ($inPair) {
+                    $hasDupMetierPending = ($dupPendingCea.Count -gt 0) -or ($dupPendingFt.Count -gt 0)
+                    $dupClientRunEnds = (
+                        -not $isDupTarget -or
+                        [string]::IsNullOrWhiteSpace($runKey) -or
+                        ($null -ne $dupRunKey -and $runKey -ne $dupRunKey)
+                    )
+                    if ($dupClientRunEnds -and $null -ne $dupRunKey) {
+                        if ($hasDupMetierPending) {
+                            Invoke-CnsFlushOdmDuplicationRun -Frag $frag -SlicePaths $emptyDupSliceList `
+                                -PendingCert $null -PendingCea $dupPendingCea -PendingFt $dupPendingFt `
+                                -RunKeyLabel $(if ([string]::IsNullOrWhiteSpace($dupRunKey)) { 'client cible' } else { $dupRunKey }) -TmpDir $tmpDir `
+                                -CertInjectedForWo $certInjectedForWo -CeaInjectedForPage $ceaInjectedForPage -FtInjectedForPage $ftInjectedForPage `
+                                -ProgressCallback $ProgressCallback -TChildCore $tChildCore `
+                                -FinalOrderToLine $foToLine -Segments @($segments) -OrderToSeg $orderToSeg -VisitDate $VisitDate
+                        }
                         $dupRunKey = $null
-                        $dupPendingCert = $null
                     }
 
                     if ($isDupTarget) {
@@ -2881,24 +3528,57 @@ function Invoke-PlanningTourneePdfCoverComposition {
                     $metierPage = Get-CnsPdfPageMetierAnalysis -PageEntity $pePage -WorkOrderEntity $woPage
                     $requiresCeaPage = Test-CnsStep5FragSliceRequiresCeaDocument -FragSlicePdfPath $slicePath `
                         -PdfRawLinesByPage $PdfRawLinesByPage -RawPageNumOneBased $rawPnPage
-                    $odmLabel = Get-CnsOdmPagePrestationDetectionLabel -PageEntity $pePage -WorkOrderEntity $woPage -RequiresCea:$requiresCeaPage
+                    $ftPointLabel = Get-CnsStep5FragSliceFtCollectionPointLabel -FragSlicePdfPath $slicePath `
+                        -PdfRawLines @($pePage.Lines) -PdfRawLinesByPage $PdfRawLinesByPage -RawPageNumOneBased $rawPnPage `
+                        -PageEntity $pePage -WorkOrderEntity $woPage -FtDebug:($env:CN_DEBUG_FT -eq '1')
+                    if (-not (Test-CnsFtCollectionPointLabelEligible -Label $ftPointLabel)) {
+                        $ftPointLabel = $null
+                    }
+                    $requiresFtPage = Test-CnsFtCollectionPointLabelEligible -Label $ftPointLabel
+                    $requiresBioDechetsPage = $false
+                    if (Get-Command Test-CnsStep5FragSliceRequiresBioDechetsDocument -ErrorAction SilentlyContinue) {
+                        $requiresBioDechetsPage = Test-CnsStep5FragSliceRequiresBioDechetsDocument -FragSlicePdfPath $slicePath `
+                            -PdfRawLinesByPage $PdfRawLinesByPage -RawPageNumOneBased $rawPnPage `
+                            -PrecomputedRawLines @($pePage.Lines)
+                    }
+                    $odmLabel = Get-CnsOdmPagePrestationDetectionLabel -PageEntity $pePage -WorkOrderEntity $woPage `
+                        -RequiresCea:$requiresCeaPage -RequiresFt:$requiresFtPage -RequiresBioDechets:$requiresBioDechetsPage
                     if ([string]::IsNullOrWhiteSpace($odmLabel)) { $odmLabel = 'Operation en cours' }
 
                     $willCert = $false
                     $willCea = $false
-                    if ($metierPage.RequiresDestructionCertificate -and $null -ne $woPage) {
-                        $woKeyProbe = Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage
-                        if (-not [string]::IsNullOrWhiteSpace($woKeyProbe) -and -not $certInjectedForWo.Contains($woKeyProbe)) {
-                            $willCert = $true
-                            Write-PlanningTourneeStep5UiLog ("📜 Tournée {0}/{1} - Génération certificat..." -f $tourneeIndex, $totalTournees)
-                        }
+                    $willFt = $false
+                    $willBioDechets = $false
+                    $followsSameWo = $false
+                    if (-not [string]::IsNullOrWhiteSpace($currentWoKey)) {
+                        $followsSameWo = script:Test-CnsStep5FollowingPairSameWorkOrderKey -SortedPairs $sortedPairsArr -PairIndex $pairIdx -CurrentKey $currentWoKey -WorkOrders @($WorkOrders) -PdfEntities @($PdfEntities)
+                    }
+                    $pageNeedsCert = $false
+                    if ($metierPage.RequiresDestructionCertificate -and $null -ne $woPage -and -not [string]::IsNullOrWhiteSpace($currentWoKey) -and -not $certInjectedForWo.Contains($currentWoKey)) {
+                        $pageNeedsCert = $true
+                    }
+                    $classicCarriesCert = (-not [string]::IsNullOrWhiteSpace($classicPendingCertKey)) -and [string]::Equals([string]$classicPendingCertKey, [string]$currentWoKey, [System.StringComparison]::OrdinalIgnoreCase)
+                    if ($pageNeedsCert -or $classicCarriesCert) {
+                        $willCert = $true
                     }
                     if ($requiresCeaPage -and $rawPnPage -gt 0 -and -not $ceaInjectedForPage.Contains($rawPnPage)) {
                         $willCea = $true
                         Write-PlanningTourneeStep5UiLog ("🔬 Tournée {0}/{1} - Génération document CEA..." -f $tourneeIndex, $totalTournees)
                     }
+                    if ($requiresFtPage -and $rawPnPage -gt 0 -and -not $ftInjectedForPage.Contains($rawPnPage)) {
+                        $willFt = $true
+                        Write-PlanningTourneeStep5UiLog ("🏢 Tournée {0}/{1} - Génération document FT..." -f $tourneeIndex, $totalTournees)
+                    }
+                    if ($requiresBioDechetsPage -and $rawPnPage -gt 0 -and -not $bioDechetsInjectedForPage.Contains($rawPnPage)) {
+                        $willBioDechets = $true
+                        Write-PlanningTourneeStep5UiLog ("♻️ Tournée {0}/{1} - Génération DAC Bio dechets..." -f $tourneeIndex, $totalTournees)
+                    }
 
                     if ($isDupTarget) {
+                        $samePendingDupWo = $false
+                        if ($null -ne $dupPendingCert -and -not [string]::IsNullOrWhiteSpace($currentWoKey)) {
+                            $samePendingDupWo = [string]::Equals([string]$dupPendingCert.WorkOrderCacheKey, [string]$currentWoKey, [System.StringComparison]::OrdinalIgnoreCase)
+                        }
                         if ($willCert -and $null -eq $dupPendingCert) {
                             $dupPendingCert = @{
                                 WorkOrderEntity   = $woPage
@@ -2906,8 +3586,17 @@ function Invoke-PlanningTourneePdfCoverComposition {
                                 BlockIndex        = $fi
                                 SliceIndex        = $sliceIx
                                 ReorderPage       = $pn
-                                WorkOrderCacheKey = (Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage)
+                                WorkOrderCacheKey = $currentWoKey
                             }
+                            $willCert = $false
+                            Write-PlanningTourneeStep5UiLog ("📜 Tournée {0}/{1} - Génération certificat..." -f $tourneeIndex, $totalTournees)
+                        }
+                        elseif ($samePendingDupWo) {
+                            $dupPendingCert.WorkOrderEntity = $woPage
+                            $dupPendingCert.GsPair = $gsPair
+                            $dupPendingCert.BlockIndex = $fi
+                            $dupPendingCert.SliceIndex = $sliceIx
+                            $dupPendingCert.ReorderPage = $pn
                             $willCert = $false
                         }
                         if ($willCea) {
@@ -2923,45 +3612,46 @@ function Invoke-PlanningTourneePdfCoverComposition {
                                 })
                             $willCea = $false
                         }
+                        if ($willFt) {
+                            [void]$dupPendingFt.Add([pscustomobject]@{
+                                    WorkOrderEntity    = $woPage
+                                    PageEntity         = $pePage
+                                    GsPair             = $gsPair
+                                    BlockIndex         = $fi
+                                    SliceIndex         = $sliceIx
+                                    ReorderPage        = $pn
+                                    RawPageNum         = $rawPnPage
+                                    PointCollecteLabel = $ftPointLabel
+                                    OdmFragIndex       = $odmFragIndex
+                                    SlicePath          = $slicePath
+                                })
+                            $willFt = $false
+                        }
                     }
 
-                    $analyseIsLast = ($odmIdx -eq $odmTotal) -and -not $willCert -and -not $willCea -and -not $hasSegBilan -and (-not $isDupTarget -or $dupPendingCert -eq $null) -and ($dupPendingCea.Count -eq 0)
+                    $analyseIsLast = ($odmIdx -eq $odmTotal) -and -not $willCert -and -not $willCea -and -not $willFt -and -not $willBioDechets -and -not $hasSegBilan `
+                        -and (-not $isDupTarget -or $dupPendingCert -eq $null) -and ($dupPendingCea.Count -eq 0) -and ($dupPendingFt.Count -eq 0)
                     $analyseBranch = if ($analyseIsLast) { '└── ' } else { '├── ' }
                     Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
                         -Detail ("{0}Analyse ODM {1}/{2} : {3}" -f ($tChildCore + $analyseBranch), $odmIdx, $odmTotal, $odmLabel)
 
-                    if (-not $isDupTarget -and $metierPage.RequiresDestructionCertificate -and $null -ne $woPage) {
-                        $woCacheKey = Get-CnsDestructionCertificateWorkOrderKey -WorkOrderEntity $woPage
-                        if (-not [string]::IsNullOrWhiteSpace($woCacheKey) -and $certInjectedForWo.Add($woCacheKey)) {
-                            if (Get-Command New-CnsDestructionCertificatePdfFromExcelTemplate -ErrorAction SilentlyContinue) {
-                                $segMeta = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $gsPair -FinalOrderToLine $foToLine -Segments $segments -ExcelOrderIndexToSegmentIndex $orderToSeg -VisitDate $VisitDate
-                                $phTable = @{}
-                                foreach ($entry in (Get-CnsDestructionCertificatePlaceholders -WorkOrderEntity $woPage -SegmentMeta $segMeta -VisitDate $VisitDate).GetEnumerator()) {
-                                    $phTable[[string]$entry.Key] = [string]$entry.Value
-                                }
-                                $certOut = Join-Path $tmpDir ('cert_dest_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
-                                Write-CnsStep5ConsoleProgress -Message '[PROGRESS]       -> Generation certificat destruction...' -ForegroundColor Gray
-                                $certPdf = New-CnsDestructionCertificatePdfFromExcelTemplate -OutPdfPath $certOut -Placeholders $phTable
-                                if (-not [string]::IsNullOrWhiteSpace($certPdf) -and (Test-Path -LiteralPath $certPdf)) {
-                                    if (Get-Command Write-CnsDestructionCertificatePdfMergeAudit -ErrorAction SilentlyContinue) {
-                                        Write-CnsDestructionCertificatePdfMergeAudit -Phase 'GENERATED' -PdfPath $certPdf
-                                    }
-                                    [void]$frag.Add($certPdf)
-                                    Add-TourneeCompositionGeneratedDocCount
-                                    Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
-                                        -Detail ("{0}Generation certificat destruction... [OK]" -f ($tChildCore + '│   └── '))
-                                    Write-Host ("[DESTRUCTION-CERT] Certificat injecte apres page reorder #{0} (WO={1}, PDF ODM, fichier={2})." -f $pn, $woCacheKey, (Split-Path -Leaf $certPdf)) -ForegroundColor Green
-                                }
-                                else {
-                                    [void]$certInjectedForWo.Remove($woCacheKey)
-                                    Write-Warning ("[DESTRUCTION-CERT] Generation certificat echouee pour WO={0} — page ODM conservee." -f $woCacheKey)
-                                }
-                            }
-                            else {
-                                [void]$certInjectedForWo.Remove($woCacheKey)
-                                Write-Warning '[DESTRUCTION-CERT] Module Word certificat non charge — injection ignoree.'
-                            }
-                        }
+                    if (-not $isDupTarget -and $willCert -and -not $followsSameWo) {
+                        Write-PlanningTourneeStep5UiLog ("📜 Tournée {0}/{1} - Génération certificat..." -f $tourneeIndex, $totalTournees)
+                        Write-CnsStep5ConsoleProgress -Message '[PROGRESS]       -> Generation certificat destruction...' -ForegroundColor Gray
+                        $null = script:Add-CnsDestructionCertificatePdfToFrag -Frag $frag -TmpDir $tmpDir `
+                            -WorkOrderEntity $woPage -GsPair $gsPair -BlockIndex $fi -SliceIndex $sliceIx -ReorderPage $pn `
+                            -WorkOrderCacheKey $currentWoKey -CertInjectedForWo $certInjectedForWo `
+                            -FinalOrderToLine $foToLine -Segments @($segments) -OrderToSeg $orderToSeg -VisitDate $VisitDate `
+                            -ProgressCallback $ProgressCallback -TChildCore $tChildCore
+                        $classicPendingCertKey = $null
+                        $willCert = $false
+                    }
+                    elseif (-not $isDupTarget -and $willCert -and $followsSameWo) {
+                        $classicPendingCertKey = $currentWoKey
+                        $willCert = $false
+                    }
+                    elseif (-not $isDupTarget -and -not $followsSameWo -and -not [string]::IsNullOrWhiteSpace($classicPendingCertKey) -and -not [string]::Equals([string]$classicPendingCertKey, [string]$currentWoKey, [System.StringComparison]::OrdinalIgnoreCase)) {
+                        $classicPendingCertKey = $null
                     }
 
                     if (-not $isDupTarget -and $requiresCeaPage -and $rawPnPage -gt 0 -and $ceaInjectedForPage.Add($rawPnPage)) {
@@ -2993,14 +3683,134 @@ function Invoke-PlanningTourneePdfCoverComposition {
                             Write-Warning ("[CEA-POINTS] Generation CEA echouee pour RawPage={0} — page non injectee." -f $rawPnPage)
                         }
                     }
+
+                    if (-not $isDupTarget -and $requiresFtPage -and $rawPnPage -gt 0 -and $ftInjectedForPage.Add($rawPnPage)) {
+                        Write-CnsStep5ConsoleProgress -Message '[PROGRESS]       -> Generation document FT...' -ForegroundColor Gray
+                        $fragCountBeforeFt = $frag.Count
+                        $okFt = Invoke-CnsAppendFtDocumentToFrag -Frag $frag -TmpDir $tmpDir `
+                            -BlockIndex $fi -SliceIndex $sliceIx -ReorderPage $pn -RawPageNum $rawPnPage `
+                            -PointCollecteLabel $ftPointLabel -WorkOrderEntity $woPage -PageEntity $pePage -GsPair $gsPair `
+                            -FinalOrderToLine $foToLine -Segments @($segments) -OrderToSeg $orderToSeg -VisitDate $VisitDate `
+                            -ProgressCallback $ProgressCallback -TChildCore $tChildCore
+                        if ($okFt -and $frag.Count -eq ($fragCountBeforeFt + 1)) {
+                            script:Move-CnsLastFragItemBeforeIndex -Frag $frag -BeforeIndex ($frag.IndexOf($slicePath))
+                        }
+                        elseif (-not $okFt) {
+                            [void]$ftInjectedForPage.Remove($rawPnPage)
+                        }
+                    }
+
+                    # Bio-dechets : N pages DAC (quantite theorique bioseaux) AVANT l'ODM (1 injection par RawPage).
+                    if ($requiresBioDechetsPage -and $rawPnPage -gt 0 -and $bioDechetsInjectedForPage.Add($rawPnPage)) {
+                        Write-CnsStep5ConsoleProgress -Message '[PROGRESS]       -> Generation DAC Bio dechets...' -ForegroundColor Gray
+                        $bioRawLines = @()
+                        if ($null -ne $pePage -and $null -ne $pePage.Lines) {
+                            $bioRawLines = @($pePage.Lines)
+                        }
+                        if ($bioRawLines.Count -lt 1 -and $rawPnPage -gt 0) {
+                            $fromStep1Bio = Get-CnsStep5RawLinesForPhysicalPage -PageNumberOneBased $rawPnPage -PdfRawLinesByPage $PdfRawLinesByPage
+                            if ($null -ne $fromStep1Bio) { $bioRawLines = @($fromStep1Bio) }
+                        }
+                        if ($bioRawLines.Count -lt 1 -and -not [string]::IsNullOrWhiteSpace($slicePath) -and (Test-Path -LiteralPath $slicePath -PathType Leaf)) {
+                            if (Get-Command Get-CnsStep5PdftotextLinesFromSinglePagePdf -ErrorAction SilentlyContinue) {
+                                $bioRawLines = @(Get-CnsStep5PdftotextLinesFromSinglePagePdf -SinglePagePdfPath $slicePath)
+                            }
+                        }
+
+                        $bioExcluded = $false
+                        if (Get-Command Test-CnsBioDechetsDacExcludedFromLines -ErrorAction SilentlyContinue) {
+                            $bioExcluded = [bool](Test-CnsBioDechetsDacExcludedFromLines -Lines $bioRawLines)
+                        }
+                        $bioQty = 0
+                        if (-not $bioExcluded -and (Get-Command Get-CnsBioDechetsTheoreticalQuantityFromLines -ErrorAction SilentlyContinue)) {
+                            $bioQty = [int](Get-CnsBioDechetsTheoreticalQuantityFromLines -Lines $bioRawLines)
+                        }
+                        if ($bioExcluded) {
+                            Write-Host ("[BIO-DECHETS] DAC exclus (CEA SLE / N°24531) RawPage={0}" -f $rawPnPage) -ForegroundColor DarkYellow
+                            $willBioDechets = $false
+                        }
+                        elseif ($bioQty -lt 1) {
+                            $bioQty = 1
+                        }
+
+                        $dacPdfs = @()
+                        $segMetaBio = $null
+                        $serviceLabelBio = ''
+                        if (-not $bioExcluded) {
+                            if ($null -ne $gsPair) {
+                                $segMetaBio = Get-CnsTourneeCoverSegmentMetaForPair -GsPair $gsPair -FinalOrderToLine $foToLine `
+                                    -Segments $segments -ExcelOrderIndexToSegmentIndex $orderToSeg -VisitDate $VisitDate
+                                try { $serviceLabelBio = [string]$segMetaBio.ServiceLabel } catch { $serviceLabelBio = '' }
+                            }
+
+                            if (Get-Command New-CnsDacPdfFromExcelTemplate -ErrorAction SilentlyContinue) {
+                                $dacPdfs = @(New-CnsDacPdfFromExcelTemplate `
+                                        -WorkOrderEntity $woPage `
+                                        -TheoreticalQuantity $bioQty `
+                                        -ExcelData $ExcelData `
+                                        -VisitDate $VisitDate `
+                                        -OutDirectory $tmpDir `
+                                        -ServiceLabel $serviceLabelBio `
+                                        -SegmentMeta $segMetaBio `
+                                        -PageEntity $pePage)
+                            }
+                        }
+
+                        $insertedBio = 0
+                        if ($dacPdfs.Count -gt 0) {
+                            for ($dacIx = $dacPdfs.Count - 1; $dacIx -ge 0; $dacIx--) {
+                                $dacPath = [string]$dacPdfs[$dacIx]
+                                if ([string]::IsNullOrWhiteSpace($dacPath) -or -not (Test-Path -LiteralPath $dacPath -PathType Leaf)) { continue }
+                                [void]$frag.Add($dacPath)
+                                Add-TourneeCompositionGeneratedDocCount
+                                $beforeBio = $frag.IndexOf($slicePath)
+                                if ($beforeBio -ge 0) {
+                                    script:Move-CnsLastFragItemBeforeIndex -Frag $frag -BeforeIndex $beforeBio
+                                }
+                                $insertedBio++
+                            }
+                        }
+
+                        if (-not $bioExcluded -and $insertedBio -lt 1) {
+                            $bioOut = Join-Path $tmpDir ('bio_tmp_{0:D3}_{1:D5}.pdf' -f $fi, $sliceIx)
+                            $okBioFallback = $false
+                            if (Get-Command New-CnsTemporaryBioDechetsPagePdf -ErrorAction SilentlyContinue) {
+                                $okBioFallback = [bool](New-CnsTemporaryBioDechetsPagePdf -OutPdfPath $bioOut)
+                            }
+                            if ($okBioFallback -and (Test-Path -LiteralPath $bioOut -PathType Leaf)) {
+                                [void]$frag.Add($bioOut)
+                                Add-TourneeCompositionGeneratedDocCount
+                                $beforeBio = $frag.IndexOf($slicePath)
+                                if ($beforeBio -ge 0) {
+                                    script:Move-CnsLastFragItemBeforeIndex -Frag $frag -BeforeIndex $beforeBio
+                                }
+                                $insertedBio = 1
+                                Write-Warning ("[BIO-DECHETS] Fallback page temporaire pour RawPage={0} (DAC indisponible)." -f $rawPnPage)
+                            }
+                        }
+
+                        if ($bioExcluded) {
+                            # Exclusion volontaire : pas d'echec, pas de fallback.
+                        }
+                        elseif ($insertedBio -gt 0) {
+                            Write-Host ("[BIO-DECHETS] {0} page(s) DAC inseree(s) avant ODM RawPage={1} (qty={2})" -f $insertedBio, $rawPnPage, $bioQty) -ForegroundColor Green
+                            Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
+                                -Detail ("{0}DAC Bio dechets ({1} page(s))... [OK]" -f ($tChildCore + '│   └── '), $insertedBio)
+                            $willBioDechets = $false
+                        }
+                        else {
+                            [void]$bioDechetsInjectedForPage.Remove($rawPnPage)
+                            Write-Warning ("[BIO-DECHETS] Generation DAC echouee pour RawPage={0}" -f $rawPnPage)
+                        }
+                    }
                 }
             }
 
-            if (($null -ne $dupPendingCert) -or ($dupPendingCea.Count -gt 0)) {
+            if (($null -ne $dupPendingCert) -or ($dupPendingCea.Count -gt 0) -or ($dupPendingFt.Count -gt 0)) {
                 Invoke-CnsFlushOdmDuplicationRun -Frag $frag -SlicePaths $emptyDupSliceList `
-                    -PendingCert $dupPendingCert -PendingCea $dupPendingCea `
+                    -PendingCert $dupPendingCert -PendingCea $dupPendingCea -PendingFt $dupPendingFt `
                     -RunKeyLabel $(if ([string]::IsNullOrWhiteSpace($dupRunKey)) { 'client cible' } else { $dupRunKey }) `
-                    -TmpDir $tmpDir -CertInjectedForWo $certInjectedForWo -CeaInjectedForPage $ceaInjectedForPage `
+                    -TmpDir $tmpDir -CertInjectedForWo $certInjectedForWo -CeaInjectedForPage $ceaInjectedForPage -FtInjectedForPage $ftInjectedForPage `
                     -ProgressCallback $ProgressCallback -TChildCore $tChildCore `
                     -FinalOrderToLine $foToLine -Segments @($segments) -OrderToSeg $orderToSeg -VisitDate $VisitDate
                 $dupRunKey = $null
@@ -3046,6 +3856,12 @@ function Invoke-PlanningTourneePdfCoverComposition {
             Write-TourneeCompositionTourEnd -ProgressCallback $ProgressCallback
         }
 
+        $null = Add-CnsPendingSbTourneeCoversToFrag -Frag $frag -PendingSbQueue $pendingSbQueue `
+            -SeenSegments $seenSegments -TmpDir $tmpDir -VisitDate $VisitDate `
+            -BilanInjectedForSeg $bilanInjectedForSeg -BeforeSegmentIndex 0 `
+            -InsertedCountRef ([ref]$sbCoverCount) -AllSegments @($segments)
+        Write-Host ("[GARDE] {0} page(s) de garde hors SEGn generee(s)" -f $sbCoverCount) -ForegroundColor Cyan
+
         $totalFragments = @($frag).Count
         Write-PlanningTourneeStep5UiLog ("🔗 Fusion des {0} documents..." -f $totalFragments)
         Update-PlanningTourneeStep5Progress -SubRatio 0.95 -Detail 'Fusion finale des documents...'
@@ -3064,8 +3880,8 @@ function Invoke-PlanningTourneePdfCoverComposition {
 
         Copy-Item -LiteralPath $outFinal -Destination $mainAbs -Force
         Write-PlanningTourneeStep5UiLog '💾 Sauvegarde du PDF final...'
-        $nCoverSheets = 1 + @($blocks).Count
-        $tourneeMsg = "[TOURNEE] PDF final compose : {0} garde(s) + {1} page(s) corps reorder (Ghostscript reorder inchange)." -f $nCoverSheets, $mainPageCount
+        $nCoverSheets = @($blocks).Count
+        $tourneeMsg = "[TOURNEE] PDF final compose : {0} garde(s) tournee + {1} page(s) corps reorder (Ghostscript reorder inchange)." -f $nCoverSheets, $mainPageCount
         script:Write-CnsTourneeLog -Message $tourneeMsg -Level 'INFO'
         Write-CnsStep5ConsoleProgress -Message '[PROGRESS] STEP 5 : Termine !' -ForegroundColor Green
         Write-CnsStep5ConsoleProgress -Message ("[PROGRESS] PDF final : {0}" -f $mainAbs) -ForegroundColor Cyan
@@ -3091,6 +3907,15 @@ function Invoke-PlanningTourneePdfCoverComposition {
         return $false
     }
     finally {
+        if (Get-Command Stop-CnsXlsxPdfConversionPool -ErrorAction SilentlyContinue) {
+            try {
+                Stop-CnsXlsxPdfConversionPool
+                Write-Host '[PERF] Pool LibreOffice/Excel arrete' -ForegroundColor Cyan
+            }
+            catch {
+                Write-Warning ("[PERF] Arret pool XLSX->PDF : {0}" -f $_.Exception.Message)
+            }
+        }
         if ([string]::IsNullOrWhiteSpace($tmpDir) -eq $false -and (Test-Path -LiteralPath $tmpDir)) {
             Write-PlanningTourneeStep5UiLog '🧹 Nettoyage des fichiers temporaires...'
             Write-TourneeCompositionTourProgress -ProgressCallback $ProgressCallback `
