@@ -7,7 +7,7 @@ if (-not (Get-Command Get-AppConfig -ErrorAction SilentlyContinue)) {
     }
 }
 
-$script:CnsSharePointGraphScopes = @('Files.Read.All', 'Sites.Read.All', 'offline_access')
+$script:CnsSharePointGraphScopes = @('Sites.Selected', 'offline_access')
 $script:CnsGraphUserAgent = 'ASSISTANT/1.0 (PowerShell; Microsoft Graph)'
 $script:CnsSharePointPlanningFileName = $(if (-not [string]::IsNullOrWhiteSpace($env:CN_SHAREPOINT_PLANNING_FILE)) {
         $env:CN_SHAREPOINT_PLANNING_FILE.Trim()
@@ -891,6 +891,13 @@ function Invoke-CnsSharePointGraphConnectInteractive {
         UseDeviceAuthentication = $true
         ErrorAction             = 'Stop'
     }
+    $clientId = $null
+    if (Get-Command Get-GraphClientId -ErrorAction SilentlyContinue) {
+        $clientId = Get-GraphClientId
+    }
+    if (-not [string]::IsNullOrWhiteSpace($clientId)) {
+        $connectParams['ClientId'] = $clientId
+    }
 
     $capturedLines = [System.Collections.Generic.List[string]]::new()
     $deviceCode = $null
@@ -921,14 +928,64 @@ function Invoke-CnsSharePointGraphConnectInteractive {
     }
     catch {
         $deviceErr = [string]$_.Exception.Message
+        $deviceErrDetails = $null
+        try { $deviceErrDetails = [string]$_.ErrorDetails } catch { }
+        try {
+            $authLogDir = Join-Path $env:LOCALAPPDATA 'ASSISTANT\Logs'
+            if (-not (Test-Path -LiteralPath $authLogDir)) {
+                $null = New-Item -ItemType Directory -Path $authLogDir -Force
+            }
+            $authLogPath = Join-Path $authLogDir 'sharepoint-auth-error.log'
+            $authStamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+            $authBlock = @(
+                ("==== {0} ====" -f $authStamp)
+                'Phase: DeviceCode'
+                ("Exception.Message: {0}" -f $deviceErr)
+                ("ErrorDetails: {0}" -f $deviceErrDetails)
+                ("Exception: {0}" -f ([string]$_.Exception))
+                ''
+            ) -join [Environment]::NewLine
+            Add-Content -LiteralPath $authLogPath -Value $authBlock -Encoding UTF8
+        }
+        catch { }
         Write-Host ("Device Code echoue : {0}" -f $deviceErr) -ForegroundColor Yellow
         if ($deviceErr -match '(?i)WAM|web account manager|interactive.*block') {
             Write-Host 'Tentative Web Authentication (fenetre navigateur)...' -ForegroundColor Yellow
             try {
-                Connect-MgGraph -Scopes $script:CnsSharePointGraphScopes -UseWebAuthentication -NoWelcome -ErrorAction Stop
+                $webParams = @{
+                    Scopes               = $script:CnsSharePointGraphScopes
+                    UseWebAuthentication = $true
+                    NoWelcome            = $true
+                    ErrorAction          = 'Stop'
+                }
+                if (-not [string]::IsNullOrWhiteSpace($clientId)) {
+                    $webParams['ClientId'] = $clientId
+                }
+                Connect-MgGraph @webParams
                 return
             }
             catch {
+                $webErr = [string]$_.Exception.Message
+                $webErrDetails = $null
+                try { $webErrDetails = [string]$_.ErrorDetails } catch { }
+                try {
+                    $authLogDir = Join-Path $env:LOCALAPPDATA 'ASSISTANT\Logs'
+                    if (-not (Test-Path -LiteralPath $authLogDir)) {
+                        $null = New-Item -ItemType Directory -Path $authLogDir -Force
+                    }
+                    $authLogPath = Join-Path $authLogDir 'sharepoint-auth-error.log'
+                    $authStamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+                    $authBlock = @(
+                        ("==== {0} ====" -f $authStamp)
+                        'Phase: WebAuthentication'
+                        ("Exception.Message: {0}" -f $webErr)
+                        ("ErrorDetails: {0}" -f $webErrDetails)
+                        ("Exception: {0}" -f ([string]$_.Exception))
+                        ''
+                    ) -join [Environment]::NewLine
+                    Add-Content -LiteralPath $authLogPath -Value $authBlock -Encoding UTF8
+                }
+                catch { }
                 throw
             }
         }
@@ -956,9 +1013,15 @@ function Resolve-CnsSharePointConnectError {
         }
     }
     if ($msg -match '(?i)403|Forbidden|Access denied|unauthorized') {
+        if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+            Write-Log '[SharePoint] Acces refuse (403)' 'WARN' @{
+                detail  = $msg
+                conseil = 'Verifier consentement admin Sites.Selected et grants sites (ASSISTANT) ; droits lecture utilisateur.'
+            }
+        }
         return @{
             Status  = 'Denied'
-            Message = 'Acces refuse - verifier vos droits SharePoint'
+            Message = 'Acces refuse. Verifiez que votre administrateur a autorise l''application ASSISTANT sur ce site SharePoint, et que vous avez les droits de lecture.'
         }
     }
     if ($msg -match '(?i)timeout|timed out|Unable to connect|No such host|network') {
@@ -1128,30 +1191,6 @@ function Connect-SharePointGraph {
     }
 }
 
-function Get-CnsSharePointGraphAccessToken {
-    Import-CnsSharePointGraphModule
-    $ctx = Get-MgContext -ErrorAction SilentlyContinue
-    if ($null -eq $ctx) { return $null }
-    try {
-        $token = [Microsoft.Graph.PowerShell.Authentication.GraphSession]::Instance.AuthContext.TokenCache.ReadItems() |
-            Select-Object -First 1
-        if ($null -ne $token -and -not [string]::IsNullOrWhiteSpace([string]$token.AccessToken)) {
-            return [string]$token.AccessToken
-        }
-    }
-    catch { }
-
-    try {
-        $auth = [Microsoft.Graph.PowerShell.Authentication.GraphSession]::Instance.AuthContext
-        if ($null -ne $auth -and $auth.GetType().GetMethod('GetAccessToken')) {
-            return [string]$auth.GetAccessToken()
-        }
-    }
-    catch { }
-
-    return $null
-}
-
 function Test-SharePointPlanningGraphUrl {
     <#
     .SYNOPSIS
@@ -1282,6 +1321,72 @@ function Test-SharePointUseStableIdsFlag {
     if ([string]::IsNullOrWhiteSpace($raw)) { return $false }
     return ($raw -match '^(?i)(1|true|yes)$')
 }
+
+function ConvertTo-SharePointPlanningMetadataUri {
+    <#
+    .SYNOPSIS
+        Transforme une URL /content en URI metadata Graph (sans /content).
+    #>
+    param([Parameter(Mandatory = $true)][string]$ContentOrItemUrl)
+    $u = $ContentOrItemUrl.Trim()
+    if ($u -match '(?i)^(.+):/content/?$') { return $Matches[1] }
+    if ($u -match '(?i)^(.+)/content/?$') { return $Matches[1] }
+    return $u
+}
+
+function Resolve-SharePointPlanningIds {
+    <#
+    .SYNOPSIS
+        Interroge Graph (metadata) pour obtenir driveId + itemId a partir de SharePointApiUrl.
+        Persiste via Set-SharePointStableIds pour le centre actif / CentreId fourni.
+    #>
+    param(
+        [AllowNull()][AllowEmptyString()][string]$Url,
+        [AllowNull()][AllowEmptyString()][string]$CentreId
+    )
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        $Url = Get-SharePointPlanningUrl
+    }
+    if ([string]::IsNullOrWhiteSpace($Url)) { return $null }
+
+    Import-CnsSharePointGraphModule
+    if ($null -eq (Get-MgContext -ErrorAction SilentlyContinue)) {
+        Connect-SharePointGraph | Out-Null
+    }
+
+    $metaUri = ConvertTo-SharePointPlanningMetadataUri -ContentOrItemUrl $Url
+    $item = Invoke-MgGraphRequest -Method GET -Uri $metaUri -ErrorAction Stop
+
+    $itemId = [string]$item.id
+    $driveId = $null
+    if ($null -ne $item.parentReference -and -not [string]::IsNullOrWhiteSpace([string]$item.parentReference.driveId)) {
+        $driveId = [string]$item.parentReference.driveId
+    }
+    if ([string]::IsNullOrWhiteSpace($driveId) -or [string]::IsNullOrWhiteSpace($itemId)) {
+        return $null
+    }
+
+    $name = $null
+    try { $name = [string]$item.name } catch { }
+
+    if (Get-Command Set-SharePointStableIds -ErrorAction SilentlyContinue) {
+        Set-SharePointStableIds `
+            -DriveId $driveId `
+            -ItemId $itemId `
+            -PlanningFileName $name `
+            -LastValidatedAt ([datetime]::UtcNow.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)) `
+            -SourceUrl $Url `
+            -CentreId $CentreId
+    }
+
+    return [pscustomobject]@{
+        DriveId          = $driveId
+        ItemId           = $itemId
+        PlanningFileName = $name
+        SourceUrl        = $Url
+    }
+}
+
 function Get-SharePointPlanningFile {
     [CmdletBinding()]
     param(
@@ -1308,6 +1413,18 @@ function Get-SharePointPlanningFile {
         elseif (Get-Command Get-AppConfig -ErrorAction SilentlyContinue) {
             $driveId = [string](Get-AppConfig -Key 'SharePointDriveId')
             $itemId = [string](Get-AppConfig -Key 'SharePointItemId')
+        }
+        if ([string]::IsNullOrWhiteSpace($driveId) -or [string]::IsNullOrWhiteSpace($itemId)) {
+            if (-not [string]::IsNullOrWhiteSpace($Url)) {
+                try {
+                    $resolved = Resolve-SharePointPlanningIds -Url $Url
+                    if ($null -ne $resolved) {
+                        $driveId = [string]$resolved.DriveId
+                        $itemId = [string]$resolved.ItemId
+                    }
+                }
+                catch { }
+            }
         }
     }
     $canUseIds = $useStableIds `
@@ -1342,6 +1459,7 @@ function Get-SharePointPlanningFile {
         Move-Item -LiteralPath $tempPath -Destination $LocalPath -Force
         return $true
     }
+    $idDownloadFailed = $false
     if ($canUseIds) {
         $idUri = "https://graph.microsoft.com/v1.0/drives/$driveId/items/$itemId/content"
         try {
@@ -1351,6 +1469,7 @@ function Get-SharePointPlanningFile {
             throw 'Download par ID : fichier vide ou absent'
         }
         catch {
+            $idDownloadFailed = $true
             if (Test-Path -LiteralPath $tempPath) {
                 Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
             }
@@ -1369,7 +1488,11 @@ function Get-SharePointPlanningFile {
     }
     try {
         Invoke-MgGraphRequest -Method GET -Uri $Url -OutputFilePath $tempPath -ErrorAction Stop
-        return (& $finalizeDownload)
+        $okUrl = & $finalizeDownload
+        if ($okUrl -and $useStableIds -and $idDownloadFailed -and -not [string]::IsNullOrWhiteSpace($Url)) {
+            try { $null = Resolve-SharePointPlanningIds -Url $Url } catch { }
+        }
+        return $okUrl
     }
     catch {
         if (Test-Path -LiteralPath $tempPath) {

@@ -14894,3 +14894,17 @@ GPL Ghostscript 10.07.0: Unrecoverable error, exit code 1
 [2026-11-07 23:25:09] [INFO] [pid=24452] [SUCCESS] PDF apres composition couvertures : C:\Users\alexa\AppData\Local\Temp\cn_dac_1011_ff7c46c243e240afaf46fc68f9e3a177\ODM_Mardi_10_Novembre_2026.pdf (11778107 octets)
 [2026-11-07 23:25:09] [INFO] [pid=24452] [PIPELINE] TIMING step5=238629ms (238,6s) — step5_gs_batch=9 step5_gs_page=108 step5_cea_step1=108 step5_cea_pdftotext=0 — Composition pages de garde
 [2026-11-07 23:25:09] [INFO] [pid=24452] [PIPELINE] TIMING total=308984ms (309s) | step1=16878 step2=16639 step3=276 step4=36326 step5=238629 | step5_gs_batch=9 step5_gs_page=108 step5_cea_step1=108 step5_cea_pdftotext=0
+[2026-11-15 21:10:32] [INFO] [pid=24672] [ConfigManager] Centre configure | data={"centre":"Fontaine","id":"fontaine"}
+[2026-11-15 21:10:33] [INFO] [pid=24672] [ConfigManager] Centre configure | data={"centre":"Fontaine","id":"fontaine"}
+[2026-11-15 21:10:33] [INFO] [pid=24672] [ConfigManager] Centre configure | data={"centre":"Fontaine","id":"fontaine"}
+[2026-11-15 21:10:34] [INFO] [pid=24672] [SharePoint] Planning URL resolution | data={"source":"database","configured":true}
+[2026-11-15 21:10:35] [WARN] [pid=24672] [SharePoint] Download par ID echoue — fallback SharePointApiUrl | data={"message":"404 itemNotFound"}
+[2026-11-15 21:11:09] [INFO] [pid=21644] [ConfigManager] Centre configure | data={"centre":"Fontaine","id":"fontaine"}
+[2026-11-15 21:11:09] [INFO] [pid=21644] [ConfigManager] Centre configure | data={"centre":"Fontaine","id":"fontaine"}
+[2026-11-15 21:11:10] [INFO] [pid=21644] [ConfigManager] Centre configure | data={"centre":"Fontaine","id":"fontaine"}
+[2026-11-15 21:11:11] [INFO] [pid=21644] [SharePoint] Planning URL resolution | data={"source":"database","configured":true}
+[2026-11-15 21:11:12] [WARN] [pid=21644] [SharePoint] Download par ID echoue — fallback SharePointApiUrl | data={"message":"404 itemNotFound"}
+[2026-11-15 21:27:14] [INFO] [pid=24496] [SharePoint] Planning URL resolution | data={"configured":true,"source":"database"}
+[2026-11-15 21:27:16] [WARN] [pid=24496] [SharePoint] Download par ID echoue — fallback SharePointApiUrl | data={"message":"404 itemNotFound"}
+[2026-11-15 21:42:53] [INFO] [pid=25652] [SharePoint] Planning URL resolution | data={"configured":true,"source":"database"}
+[2026-11-15 21:42:55] [WARN] [pid=25652] [SharePoint] Download par ID echoue — fallback SharePointApiUrl | data={"message":"404 itemNotFound"}
