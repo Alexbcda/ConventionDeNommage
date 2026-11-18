@@ -426,6 +426,15 @@ function Show-ChangeUrlDialog {
     .OUTPUTS
         [bool] True si l'URL a été changée, False si annulation ou erreur.
     #>
+    # Hook testable (script:CnsSharePointMessageBoxMock) — MessageBox reel par defaut.
+    $showUiMessage = {
+        param([string]$Text, [string]$Caption, $Buttons, $Icon)
+        if ($script:CnsSharePointMessageBoxMock -is [scriptblock]) {
+            return & $script:CnsSharePointMessageBoxMock $Text $Caption $Buttons $Icon
+        }
+        return [System.Windows.Forms.MessageBox]::Show($Text, $Caption, $Buttons, $Icon)
+    }
+
     $currentUrl = Get-SharePointPlanningUrl
     $initialDisplay = Get-SharePointBrowserUrlFromGraph -GraphUrl $currentUrl
 
@@ -442,13 +451,31 @@ function Show-ChangeUrlDialog {
         return $false
     }
 
+    # Validation : l'URL doit etre une URL de FICHIER (pas de site)
+    $isFileUrl = $false
+    if ($newUrl -match '(?i)/drive/root:/') { $isFileUrl = $true }
+    elseif ($newUrl -match '(?i)\.(xlsm|xlsx)(\?|$|:)') { $isFileUrl = $true }
+    elseif ($newUrl -match '(?i)/drive/items/') { $isFileUrl = $true }
+
+    if (-not $isFileUrl) {
+        $warnButtons = [System.Windows.Forms.MessageBoxButtons]::OK
+        $warnIcon = [System.Windows.Forms.MessageBoxIcon]::Warning
+        $null = & $showUiMessage -Text (
+            "L'URL saisie ne pointe pas vers un fichier planning.`n`n" +
+            "Collez le lien DIRECT vers le fichier Excel (.xlsm), pas le lien du site SharePoint.`n`n" +
+            "Exemple : https://.../sites/EliseAlpesFontaine/.../Planning FONTAINE 2026.xlsm"
+        ) -Caption 'URL de fichier requise' -Buttons $warnButtons -Icon $warnIcon
+        if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+            Write-Log '[ChangeUrl] URL refusee : pas une URL fichier' 'WARN' @{ url = $newUrl }
+        }
+        return $false
+    }
+
     if ($currentUrl -eq $newUrl) {
-        [System.Windows.Forms.MessageBox]::Show(
-            'L''URL configuree est identique a l''URL actuelle.',
-            'Aucun changement',
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Information
-        ) | Out-Null
+        $infoButtons = [System.Windows.Forms.MessageBoxButtons]::OK
+        $infoIcon = [System.Windows.Forms.MessageBoxIcon]::Information
+        $null = & $showUiMessage -Text 'L''URL configuree est identique a l''URL actuelle.' `
+            -Caption 'Aucun changement' -Buttons $infoButtons -Icon $infoIcon
         return $false
     }
 
@@ -458,24 +485,20 @@ function Show-ChangeUrlDialog {
             Write-Log '[ChangeUrl] URL mise a jour' 'INFO' @{ configured = $true }
         }
 
-        [System.Windows.Forms.MessageBox]::Show(
-            "Configuration enregistree.`n`nL'application va redemarrer pour appliquer les changements.",
-            'URL modifiee',
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Information
-        ) | Out-Null
+        $okButtons = [System.Windows.Forms.MessageBoxButtons]::OK
+        $okIcon = [System.Windows.Forms.MessageBoxIcon]::Information
+        $null = & $showUiMessage -Text "Configuration enregistree.`n`nL'application va redemarrer pour appliquer les changements." `
+            -Caption 'URL modifiee' -Buttons $okButtons -Icon $okIcon
         return $true
     }
     catch {
         if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
             Write-Log '[ChangeUrl] Erreur sauvegarde' 'ERROR' @{ message = $_.Exception.Message }
         }
-        [System.Windows.Forms.MessageBox]::Show(
-            ("Erreur lors de la sauvegarde : {0}" -f $_.Exception.Message),
-            'Erreur',
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Error
-        ) | Out-Null
+        $errButtons = [System.Windows.Forms.MessageBoxButtons]::OK
+        $errIcon = [System.Windows.Forms.MessageBoxIcon]::Error
+        $null = & $showUiMessage -Text ("Erreur lors de la sauvegarde : {0}" -f $_.Exception.Message) `
+            -Caption 'Erreur' -Buttons $errButtons -Icon $errIcon
         return $false
     }
 }
@@ -885,18 +908,41 @@ function Show-CnsSharePointDeviceCodeDialog {
 
 function Invoke-CnsSharePointGraphConnectInteractive {
     # Ne pas ouvrir de navigateur ici : Connect-MgGraph -UseDeviceAuthentication ouvre deja sa propre fenetre.
+    $clientId = $null
+    if (Get-Command Get-GraphClientId -ErrorAction SilentlyContinue) {
+        $clientId = Get-GraphClientId
+    }
+    if ([string]::IsNullOrWhiteSpace($clientId)) {
+        $missingMsg = 'Client ID ASSISTANT non configure. Contactez votre developpeur pour enregistrer le Client ID fourni par l''IT (etape DEV-1).'
+        try {
+            $authLogDir = Join-Path $env:LOCALAPPDATA 'ASSISTANT\Logs'
+            if (-not (Test-Path -LiteralPath $authLogDir)) {
+                $null = New-Item -ItemType Directory -Path $authLogDir -Force
+            }
+            $authLogPath = Join-Path $authLogDir 'sharepoint-auth-error.log'
+            $authStamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+            $authBlock = @(
+                ("==== {0} ====" -f $authStamp)
+                'Phase: ClientIdRequired'
+                ("Exception.Message: {0}" -f $missingMsg)
+                'ErrorDetails: GraphClientId absent — connexion refusee (pas de fallback SDK Microsoft).'
+                ''
+            ) -join [Environment]::NewLine
+            Add-Content -LiteralPath $authLogPath -Value $authBlock -Encoding UTF8
+        }
+        catch { }
+        if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+            Write-Log '[SharePoint] GraphClientId manquant — connexion refusee' 'ERROR' @{ phase = 'ClientIdRequired' }
+        }
+        throw $missingMsg
+    }
+
     $connectParams = @{
         Scopes                  = $script:CnsSharePointGraphScopes
         NoWelcome               = $true
         UseDeviceAuthentication = $true
         ErrorAction             = 'Stop'
-    }
-    $clientId = $null
-    if (Get-Command Get-GraphClientId -ErrorAction SilentlyContinue) {
-        $clientId = Get-GraphClientId
-    }
-    if (-not [string]::IsNullOrWhiteSpace($clientId)) {
-        $connectParams['ClientId'] = $clientId
+        ClientId                = $clientId
     }
 
     $capturedLines = [System.Collections.Generic.List[string]]::new()
@@ -957,9 +1003,7 @@ function Invoke-CnsSharePointGraphConnectInteractive {
                     UseWebAuthentication = $true
                     NoWelcome            = $true
                     ErrorAction          = 'Stop'
-                }
-                if (-not [string]::IsNullOrWhiteSpace($clientId)) {
-                    $webParams['ClientId'] = $clientId
+                    ClientId             = $clientId
                 }
                 Connect-MgGraph @webParams
                 return
@@ -1010,6 +1054,24 @@ function Resolve-CnsSharePointConnectError {
         return @{
             Status  = 'Expired'
             Message = 'Session expiree - reconnectez-vous'
+        }
+    }
+    if ($msg -match '(?i)Client ID ASSISTANT non configur|GraphClientId') {
+        return @{
+            Status  = 'ClientIdMissing'
+            Message = 'Client ID ASSISTANT non configure. Contactez votre developpeur pour enregistrer le Client ID fourni par l''IT (etape DEV-1).'
+        }
+    }
+    if ($msg -match '(?i)AADSTS65001') {
+        return @{
+            Status  = 'ConsentMissing'
+            Message = 'Le consentement administrateur Microsoft Graph n''a pas ete accorde. Contactez votre IT pour refaire l''etape IT-3 (Sites.Selected + consentement admin).'
+        }
+    }
+    if ($msg -match '(?i)AADSTS7000218') {
+        return @{
+            Status  = 'PublicClientFlowsDisabled'
+            Message = 'Les flux clients publics (device code) ne sont pas actives sur l''App Registration. Contactez votre IT pour refaire l''etape IT-2 (Autoriser les flux de clients publics = Oui).'
         }
     }
     if ($msg -match '(?i)403|Forbidden|Access denied|unauthorized') {

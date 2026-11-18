@@ -275,4 +275,105 @@ Describe 'SharePoint Graph App Registration' {
 
         $script:CapturedClientId | Should Be '11111111-2222-3333-4444-555555555555'
     }
+
+    It 'refuse Connect-MgGraph si GraphClientId absent' {
+        $script:ConnectCalled = $false
+        Mock Get-GraphClientId { return $null }
+        Mock Connect-MgGraph { $script:ConnectCalled = $true }
+
+        { Invoke-CnsSharePointGraphConnectInteractive } | Should Throw 'Client ID ASSISTANT non configure'
+        $script:ConnectCalled | Should Be $false
+    }
+
+    It 'Set-GraphClientId rejette une valeur vide' {
+        Mock Set-AppConfig { throw 'Set-AppConfig ne doit pas etre appele' }
+        { Set-GraphClientId -ClientId '' } | Should Throw 'valeur vide'
+        { Set-GraphClientId -ClientId '   ' } | Should Throw 'valeur vide'
+    }
+
+    It 'Set-GraphClientId accepte un GUID valide' {
+        $script:SavedGraphClientId = $null
+        Mock Set-AppConfig {
+            param($Key, $Value)
+            if ($Key -eq 'GraphClientId') { $script:SavedGraphClientId = $Value }
+        }
+        $guid = '11111111-2222-3333-4444-555555555555'
+        $r = Set-GraphClientId -ClientId "  $guid  "
+        $r | Should Be $guid
+        $script:SavedGraphClientId | Should Be $guid
+    }
+}
+
+Describe 'SharePoint Resolve-CnsSharePointConnectError AADSTS' {
+    It 'AADSTS65001 retourne ConsentMissing' {
+        $r = Resolve-CnsSharePointConnectError -ErrorMessage 'AADSTS65001: The user or administrator has not consented'
+        $r.Status | Should Be 'ConsentMissing'
+        $r.Message | Should Match 'IT-3'
+    }
+
+    It 'AADSTS7000218 retourne PublicClientFlowsDisabled' {
+        $r = Resolve-CnsSharePointConnectError -ErrorMessage 'AADSTS7000218: The request body must contain client_secret'
+        $r.Status | Should Be 'PublicClientFlowsDisabled'
+        $r.Message | Should Match 'IT-2'
+    }
+
+    It '403 reste Denied (non-regression)' {
+        $r = Resolve-CnsSharePointConnectError -ErrorMessage '403 Forbidden Access denied'
+        $r.Status | Should Be 'Denied'
+    }
+}
+
+Describe 'Show-ChangeUrlDialog validation URL fichier' {
+    BeforeEach {
+        $script:SaveCalled = $false
+        $script:MessageBoxCaptions = [System.Collections.Generic.List[string]]::new()
+        $script:CnsSharePointMessageBoxMock = {
+            param($Text, $Caption, $Buttons, $Icon)
+            [void]$script:MessageBoxCaptions.Add([string]$Caption)
+            return [System.Windows.Forms.DialogResult]::OK
+        }
+        Mock Get-SharePointPlanningUrl {
+            return 'https://graph.microsoft.com/v1.0/sites/host:/sites/EliseAlpesFontaine/drive/root:/OLD.xlsm:/content'
+        }
+        Mock Get-SharePointBrowserUrlFromGraph { return 'https://host/sites/EliseAlpesFontaine' }
+        Mock Save-SharePointApiUrlConfig {
+            param($ApiUrl)
+            $script:SaveCalled = $true
+            $script:SavedApiUrl = $ApiUrl
+        }
+    }
+
+    AfterEach {
+        $script:CnsSharePointMessageBoxMock = $null
+    }
+
+    It 'accepte une URL Graph fichier (/drive/root:/...:/content)' {
+        $fileUrl = 'https://graph.microsoft.com/v1.0/sites/host:/sites/EliseAlpesFontaine/drive/root:/Planning%20FONTAINE%202026.xlsm:/content'
+        Mock Show-SharePointUrlConfigDialog { return $fileUrl }
+
+        $ok = Show-ChangeUrlDialog
+        $ok | Should Be $true
+        $script:SaveCalled | Should Be $true
+        $script:SavedApiUrl | Should Be $fileUrl
+    }
+
+    It 'accepte une URL navigateur .xlsm' {
+        $browserFileUrl = 'https://naevaelisealpes.sharepoint.com/sites/EliseAlpesFontaine/Shared%20Documents/Planning%20FONTAINE%202026.xlsm'
+        Mock Show-SharePointUrlConfigDialog { return $browserFileUrl }
+
+        $ok = Show-ChangeUrlDialog
+        $ok | Should Be $true
+        $script:SaveCalled | Should Be $true
+        $script:SavedApiUrl | Should Be $browserFileUrl
+    }
+
+    It 'refuse une URL de site SharePoint' {
+        $siteUrl = 'https://naevaelisealpes.sharepoint.com/sites/EliseAlpesFontaine'
+        Mock Show-SharePointUrlConfigDialog { return $siteUrl }
+
+        $ok = Show-ChangeUrlDialog
+        $ok | Should Be $false
+        $script:SaveCalled | Should Be $false
+        ($script:MessageBoxCaptions -contains 'URL de fichier requise') | Should Be $true
+    }
 }

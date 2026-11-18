@@ -76,7 +76,7 @@ function Get-GraphClientId {
     .SYNOPSIS
         Lit le ClientId Entra (App Registration ASSISTANT) depuis AppConfig.
     .OUTPUTS
-        [string] ClientId, ou $null si absent/vide (app Graph CLI par defaut).
+        [string] ClientId, ou $null si absent/vide.
     #>
     if (-not (Get-Command Get-AppConfig -ErrorAction SilentlyContinue)) {
         return $null
@@ -84,6 +84,43 @@ function Get-GraphClientId {
     $id = Get-AppConfig -Key 'GraphClientId'
     if ([string]::IsNullOrWhiteSpace($id)) { return $null }
     return $id.Trim()
+}
+
+function Format-GraphClientIdMasked {
+    <#
+    .SYNOPSIS
+        Masque un Client ID pour affichage UI (4 premiers + 4 derniers caracteres).
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$ClientId)
+    if ([string]::IsNullOrWhiteSpace($ClientId)) { return '' }
+    $id = $ClientId.Trim()
+    if ($id.Length -lt 8) { return '****' }
+    return ('{0}...{1}' -f $id.Substring(0, 4), $id.Substring($id.Length - 4))
+}
+
+function Set-GraphClientId {
+    <#
+    .SYNOPSIS
+        Enregistre le ClientId Entra (App Registration ASSISTANT) dans AppConfig.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$ClientId
+    )
+    if ([string]::IsNullOrWhiteSpace($ClientId)) {
+        throw 'Client ID ASSISTANT invalide : valeur vide.'
+    }
+    $trimmed = $ClientId.Trim()
+    $parsed = [guid]::Empty
+    if (-not [guid]::TryParse($trimmed, [ref]$parsed)) {
+        throw 'Client ID ASSISTANT invalide : format GUID attendu.'
+    }
+    if (-not (Get-Command Set-AppConfig -ErrorAction SilentlyContinue)) {
+        throw 'Set-AppConfig indisponible — impossible d''enregistrer GraphClientId.'
+    }
+    Set-AppConfig -Key 'GraphClientId' -Value $trimmed
+    return $trimmed
 }
 
 function Get-CnsUnrecognizedCentreDisplayName {
