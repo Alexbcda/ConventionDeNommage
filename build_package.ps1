@@ -2,11 +2,25 @@
 # Execution : .\build_package.ps1 [-Version "1.0.8"] [-OutputDir "output"] [-Clean]
 
 param(
-    [string]$Version = '1.0.0',
+    [string]$Version = '',
     [string]$OutputDir = 'package',
     [string]$SrcRoot = '',
     [switch]$Clean
 )
+
+# Resolution de la version : -Version explicite > version.txt racine > 1.0.0
+# ($repoRoot n'est defini qu'en corps de script ~L539 ; $PSScriptRoot = racine repo ici.)
+# Test manuel : sans -Version, lit version.txt ; avec -Version "x.y.z", force x.y.z ;
+# sans version.txt et sans -Version → 1.0.0. Pas de test Pester (build trop lourd).
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $rootVersionFile = Join-Path $PSScriptRoot 'version.txt'
+    if (Test-Path -LiteralPath $rootVersionFile) {
+        $Version = (Get-Content -LiteralPath $rootVersionFile -Raw).Trim()
+    }
+    if ([string]::IsNullOrWhiteSpace($Version)) {
+        $Version = '1.0.0'
+    }
+}
 
 $ErrorActionPreference = 'Stop'
 
