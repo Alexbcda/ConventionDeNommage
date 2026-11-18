@@ -322,3 +322,58 @@ Describe 'SharePoint Resolve-CnsSharePointConnectError AADSTS' {
         $r.Status | Should Be 'Denied'
     }
 }
+
+Describe 'Show-ChangeUrlDialog validation URL fichier' {
+    BeforeEach {
+        $script:SaveCalled = $false
+        $script:MessageBoxCaptions = [System.Collections.Generic.List[string]]::new()
+        $script:CnsSharePointMessageBoxMock = {
+            param($Text, $Caption, $Buttons, $Icon)
+            [void]$script:MessageBoxCaptions.Add([string]$Caption)
+            return [System.Windows.Forms.DialogResult]::OK
+        }
+        Mock Get-SharePointPlanningUrl {
+            return 'https://graph.microsoft.com/v1.0/sites/host:/sites/EliseAlpesFontaine/drive/root:/OLD.xlsm:/content'
+        }
+        Mock Get-SharePointBrowserUrlFromGraph { return 'https://host/sites/EliseAlpesFontaine' }
+        Mock Save-SharePointApiUrlConfig {
+            param($ApiUrl)
+            $script:SaveCalled = $true
+            $script:SavedApiUrl = $ApiUrl
+        }
+    }
+
+    AfterEach {
+        $script:CnsSharePointMessageBoxMock = $null
+    }
+
+    It 'accepte une URL Graph fichier (/drive/root:/...:/content)' {
+        $fileUrl = 'https://graph.microsoft.com/v1.0/sites/host:/sites/EliseAlpesFontaine/drive/root:/Planning%20FONTAINE%202026.xlsm:/content'
+        Mock Show-SharePointUrlConfigDialog { return $fileUrl }
+
+        $ok = Show-ChangeUrlDialog
+        $ok | Should Be $true
+        $script:SaveCalled | Should Be $true
+        $script:SavedApiUrl | Should Be $fileUrl
+    }
+
+    It 'accepte une URL navigateur .xlsm' {
+        $browserFileUrl = 'https://naevaelisealpes.sharepoint.com/sites/EliseAlpesFontaine/Shared%20Documents/Planning%20FONTAINE%202026.xlsm'
+        Mock Show-SharePointUrlConfigDialog { return $browserFileUrl }
+
+        $ok = Show-ChangeUrlDialog
+        $ok | Should Be $true
+        $script:SaveCalled | Should Be $true
+        $script:SavedApiUrl | Should Be $browserFileUrl
+    }
+
+    It 'refuse une URL de site SharePoint' {
+        $siteUrl = 'https://naevaelisealpes.sharepoint.com/sites/EliseAlpesFontaine'
+        Mock Show-SharePointUrlConfigDialog { return $siteUrl }
+
+        $ok = Show-ChangeUrlDialog
+        $ok | Should Be $false
+        $script:SaveCalled | Should Be $false
+        ($script:MessageBoxCaptions -contains 'URL de fichier requise') | Should Be $true
+    }
+}
