@@ -885,18 +885,41 @@ function Show-CnsSharePointDeviceCodeDialog {
 
 function Invoke-CnsSharePointGraphConnectInteractive {
     # Ne pas ouvrir de navigateur ici : Connect-MgGraph -UseDeviceAuthentication ouvre deja sa propre fenetre.
+    $clientId = $null
+    if (Get-Command Get-GraphClientId -ErrorAction SilentlyContinue) {
+        $clientId = Get-GraphClientId
+    }
+    if ([string]::IsNullOrWhiteSpace($clientId)) {
+        $missingMsg = 'Client ID ASSISTANT non configure. Contactez votre developpeur pour enregistrer le Client ID fourni par l''IT (etape DEV-1).'
+        try {
+            $authLogDir = Join-Path $env:LOCALAPPDATA 'ASSISTANT\Logs'
+            if (-not (Test-Path -LiteralPath $authLogDir)) {
+                $null = New-Item -ItemType Directory -Path $authLogDir -Force
+            }
+            $authLogPath = Join-Path $authLogDir 'sharepoint-auth-error.log'
+            $authStamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+            $authBlock = @(
+                ("==== {0} ====" -f $authStamp)
+                'Phase: ClientIdRequired'
+                ("Exception.Message: {0}" -f $missingMsg)
+                'ErrorDetails: GraphClientId absent — connexion refusee (pas de fallback SDK Microsoft).'
+                ''
+            ) -join [Environment]::NewLine
+            Add-Content -LiteralPath $authLogPath -Value $authBlock -Encoding UTF8
+        }
+        catch { }
+        if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+            Write-Log '[SharePoint] GraphClientId manquant — connexion refusee' 'ERROR' @{ phase = 'ClientIdRequired' }
+        }
+        throw $missingMsg
+    }
+
     $connectParams = @{
         Scopes                  = $script:CnsSharePointGraphScopes
         NoWelcome               = $true
         UseDeviceAuthentication = $true
         ErrorAction             = 'Stop'
-    }
-    $clientId = $null
-    if (Get-Command Get-GraphClientId -ErrorAction SilentlyContinue) {
-        $clientId = Get-GraphClientId
-    }
-    if (-not [string]::IsNullOrWhiteSpace($clientId)) {
-        $connectParams['ClientId'] = $clientId
+        ClientId                = $clientId
     }
 
     $capturedLines = [System.Collections.Generic.List[string]]::new()
@@ -957,9 +980,7 @@ function Invoke-CnsSharePointGraphConnectInteractive {
                     UseWebAuthentication = $true
                     NoWelcome            = $true
                     ErrorAction          = 'Stop'
-                }
-                if (-not [string]::IsNullOrWhiteSpace($clientId)) {
-                    $webParams['ClientId'] = $clientId
+                    ClientId             = $clientId
                 }
                 Connect-MgGraph @webParams
                 return
@@ -1010,6 +1031,12 @@ function Resolve-CnsSharePointConnectError {
         return @{
             Status  = 'Expired'
             Message = 'Session expiree - reconnectez-vous'
+        }
+    }
+    if ($msg -match '(?i)Client ID ASSISTANT non configur|GraphClientId') {
+        return @{
+            Status  = 'ClientIdMissing'
+            Message = 'Client ID ASSISTANT non configure. Contactez votre developpeur pour enregistrer le Client ID fourni par l''IT (etape DEV-1).'
         }
     }
     if ($msg -match '(?i)403|Forbidden|Access denied|unauthorized') {

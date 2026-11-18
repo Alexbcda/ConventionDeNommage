@@ -275,4 +275,31 @@ Describe 'SharePoint Graph App Registration' {
 
         $script:CapturedClientId | Should Be '11111111-2222-3333-4444-555555555555'
     }
+
+    It 'refuse Connect-MgGraph si GraphClientId absent' {
+        $script:ConnectCalled = $false
+        Mock Get-GraphClientId { return $null }
+        Mock Connect-MgGraph { $script:ConnectCalled = $true }
+
+        { Invoke-CnsSharePointGraphConnectInteractive } | Should Throw 'Client ID ASSISTANT non configure'
+        $script:ConnectCalled | Should Be $false
+    }
+
+    It 'Set-GraphClientId rejette une valeur vide' {
+        Mock Set-AppConfig { throw 'Set-AppConfig ne doit pas etre appele' }
+        { Set-GraphClientId -ClientId '' } | Should Throw 'valeur vide'
+        { Set-GraphClientId -ClientId '   ' } | Should Throw 'valeur vide'
+    }
+
+    It 'Set-GraphClientId accepte un GUID valide' {
+        $script:SavedGraphClientId = $null
+        Mock Set-AppConfig {
+            param($Key, $Value)
+            if ($Key -eq 'GraphClientId') { $script:SavedGraphClientId = $Value }
+        }
+        $guid = '11111111-2222-3333-4444-555555555555'
+        $r = Set-GraphClientId -ClientId "  $guid  "
+        $r | Should Be $guid
+        $script:SavedGraphClientId | Should Be $guid
+    }
 }

@@ -54,6 +54,16 @@ function Get-SharePointUiStateDefinition {
                 )
             }
         }
+        'ClientIdMissing' {
+            return @{
+                Icon           = '🔴'
+                Message        = 'Client ID ASSISTANT non configure — contactez le developpeur (DEV-1)'
+                ForeColor      = [System.Drawing.Color]::Red
+                StatusDotColor = [System.Drawing.Color]::Red
+                DegradedMode   = $true
+                Buttons        = @()
+            }
+        }
         'Denied' {
             return @{
                 Icon           = '🔴'
@@ -441,9 +451,9 @@ function Update-SharePointUI {
             $connectBtn.Text = '🔐 Connexion'
             $connectBtn.Tag = 'Connect'
             $connectBtn.Size = [System.Drawing.Size]::new($connectBtnWidth, $connectBtnHeight)
-            $connectBtnEnabled = $status -in @('Expired', 'Offline', 'Denied', 'Error', 'WamBlocked') -or $isLocalMode
+            $connectBtnEnabled = $status -in @('Expired', 'Offline', 'Denied', 'Error', 'WamBlocked', 'ClientIdMissing') -or $isLocalMode
             $connectBtn.Enabled = $connectBtnEnabled
-            $showConnectBtn = $isLocalMode -or ($status -in @('Expired', 'Offline', 'Denied', 'Error', 'WamBlocked'))
+            $showConnectBtn = $isLocalMode -or ($status -in @('Expired', 'Offline', 'Denied', 'Error', 'WamBlocked', 'ClientIdMissing'))
         }
 
         $connectBtn.Visible = $showConnectBtn

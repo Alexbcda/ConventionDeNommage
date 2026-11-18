@@ -138,14 +138,35 @@ function Show-OutilsPanel {
     $grpSharePoint.Name = 'grpSharePointConfig'
     $grpSharePoint.Text = 'Configuration SharePoint'
     $grpSharePoint.Location = [System.Drawing.Point]::new(0, 60)
-    $grpSharePoint.Size = [System.Drawing.Size]::new(700, 150)
+    $grpSharePoint.Size = [System.Drawing.Size]::new(700, 250)
     $grpSharePoint.Font = $script:PoliceTitre3
 
     $configManagerScript = Join-Path $PSScriptRoot '..\..\Core\ConfigManager.ps1'
     if (Test-Path -LiteralPath $configManagerScript) {
-        if (-not (Get-Command Show-ConfigureCentreDialog -ErrorAction SilentlyContinue)) {
+        if (-not (Get-Command Get-GraphClientId -ErrorAction SilentlyContinue) -or
+            -not (Get-Command Show-ConfigureCentreDialog -ErrorAction SilentlyContinue)) {
             . $configManagerScript
         }
+    }
+
+    function script:Update-OutilsGraphClientIdStatusLabel {
+        param([Parameter(Mandatory = $true)][System.Windows.Forms.Label]$Label)
+        $Label.Font = [System.Drawing.Font]::new('Segoe UI', 9)
+        $currentId = $null
+        if (Get-Command Get-GraphClientId -ErrorAction SilentlyContinue) {
+            $currentId = Get-GraphClientId
+        }
+        if ([string]::IsNullOrWhiteSpace($currentId)) {
+            $Label.Text = 'Client ID ASSISTANT : Non configure — contactez le developpeur'
+            $Label.ForeColor = [System.Drawing.Color]::DarkRed
+            return
+        }
+        $masked = $currentId
+        if (Get-Command Format-GraphClientIdMasked -ErrorAction SilentlyContinue) {
+            $masked = Format-GraphClientIdMasked -ClientId $currentId
+        }
+        $Label.Text = ("Client ID ASSISTANT : Configure ({0})" -f $masked)
+        $Label.ForeColor = $script:CouleurVert
     }
 
     $lblSharePointInfo = [System.Windows.Forms.Label]::new()
@@ -249,12 +270,90 @@ function Show-OutilsPanel {
         }
     })
     $grpSharePoint.Controls.Add($btnConfigureCentre)
+
+    $lblGraphClientIdStatus = [System.Windows.Forms.Label]::new()
+    $lblGraphClientIdStatus.Name = 'lblGraphClientIdStatus'
+    $lblGraphClientIdStatus.Location = [System.Drawing.Point]::new(15, 105)
+    $lblGraphClientIdStatus.Size = [System.Drawing.Size]::new(670, 25)
+    $lblGraphClientIdStatus.AutoSize = $false
+    $grpSharePoint.Controls.Add($lblGraphClientIdStatus)
+    script:Update-OutilsGraphClientIdStatusLabel -Label $lblGraphClientIdStatus
+
+    $lblGraphClientId = [System.Windows.Forms.Label]::new()
+    $lblGraphClientId.Text = 'Client ID ASSISTANT :'
+    $lblGraphClientId.Font = $script:PoliceLabelSecondaireFenetre
+    $lblGraphClientId.Location = [System.Drawing.Point]::new(15, 140)
+    $lblGraphClientId.Size = [System.Drawing.Size]::new(160, 25)
+    $grpSharePoint.Controls.Add($lblGraphClientId)
+
+    $txtGraphClientId = [System.Windows.Forms.TextBox]::new()
+    $txtGraphClientId.Name = 'txtGraphClientId'
+    $txtGraphClientId.Location = [System.Drawing.Point]::new(180, 138)
+    $txtGraphClientId.Size = [System.Drawing.Size]::new(360, 28)
+    $txtGraphClientId.Font = $script:PoliceLabelSecondaireFenetre
+    $grpSharePoint.Controls.Add($txtGraphClientId)
+
+    $btnSaveGraphClientId = [System.Windows.Forms.Button]::new()
+    $btnSaveGraphClientId.Name = 'btnSaveGraphClientId'
+    $btnSaveGraphClientId.Text = 'Enregistrer'
+    $btnSaveGraphClientId.Size = [System.Drawing.Size]::new(120, 32)
+    $btnSaveGraphClientId.Location = [System.Drawing.Point]::new(555, 135)
+    $btnSaveGraphClientId.BackColor = $script:CouleurOrange
+    $btnSaveGraphClientId.ForeColor = $script:CouleurBlanc
+    $btnSaveGraphClientId.FlatStyle = 'Flat'
+    $btnSaveGraphClientId.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnSaveGraphClientId.Font = $script:PoliceBouton
+    $btnSaveGraphClientId.Add_Click({
+        try {
+            if (-not (Get-Command Set-GraphClientId -ErrorAction SilentlyContinue)) {
+                throw 'ConfigManager non charge correctement'
+            }
+            $inputBox = $null
+            $statusLbl = $null
+            foreach ($ctrl in @($this.Parent.Controls)) {
+                if ($ctrl -is [System.Windows.Forms.TextBox] -and [string]$ctrl.Name -eq 'txtGraphClientId') {
+                    $inputBox = $ctrl
+                }
+                if ($ctrl -is [System.Windows.Forms.Label] -and [string]$ctrl.Name -eq 'lblGraphClientIdStatus') {
+                    $statusLbl = $ctrl
+                }
+            }
+            if ($null -eq $inputBox) { throw 'Champ Client ID introuvable' }
+            $saved = Set-GraphClientId -ClientId ([string]$inputBox.Text)
+            $inputBox.Text = ''
+            if ($null -ne $statusLbl) {
+                script:Update-OutilsGraphClientIdStatusLabel -Label $statusLbl
+            }
+            $masked = if (Get-Command Format-GraphClientIdMasked -ErrorAction SilentlyContinue) {
+                Format-GraphClientIdMasked -ClientId $saved
+            }
+            else { '****' }
+            [System.Windows.Forms.MessageBox]::Show(
+                ("Client ID ASSISTANT enregistre ({0})." -f $masked),
+                'Configuration SharePoint',
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Information
+            ) | Out-Null
+        }
+        catch {
+            if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+                Write-Log '[Outils] Erreur enregistrement GraphClientId' 'ERROR' @{ message = $_.Exception.Message }
+            }
+            [System.Windows.Forms.MessageBox]::Show(
+                ("Erreur : {0}" -f $_.Exception.Message),
+                'Erreur',
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+        }
+    })
+    $grpSharePoint.Controls.Add($btnSaveGraphClientId)
     $panel.Controls.Add($grpSharePoint)
 
     $grpLicence = [System.Windows.Forms.GroupBox]::new()
     $grpLicence.Name = 'grpLicence'
     $grpLicence.Text = 'Licence'
-    $grpLicence.Location = [System.Drawing.Point]::new(0, 220)
+    $grpLicence.Location = [System.Drawing.Point]::new(0, 320)
     $grpLicence.Size = [System.Drawing.Size]::new(700, 120)
     $grpLicence.Font = $script:PoliceTitre3
 
@@ -455,7 +554,7 @@ function Show-OutilsPanel {
         $panel.Controls.Add($grpSuperviseur)
     }
 
-    $grpVideoY = if ($showSuperviseurOutils) { 405 } else { 355 }
+    $grpVideoY = if ($showSuperviseurOutils) { 505 } else { 455 }
     $grpVideo = [System.Windows.Forms.GroupBox]::new()
     $grpVideo.Name = 'grpVideo'
     $grpVideo.Text = 'Video de demonstration'
