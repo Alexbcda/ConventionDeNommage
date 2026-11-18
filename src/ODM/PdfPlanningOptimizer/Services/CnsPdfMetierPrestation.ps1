@@ -1,4 +1,4 @@
-# STEP 5 — Détection prestations métier depuis le texte ODM PDF (source de vérité unique).
+﻿# STEP 5 — Détection prestations métier depuis le texte ODM PDF (source de vérité unique).
 # Ne pas utiliser MatchResult / ExcelOrder / SpecialFlags pour la logique métier.
 
 . (Join-Path $PSScriptRoot 'PlanningExcelTourneeSegments.ps1')
@@ -751,6 +751,8 @@ function ConvertTo-CnsCoverClientDisplayLabel {
         $t = $Matches[1].Trim()
     }
     $t = [regex]::Replace($t, '\s+', ' ').Trim()
+    # Retire le suffixe ODM " - N°12345" / " – N°12345".
+    $t = [regex]::Replace($t, '(?i)\s*[-–—]\s*N[°ºo]\s*\d+\s*$', '').Trim()
     if (Get-Command Repair-CnsClientNumeroSignText -ErrorAction SilentlyContinue) {
         $t = Repair-CnsClientNumeroSignText -Text $t
     }
@@ -769,6 +771,11 @@ function Remove-CnsCoverPrestationVehiculeSuffix {
 }
 
 function Format-CnsCoverGardePrestationMemoLine {
+    <#
+    .SYNOPSIS
+        Mémo garde Collecte Ponctuelle : "[Client] [Prestation]" ;
+        si Track (DEEE/piles/…) : suffixe " => BSD".
+    #>
     param(
         [AllowNull()][AllowEmptyString()][string]$Detail,
         [AllowNull()][AllowEmptyString()][string]$Client
@@ -776,8 +783,91 @@ function Format-CnsCoverGardePrestationMemoLine {
     [string]$det = Remove-CnsCoverPrestationVehiculeSuffix -Detail ([string]$Detail)
     [string]$cl = ConvertTo-CnsCoverClientDisplayLabel -Name ([string]$Client)
     if ([string]::IsNullOrWhiteSpace($cl)) { $cl = 'Non specifie' }
-    $line = ("{0} - {1}" -f $det, $cl)
+    if ([string]::IsNullOrWhiteSpace($det)) { return '' }
+    $line = ("{0} {1}" -f $cl, $det)
+    $detNorm = ''
+    if (Get-Command ConvertTo-CnsMetierMatchNormalizedText -ErrorAction SilentlyContinue) {
+        $detNorm = ConvertTo-CnsMetierMatchNormalizedText -Text $det
+    }
+    else {
+        $detNorm = $det.ToLowerInvariant()
+    }
+    if ($detNorm -match 'deee|pile|batterie|cartouche|ampoule|neon|tube') {
+        if ($line -notmatch '(?i)=>\s*(faire\s+)?BSD\s*$') {
+            $line = ($line.TrimEnd() + ' => BSD')
+        }
+    }
     return (Remove-CnsCoverPrestationVehiculeSuffix -Detail $line)
+}
+
+function Get-CnsCoverGardeTrackDechetCollecteFragment {
+    <#
+    .SYNOPSIS
+        Fragment "Collecte …" pour mémo Track (ex: "Collecte de piles", "Collecte DEEE").
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Detail)
+    [string]$det = Remove-CnsCoverPrestationVehiculeSuffix -Detail ([string]$Detail)
+    if ([string]::IsNullOrWhiteSpace($det)) { return '' }
+    $norm = ''
+    if (Get-Command ConvertTo-CnsMetierMatchNormalizedText -ErrorAction SilentlyContinue) {
+        $norm = ConvertTo-CnsMetierMatchNormalizedText -Text $det
+    }
+    else {
+        $norm = $det.ToLowerInvariant()
+    }
+    if ($norm -match 'deee') { return 'Collecte DEEE' }
+    if ($norm -match 'pile') { return 'Collecte de piles' }
+    if ($norm -match 'batterie') { return 'Collecte de piles' }
+    if ($norm -match 'cartouche' -or $norm -match 'encre') { return 'Collecte de cartouches d''encre' }
+    if ($norm -match 'ampoule') { return 'Collecte d''ampoules' }
+    if ($norm -match 'neon|néon|tube') { return 'Collecte de néons/tubes' }
+    if ($det -match '(?i)^collecte\s+(.+)$') {
+        return ('Collecte {0}' -f $Matches[1].Trim())
+    }
+    return $det.Trim()
+}
+
+function Format-CnsCoverGardeTrackDechetMemoLine {
+    <#
+    .SYNOPSIS
+        Mémo garde Track Déchets : "[Client] Collecte de [type] => BSD".
+    #>
+    param(
+        [AllowNull()][AllowEmptyString()][string]$Detail,
+        [AllowNull()][AllowEmptyString()][string]$Client
+    )
+    [string]$cl = ConvertTo-CnsCoverClientDisplayLabel -Name ([string]$Client)
+    if ([string]::IsNullOrWhiteSpace($cl)) { $cl = 'Non specifie' }
+    [string]$frag = Get-CnsCoverGardeTrackDechetCollecteFragment -Detail $Detail
+    if ([string]::IsNullOrWhiteSpace($frag)) { return '' }
+    return ('{0} {1} => BSD' -f $cl, $frag)
+}
+
+function Test-CnsCoverClientExcludedFromDacInstruction {
+    <#
+    .SYNOPSIS
+        True si point CEA SLE / N°24531 (masqué sur la garde sauf Track / Ponctuel / Destruction).
+        Réutilise Test-CnsBioDechetsDacExcludedFromLines si dispo.
+    #>
+    param(
+        [AllowNull()][AllowEmptyString()][string]$ClientName,
+        [AllowEmptyCollection()][string[]]$RawLines = @()
+    )
+    $probe = New-Object System.Collections.Generic.List[string]
+    if (-not [string]::IsNullOrWhiteSpace($ClientName)) {
+        [void]$probe.Add(([string]$ClientName).Trim())
+    }
+    foreach ($ln in @($RawLines)) {
+        if (-not [string]::IsNullOrWhiteSpace($ln)) { [void]$probe.Add([string]$ln) }
+    }
+    if ($probe.Count -lt 1) { return $false }
+    if (Get-Command Test-CnsBioDechetsDacExcludedFromLines -ErrorAction SilentlyContinue) {
+        return [bool](Test-CnsBioDechetsDacExcludedFromLines -Lines @($probe))
+    }
+    $blob = ($probe -join ' ')
+    if ($blob -match '(?i)N[°ºo]\s*24531|\b24531\b') { return $true }
+    if ($blob -match '(?i)CEA\s*.*Service\s+Logistique\s+et\s+Environnement') { return $true }
+    return $false
 }
 
 function Test-CnsPdfClientDisplayNameLooksPolluted {
@@ -890,18 +980,33 @@ function Get-CnsPonctuellePrestationDisplayLabelFromServiceType {
     if ([string]::IsNullOrWhiteSpace($norm)) { return $null }
 
     $m = [regex]::Match($raw, '(?i)\b(Collecte|D[eéè]pose|Livraison|Fourniture)\s+Ponctuel\b.*$')
-    if (-not $m.Success) { return $null }
-
-    if ($norm -match 'neon|néon|tube|alveole|vrac|cartouche|encre|deee') {
-        return 'Collecte DEEE'
+    if (-not $m.Success) {
+        # Essuie-mains : souvent "Collecte de Essuie-mains" (sans mot Ponctuel) → mémo ponctuel normal.
+        if ($norm -match '(?i)\bcollecte\s+de\s+essuie[\s\-]*mains\b') {
+            return 'Collecte Ponctuel de Essuie-mains'
+        }
+        return $null
     }
-    if ($norm -match 'pile') {
+
+    # Track / DEEE uniquement sur mots-clés explicites.
+    # "vrac", "alveole", "papier", "carton" seuls → libellé métier (pas DEEE).
+    if ($norm -match 'pile|batterie') {
         return 'Collecte de piles'
+    }
+    if ($norm -match 'deee|cartouche|ampoule|neon|néon|tube') {
+        return 'Collecte DEEE'
     }
 
     $label = $m.Value.Trim()
     $label = [regex]::Replace($label, '(?i)\bSac\s+\d+L[^/]*(?=/\d|\s+(?:Bouteilles|Canettes|Essuie|Verre|Multi|Papier|Carton))', '')
     $label = [regex]::Replace($label, '(?i)\s*/\d+\s*kg\s*', ' ')
+    # Elise Matériel collé après "Ponctuel de" (Bac 240L [fermé], Vrac, Alvéole).
+    # On conserve le matériau métier (Papier, Carton, DIB, Multi déchets, …).
+    $label = [regex]::Replace(
+        $label,
+        '(?i)(?<=\b(?:Collecte|D[eéè]pose|Livraison|Fourniture)\s+Ponctuel\s+de)\s+(?:Vrac|Alv[eé]oles?|Bac\s*\d+\s*L?(?:\s+ferm[eé]s?)?)\b\s*',
+        ' '
+    )
     $label = [regex]::Replace($label, '\s+', ' ').Trim()
 
     $labelNorm = ConvertTo-CnsMetierMatchNormalizedText -Text $label
@@ -1387,7 +1492,8 @@ function Get-CnsTourneeMetierMemoLinesForBlock {
     <#
     .SYNOPSIS
         Mémos garde tournée agrégés depuis les ODM PDF du bloc (hors PdfFallback / __PRE__).
-        Inclut l'instruction texte « Inventaire FT … compter le nombre de bacs » si un point FT est detecte.
+        Regroupe par client (en-tête) puis prestations indentées ; tri alpha des clients.
+        Inclut les points FT en blocs client (en-tête) + « Faire inventaire » indenté.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -1490,39 +1596,122 @@ function Get-CnsTourneeMetierMemoLinesForBlock {
         }
     }
 
+    # Regroupement par client : en-tête + prestations indentées (4 espaces).
+    [string]$memoIndent = '    '
     $dedupSeen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
-    $out = New-Object System.Collections.Generic.List[string]
+    $byClient = New-Object 'System.Collections.Generic.Dictionary[string,System.Collections.Generic.List[string]]' ([StringComparer]::OrdinalIgnoreCase)
+    # Track / Ponctuel / Destruction uniquement (pas FT) — requis pour afficher le CEA SLE.
+    $clientsWithSpecificMemo = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+
     foreach ($tr in $trackLines) {
         if ($null -eq $tr) { continue }
-        $line = Format-CnsCoverGardePrestationMemoLine -Detail ([string]$tr.Detail) -Client ([string]$tr.Client)
-        if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        $key = $line
-        if ($dedupSeen.Add($key)) {
-            [void]$out.Add($line)
+        [string]$det = Remove-CnsCoverPrestationVehiculeSuffix -Detail ([string]$tr.Detail)
+        if ([string]::IsNullOrWhiteSpace($det)) { continue }
+        [string]$cl = ConvertTo-CnsCoverClientDisplayLabel -Name ([string]$tr.Client)
+        if ([string]::IsNullOrWhiteSpace($cl)) { $cl = 'Non specifie' }
+        [string]$frag = ''
+        try {
+            $frag = Get-CnsCoverGardeTrackDechetCollecteFragment -Detail $det
         }
+        catch {
+            Write-Warning ("[GARDE-MEMO] Track memo ignore : {0}" -f $_.Exception.Message)
+            continue
+        }
+        if ([string]::IsNullOrWhiteSpace($frag)) { continue }
+        [string]$body = ('{0} => BSD' -f $frag)
+        [string]$key = ('TRACK|{0}|{1}' -f $cl, $det)
+        if (-not $dedupSeen.Add($key)) { continue }
+        if (-not $byClient.ContainsKey($cl)) {
+            $byClient[$cl] = New-Object System.Collections.Generic.List[string]
+        }
+        [void]$byClient[$cl].Add($body)
+        [void]$clientsWithSpecificMemo.Add($cl)
     }
     foreach ($pp in $ponctuelleLines) {
         if ($null -eq $pp) { continue }
-        $line = Format-CnsCoverGardePrestationMemoLine -Detail ([string]$pp.Detail) -Client ([string]$pp.Client)
-        if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        $key = $line
-        if ($dedupSeen.Add($key)) {
-            [void]$out.Add($line)
+        [string]$det = Remove-CnsCoverPrestationVehiculeSuffix -Detail ([string]$pp.Detail)
+        if ([string]::IsNullOrWhiteSpace($det)) { continue }
+        [string]$cl = ConvertTo-CnsCoverClientDisplayLabel -Name ([string]$pp.Client)
+        if ([string]::IsNullOrWhiteSpace($cl)) { $cl = 'Non specifie' }
+        [string]$body = $det.Trim()
+        try {
+            $detNorm = ''
+            if (Get-Command ConvertTo-CnsMetierMatchNormalizedText -ErrorAction SilentlyContinue) {
+                $detNorm = ConvertTo-CnsMetierMatchNormalizedText -Text $body
+            }
+            else {
+                $detNorm = $body.ToLowerInvariant()
+            }
+            if ($detNorm -match 'deee|pile|batterie|cartouche|ampoule|neon|tube') {
+                if ($body -notmatch '(?i)=>\s*(faire\s+)?BSD\s*$') {
+                    $body = ($body + ' => BSD')
+                }
+            }
         }
+        catch {
+            Write-Warning ("[GARDE-MEMO] Ponctuel memo ignore : {0}" -f $_.Exception.Message)
+            continue
+        }
+        [string]$key = ('PONT|{0}|{1}' -f $cl, $det)
+        if (-not $dedupSeen.Add($key)) { continue }
+        if (-not $byClient.ContainsKey($cl)) {
+            $byClient[$cl] = New-Object System.Collections.Generic.List[string]
+        }
+        [void]$byClient[$cl].Add($body)
+        [void]$clientsWithSpecificMemo.Add($cl)
     }
     foreach ($dc in @($destructionClients)) {
-        $cl = ConvertTo-CnsCoverClientDisplayLabel -Name $dc
-        if (-not [string]::IsNullOrWhiteSpace($cl)) {
-            [void]$out.Add(("Certificat de destruction : {0}" -f $cl))
+        [string]$cl = ConvertTo-CnsCoverClientDisplayLabel -Name $dc
+        if ([string]::IsNullOrWhiteSpace($cl)) { continue }
+        [string]$key = ('DEST|{0}' -f $cl)
+        if (-not $dedupSeen.Add($key)) { continue }
+        if (-not $byClient.ContainsKey($cl)) {
+            $byClient[$cl] = New-Object System.Collections.Generic.List[string]
         }
+        [void]$byClient[$cl].Add('Certificat de destruction')
+        [void]$clientsWithSpecificMemo.Add($cl)
     }
+
+    # FT : même hiérarchie visuelle (client gras / ligne indentée), texte fixe « Faire inventaire ».
     foreach ($ftLabel in @($ftLabels)) {
         if ([string]::IsNullOrWhiteSpace($ftLabel)) { continue }
-        $ftClean = ($ftLabel.Trim() -replace '(?i)&apos;', "'")
-        $ftInstruction = ("Inventaire {0} compter le nombre de bacs" -f $ftClean)
-        if ($dedupSeen.Add($ftInstruction)) {
-            [void]$out.Add($ftInstruction)
+        [string]$ftClean = ($ftLabel.Trim() -replace '(?i)&apos;', "'")
+        if (Get-Command ConvertTo-CnsFtBracketDisplayLabel -ErrorAction SilentlyContinue) {
+            $ftClean = ConvertTo-CnsFtBracketDisplayLabel -RawLabel $ftClean
         }
+        [string]$cl = ConvertTo-CnsCoverClientDisplayLabel -Name $ftClean
+        if ([string]::IsNullOrWhiteSpace($cl)) { continue }
+        # CEA SLE : FT seul ne justifie pas l'affichage garde.
+        if ((Get-Command Test-CnsCoverClientExcludedFromDacInstruction -ErrorAction SilentlyContinue) -and
+            (Test-CnsCoverClientExcludedFromDacInstruction -ClientName $cl) -and
+            (-not $clientsWithSpecificMemo.Contains($cl))) {
+            continue
+        }
+        [string]$key = ('FT|{0}' -f $cl)
+        if (-not $dedupSeen.Add($key)) { continue }
+        if (-not $byClient.ContainsKey($cl)) {
+            $byClient[$cl] = New-Object System.Collections.Generic.List[string]
+        }
+        [void]$byClient[$cl].Add('Faire inventaire')
+    }
+
+    $out = New-Object System.Collections.Generic.List[string]
+    [int]$clientBlockIx = 0
+    foreach ($clientName in @($byClient.Keys | Sort-Object)) {
+        if ((Get-Command Test-CnsCoverClientExcludedFromDacInstruction -ErrorAction SilentlyContinue) -and
+            (Test-CnsCoverClientExcludedFromDacInstruction -ClientName $clientName) -and
+            (-not $clientsWithSpecificMemo.Contains($clientName))) {
+            continue
+        }
+        if ($clientBlockIx -gt 0) {
+            [void]$out.Add('')
+        }
+        [void]$out.Add([string]$clientName)
+        foreach ($bodyLine in @($byClient[$clientName])) {
+            if ([string]::IsNullOrWhiteSpace($bodyLine)) { continue }
+            [void]$out.Add(($memoIndent + [string]$bodyLine))
+        }
+        $clientBlockIx++
     }
     return @($out.ToArray())
 }

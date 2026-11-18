@@ -47,19 +47,72 @@ function script:ConvertTo-CnsDacNormalizedMatchText {
     return [regex]::Replace($sb.ToString().ToLowerInvariant(), '\s+', ' ').Trim()
 }
 
+function Test-CnsBioDechetsDacExcludedFromLines {
+    <#
+    .SYNOPSIS
+        True si le point de collecte est exclu des DAC Bio (CEA SLE N°24531).
+    #>
+    param(
+        [AllowEmptyCollection()]
+        [string[]]$Lines = @()
+    )
+    if ($null -eq $Lines -or @($Lines).Count -lt 1) { return $false }
+    $blob = (($Lines | ForEach-Object { [string]$_ }) -join ' ')
+    if ([string]::IsNullOrWhiteSpace($blob)) { return $false }
+    if ($blob -match '(?i)N[°ºo]\s*24531|\b24531\b') { return $true }
+    $norm = script:ConvertTo-CnsDacNormalizedMatchText -Text $blob
+    if ([string]::IsNullOrWhiteSpace($norm)) { return $false }
+    return [bool]($norm -match '(?i)cea\s+.*service\s+logistique\s+et\s+environnement')
+}
+
+function script:Get-CnsBioDechetsDacQuantityForContainerRule {
+    <#
+    .SYNOPSIS
+        Ajuste /Y : bioseau 10-60L → 1 ; bac/conteneur ≥120L → /Y ; vrac et autres → /Y.
+    #>
+    param(
+        [AllowNull()][AllowEmptyString()][string]$WindowText,
+        [int]$RawQuantity
+    )
+    if ($RawQuantity -lt 1) { return 0 }
+    $norm = script:ConvertTo-CnsDacNormalizedMatchText -Text $WindowText
+    if ([string]::IsNullOrWhiteSpace($norm)) { return $RawQuantity }
+
+    # Bioseau 10L–60L → 1 seul DAC (ignorer /Y > 1).
+    $mBio = [regex]::Match($norm, '(?i)\bbioseau\s*(\d+)\s*l?\b')
+    if ($mBio.Success) {
+        $vol = 0
+        if ([int]::TryParse($mBio.Groups[1].Value, [ref]$vol) -and $vol -ge 10 -and $vol -le 60) {
+            return 1
+        }
+        return $RawQuantity
+    }
+
+    # Bac / conteneur ≥ 120L → quantite ODM /Y (explicite ; sinon aussi /Y).
+    $mBac = [regex]::Match($norm, '(?i)\b(?:bac|conteneur)\s*(\d+)\s*l?\b')
+    if ($mBac.Success) {
+        return $RawQuantity
+    }
+
+    # Vrac et contenants non reconnus → /Y.
+    return $RawQuantity
+}
+
 function Get-CnsBioDechetsTheoreticalQuantityFromLines {
     <#
     .SYNOPSIS
-        Extrait le nombre theorique de bioseaux/bacs depuis les lignes ODM (motif /Y).
+        Nombre de DAC Bio a generer depuis les lignes ODM (motif /Y + regle contenant).
     .NOTES
-        Formes observees : Bioseau 20 L /2 kg | Bac 120L /1 kg | Bac marron + Biodechet/couvercle /Y | Vrac /Y.
-        Ne matche que dans un contexte Bio (evite /Y d'autres prestations).
+        Bioseau 10-60L → 1 ; bac/conteneur ≥120L → /Y ; vrac → /Y.
+        Exclusion : CEA Service Logistique et Environnement / N°24531 → 0.
     #>
     param(
         [AllowEmptyCollection()]
         [string[]]$Lines = @()
     )
     if ($null -eq $Lines -or @($Lines).Count -lt 1) { return 0 }
+
+    if (Test-CnsBioDechetsDacExcludedFromLines -Lines $Lines) { return 0 }
 
     $rxQty = [regex]'(?i)(?:bioseau\s*\d*\s*l?|bac\s*\d*\s*l?(?:\s*marron)?|vrac|biod[eé]chets?|couvercle)\s*/\s*(\d+)\b'
     $rxBareSlash = [regex]'(?i)/\s*(\d+)\s*kg\b'
@@ -87,12 +140,16 @@ function Get-CnsBioDechetsTheoreticalQuantityFromLines {
         $m = $rxQty.Match($window)
         if ($m.Success) {
             $n = 0
-            if ([int]::TryParse($m.Groups[1].Value, [ref]$n) -and $n -gt 0) { return $n }
+            if ([int]::TryParse($m.Groups[1].Value, [ref]$n) -and $n -gt 0) {
+                return (script:Get-CnsBioDechetsDacQuantityForContainerRule -WindowText $window -RawQuantity $n)
+            }
         }
         $m2 = $rxBareSlash.Match($window)
         if ($m2.Success -and $rxBioCtx.IsMatch($window)) {
             $n2 = 0
-            if ([int]::TryParse($m2.Groups[1].Value, [ref]$n2) -and $n2 -gt 0) { return $n2 }
+            if ([int]::TryParse($m2.Groups[1].Value, [ref]$n2) -and $n2 -gt 0) {
+                return (script:Get-CnsBioDechetsDacQuantityForContainerRule -WindowText $window -RawQuantity $n2)
+            }
         }
     }
     return 0
