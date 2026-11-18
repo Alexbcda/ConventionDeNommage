@@ -321,6 +321,17 @@ Describe 'SharePoint Resolve-CnsSharePointConnectError AADSTS' {
         $r = Resolve-CnsSharePointConnectError -ErrorMessage '403 Forbidden Access denied'
         $r.Status | Should Be 'Denied'
     }
+
+    It '401 Unauthorized retourne Unauthorized' {
+        $r = Resolve-CnsSharePointConnectError -ErrorMessage '401 Unauthorized'
+        $r.Status | Should Be 'Unauthorized'
+        $r.Message | Should Match '401'
+    }
+
+    It '403 Forbidden reste Denied apres retrait unauthorized' {
+        $r = Resolve-CnsSharePointConnectError -ErrorMessage '403 Forbidden'
+        $r.Status | Should Be 'Denied'
+    }
 }
 
 Describe 'Show-ChangeUrlDialog validation URL fichier' {
@@ -375,5 +386,46 @@ Describe 'Show-ChangeUrlDialog validation URL fichier' {
         $ok | Should Be $false
         $script:SaveCalled | Should Be $false
         ($script:MessageBoxCaptions -contains 'URL de fichier requise') | Should Be $true
+    }
+}
+
+Describe 'Show-FirstLaunchConfig validation URL fichier' {
+    BeforeEach {
+        $script:SaveCalled = $false
+        $script:MessageBoxCaptions = [System.Collections.Generic.List[string]]::new()
+        $script:CnsSharePointMessageBoxMock = {
+            param($Text, $Caption, $Buttons, $Icon)
+            [void]$script:MessageBoxCaptions.Add([string]$Caption)
+            return [System.Windows.Forms.DialogResult]::OK
+        }
+        Mock Save-SharePointApiUrlConfig {
+            param($ApiUrl)
+            $script:SaveCalled = $true
+            $script:SavedApiUrl = $ApiUrl
+        }
+    }
+
+    AfterEach {
+        $script:CnsSharePointMessageBoxMock = $null
+    }
+
+    It 'refuse une URL de site SharePoint' {
+        $siteUrl = 'https://naevaelisealpes.sharepoint.com/sites/EliseAlpesFontaine'
+        Mock Show-SharePointUrlConfigDialog { return $siteUrl }
+
+        $ok = Show-FirstLaunchConfig
+        $ok | Should Be $false
+        $script:SaveCalled | Should Be $false
+        ($script:MessageBoxCaptions -contains 'URL de fichier requise') | Should Be $true
+    }
+
+    It 'accepte une URL fichier .xlsm' {
+        $fileUrl = 'https://naevaelisealpes.sharepoint.com/sites/EliseAlpesFontaine/Shared%20Documents/Planning%20FONTAINE%202026.xlsm'
+        Mock Show-SharePointUrlConfigDialog { return $fileUrl }
+
+        $ok = Show-FirstLaunchConfig
+        $ok | Should Be $true
+        $script:SaveCalled | Should Be $true
+        $script:SavedApiUrl | Should Be $fileUrl
     }
 }
