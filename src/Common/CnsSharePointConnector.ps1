@@ -1039,6 +1039,18 @@ function Resolve-CnsSharePointConnectError {
             Message = 'Client ID ASSISTANT non configure. Contactez votre developpeur pour enregistrer le Client ID fourni par l''IT (etape DEV-1).'
         }
     }
+    if ($msg -match '(?i)AADSTS65001') {
+        return @{
+            Status  = 'ConsentMissing'
+            Message = 'Le consentement administrateur Microsoft Graph n''a pas ete accorde. Contactez votre IT pour refaire l''etape IT-3 (Sites.Selected + consentement admin).'
+        }
+    }
+    if ($msg -match '(?i)AADSTS7000218') {
+        return @{
+            Status  = 'PublicClientFlowsDisabled'
+            Message = 'Les flux clients publics (device code) ne sont pas actives sur l''App Registration. Contactez votre IT pour refaire l''etape IT-2 (Autoriser les flux de clients publics = Oui).'
+        }
+    }
     if ($msg -match '(?i)403|Forbidden|Access denied|unauthorized') {
         if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
             Write-Log '[SharePoint] Acces refuse (403)' 'WARN' @{

@@ -303,3 +303,22 @@ Describe 'SharePoint Graph App Registration' {
         $script:SavedGraphClientId | Should Be $guid
     }
 }
+
+Describe 'SharePoint Resolve-CnsSharePointConnectError AADSTS' {
+    It 'AADSTS65001 retourne ConsentMissing' {
+        $r = Resolve-CnsSharePointConnectError -ErrorMessage 'AADSTS65001: The user or administrator has not consented'
+        $r.Status | Should Be 'ConsentMissing'
+        $r.Message | Should Match 'IT-3'
+    }
+
+    It 'AADSTS7000218 retourne PublicClientFlowsDisabled' {
+        $r = Resolve-CnsSharePointConnectError -ErrorMessage 'AADSTS7000218: The request body must contain client_secret'
+        $r.Status | Should Be 'PublicClientFlowsDisabled'
+        $r.Message | Should Match 'IT-2'
+    }
+
+    It '403 reste Denied (non-regression)' {
+        $r = Resolve-CnsSharePointConnectError -ErrorMessage '403 Forbidden Access denied'
+        $r.Status | Should Be 'Denied'
+    }
+}
