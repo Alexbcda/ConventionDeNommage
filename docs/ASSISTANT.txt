@@ -1,0 +1,82 @@
+================================================================================
+ASSISTANT — Process SharePoint / Microsoft Graph (référence versionnée)
+================================================================================
+Document de process IT / DEV / USER. Aucun code applicatif ne lit ce fichier.
+Dernière mise à jour process : correctifs sécurité SharePoint (GraphClientId,
+AADSTS, validation URL fichier, 401 dédié).
+
+--------------------------------------------------------------------------------
+PHASE 1 — IT (infrastructure Azure / Entra)
+--------------------------------------------------------------------------------
+
+IT-1  App Registration mono-tenant
+      - Créer UNE App Registration (Client ID unique pour les 4 centres).
+      - Type : application publique (pas de secret client pour le flux device code).
+
+IT-2  Flux clients publics (device code)
+      - Dans l'App Registration : « Autoriser les flux de clients publics » = Oui.
+      - Sans cela → erreur AADSTS7000218.
+
+IT-3  Permissions Microsoft Graph (déléguées)
+      - Sites.Selected
+      - offline_access
+      - INTERDIT : Files.Read.All, Sites.Read.All, Sites.FullControl.All,
+        Directory.Read.All, User.Read.All
+      - Accorder le consentement administrateur (admin consent).
+      - Sans consentement → erreur AADSTS65001.
+
+IT-4  Autoriser l'app sur les 4 sites SharePoint
+      - Pour CHAQUE site centre (Argonay, Fontaine, Bourg-en-Bresse, Valence) :
+        Grant-PnPAzureADAppSitePermission (Read uniquement) sur l'URL de SITE.
+      - L'URL de SITE sert à l'IT pour le grant ; l'application utilise ensuite
+        l'URL de FICHIER planning (voir DEV-2).
+
+IT-5  Transmission du Client ID au développeur
+      - Communiquer le Client ID (GUID) de l'App Registration au développeur
+        pour enregistrement (étape DEV-1).
+
+--------------------------------------------------------------------------------
+PHASE 2 — DEV (configuration ASSISTANT)
+--------------------------------------------------------------------------------
+
+DEV-1  Enregistrer le Client ID
+      - Set-GraphClientId / Set-AppConfig -Key 'GraphClientId'
+      - Onglet Outils : champ « Client ID ASSISTANT » + Enregistrer
+      - Sans GraphClientId → connexion Graph REFUSÉE (pas de fallback SDK Microsoft)
+
+DEV-2  Coller les 4 liens de FICHIERS (pas de site)
+      - Pour chaque centre : URL Graph ou navigateur pointant vers le fichier
+        Excel planning (.xlsm), ex. …/drive/root:/Planning….xlsm:/content
+      - Show-ChangeUrlDialog et Show-FirstLaunchConfig REFUSENT une URL de site
+      - config/centres.json doit contenir des URLs fichier
+
+DEV-3  Journal d'erreurs auth
+      - Fichier : %LOCALAPPDATA%\ASSISTANT\Logs\sharepoint-auth-error.log
+      - Contient timestamp, phase, message d'exception
+
+DEV-4  Mapping erreurs actionnables
+      - AADSTS65001 → ConsentMissing → refaire IT-3
+      - AADSTS7000218 → PublicClientFlowsDisabled → refaire IT-2
+      - 403 → Denied → vérifier grants sites (IT-4) + droits lecture utilisateur
+      - 401 → Unauthorized → vérifier horloge poste + reconnexion
+
+--------------------------------------------------------------------------------
+PHASE 3 — USER (utilisation)
+--------------------------------------------------------------------------------
+
+USER-1  Bouton Connexion accessible
+      - Visible/actif pour : Expired, Offline, Denied, Error, WamBlocked,
+        ClientIdMissing, ConsentMissing, PublicClientFlowsDisabled, Unauthorized
+
+USER-2  Device code affiché
+      - Code device + URL https://microsoft.com/devicelogin (console / dialogue)
+
+USER-3  Authentification Microsoft
+      - Ouverture navigateur / instructions pour saisir le code avec le compte M365
+
+USER-4  Voyant vert + téléchargement
+      - État Connected après auth réussie → téléchargement du planning local
+
+================================================================================
+Fin du process ASSISTANT SharePoint
+================================================================================

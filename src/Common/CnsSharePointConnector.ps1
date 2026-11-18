@@ -207,14 +207,14 @@ function Show-SharePointUrlConfigDialog {
     $form.TopMost = $true
 
     $lblInstruction = [System.Windows.Forms.Label]::new()
-    $lblInstruction.Text = 'Saisissez l''URL de votre site SharePoint :'
+    $lblInstruction.Text = 'Saisissez l''URL du fichier planning (.xlsm) :'
     $lblInstruction.Location = [System.Drawing.Point]::new($padding, $y)
     $lblInstruction.Size = [System.Drawing.Size]::new($fieldWidth + $labelWidth, 25)
     $form.Controls.Add($lblInstruction)
     $y += 35
 
     $lblExample = [System.Windows.Forms.Label]::new()
-    $lblExample.Text = 'Exemple: https://monsite.sharepoint.com/sites/MonCentre'
+    $lblExample.Text = 'Exemple: https://.../sites/EliseAlpesFontaine/.../Planning FONTAINE 2026.xlsm'
     $lblExample.Font = [System.Drawing.Font]::new('Segoe UI', 8, [System.Drawing.FontStyle]::Italic)
     $lblExample.ForeColor = [System.Drawing.Color]::Gray
     $lblExample.Location = [System.Drawing.Point]::new($padding, $y)
@@ -419,6 +419,36 @@ function Save-SharePointApiUrlConfig {
     }
 }
 
+function Invoke-CnsSharePointUiMessage {
+    <#
+    .SYNOPSIS
+        Affiche un MessageBox (ou mock test via script:CnsSharePointMessageBoxMock).
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Text,
+        [Parameter(Mandatory = $true)][string]$Caption,
+        $Buttons = [System.Windows.Forms.MessageBoxButtons]::OK,
+        $Icon = [System.Windows.Forms.MessageBoxIcon]::Information
+    )
+    if ($script:CnsSharePointMessageBoxMock -is [scriptblock]) {
+        return & $script:CnsSharePointMessageBoxMock $Text $Caption $Buttons $Icon
+    }
+    return [System.Windows.Forms.MessageBox]::Show($Text, $Caption, $Buttons, $Icon)
+}
+
+function Test-CnsSharePointPlanningFileUrl {
+    <#
+    .SYNOPSIS
+        True si l'URL pointe vers un fichier planning (pas seulement un site).
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$Url)
+    if ([string]::IsNullOrWhiteSpace($Url)) { return $false }
+    if ($Url -match '(?i)/drive/root:/') { return $true }
+    if ($Url -match '(?i)\.(xlsm|xlsx)(\?|$|:)') { return $true }
+    if ($Url -match '(?i)/drive/items/') { return $true }
+    return $false
+}
+
 function Show-ChangeUrlDialog {
     <#
     .SYNOPSIS
@@ -426,15 +456,6 @@ function Show-ChangeUrlDialog {
     .OUTPUTS
         [bool] True si l'URL a été changée, False si annulation ou erreur.
     #>
-    # Hook testable (script:CnsSharePointMessageBoxMock) — MessageBox reel par defaut.
-    $showUiMessage = {
-        param([string]$Text, [string]$Caption, $Buttons, $Icon)
-        if ($script:CnsSharePointMessageBoxMock -is [scriptblock]) {
-            return & $script:CnsSharePointMessageBoxMock $Text $Caption $Buttons $Icon
-        }
-        return [System.Windows.Forms.MessageBox]::Show($Text, $Caption, $Buttons, $Icon)
-    }
-
     $currentUrl = Get-SharePointPlanningUrl
     $initialDisplay = Get-SharePointBrowserUrlFromGraph -GraphUrl $currentUrl
 
@@ -452,15 +473,10 @@ function Show-ChangeUrlDialog {
     }
 
     # Validation : l'URL doit etre une URL de FICHIER (pas de site)
-    $isFileUrl = $false
-    if ($newUrl -match '(?i)/drive/root:/') { $isFileUrl = $true }
-    elseif ($newUrl -match '(?i)\.(xlsm|xlsx)(\?|$|:)') { $isFileUrl = $true }
-    elseif ($newUrl -match '(?i)/drive/items/') { $isFileUrl = $true }
-
-    if (-not $isFileUrl) {
+    if (-not (Test-CnsSharePointPlanningFileUrl -Url $newUrl)) {
         $warnButtons = [System.Windows.Forms.MessageBoxButtons]::OK
         $warnIcon = [System.Windows.Forms.MessageBoxIcon]::Warning
-        $null = & $showUiMessage -Text (
+        $null = Invoke-CnsSharePointUiMessage -Text (
             "L'URL saisie ne pointe pas vers un fichier planning.`n`n" +
             "Collez le lien DIRECT vers le fichier Excel (.xlsm), pas le lien du site SharePoint.`n`n" +
             "Exemple : https://.../sites/EliseAlpesFontaine/.../Planning FONTAINE 2026.xlsm"
@@ -474,7 +490,7 @@ function Show-ChangeUrlDialog {
     if ($currentUrl -eq $newUrl) {
         $infoButtons = [System.Windows.Forms.MessageBoxButtons]::OK
         $infoIcon = [System.Windows.Forms.MessageBoxIcon]::Information
-        $null = & $showUiMessage -Text 'L''URL configuree est identique a l''URL actuelle.' `
+        $null = Invoke-CnsSharePointUiMessage -Text 'L''URL configuree est identique a l''URL actuelle.' `
             -Caption 'Aucun changement' -Buttons $infoButtons -Icon $infoIcon
         return $false
     }
@@ -487,7 +503,7 @@ function Show-ChangeUrlDialog {
 
         $okButtons = [System.Windows.Forms.MessageBoxButtons]::OK
         $okIcon = [System.Windows.Forms.MessageBoxIcon]::Information
-        $null = & $showUiMessage -Text "Configuration enregistree.`n`nL'application va redemarrer pour appliquer les changements." `
+        $null = Invoke-CnsSharePointUiMessage -Text "Configuration enregistree.`n`nL'application va redemarrer pour appliquer les changements." `
             -Caption 'URL modifiee' -Buttons $okButtons -Icon $okIcon
         return $true
     }
@@ -497,7 +513,7 @@ function Show-ChangeUrlDialog {
         }
         $errButtons = [System.Windows.Forms.MessageBoxButtons]::OK
         $errIcon = [System.Windows.Forms.MessageBoxIcon]::Error
-        $null = & $showUiMessage -Text ("Erreur lors de la sauvegarde : {0}" -f $_.Exception.Message) `
+        $null = Invoke-CnsSharePointUiMessage -Text ("Erreur lors de la sauvegarde : {0}" -f $_.Exception.Message) `
             -Caption 'Erreur' -Buttons $errButtons -Icon $errIcon
         return $false
     }
@@ -518,30 +534,41 @@ function Show-FirstLaunchConfig {
         return $false
     }
 
+    # Validation : l'URL doit etre une URL de FICHIER (pas de site)
+    if (-not (Test-CnsSharePointPlanningFileUrl -Url $newUrl)) {
+        $warnButtons = [System.Windows.Forms.MessageBoxButtons]::OK
+        $warnIcon = [System.Windows.Forms.MessageBoxIcon]::Warning
+        $null = Invoke-CnsSharePointUiMessage -Text (
+            "L'URL saisie ne pointe pas vers un fichier planning.`n`n" +
+            "Collez le lien DIRECT vers le fichier Excel (.xlsm), pas le lien du site SharePoint.`n`n" +
+            "Exemple : https://.../sites/EliseAlpesFontaine/.../Planning FONTAINE 2026.xlsm"
+        ) -Caption 'URL de fichier requise' -Buttons $warnButtons -Icon $warnIcon
+        if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+            Write-Log '[FirstLaunch] URL refusee : pas une URL fichier' 'WARN' @{ url = $newUrl }
+        }
+        return $false
+    }
+
     try {
         Save-SharePointApiUrlConfig -ApiUrl $newUrl
         if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
             Write-Log '[FirstLaunch] URL configuree' 'INFO' @{ configured = $true }
         }
 
-        [System.Windows.Forms.MessageBox]::Show(
-            'Configuration enregistree avec succes !',
-            'Bienvenue',
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Information
-        ) | Out-Null
+        $okButtons = [System.Windows.Forms.MessageBoxButtons]::OK
+        $okIcon = [System.Windows.Forms.MessageBoxIcon]::Information
+        $null = Invoke-CnsSharePointUiMessage -Text 'Configuration enregistree avec succes !' `
+            -Caption 'Bienvenue' -Buttons $okButtons -Icon $okIcon
         return $true
     }
     catch {
         if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
             Write-Log '[FirstLaunch] Erreur sauvegarde' 'ERROR' @{ message = $_.Exception.Message }
         }
-        [System.Windows.Forms.MessageBox]::Show(
-            ("Erreur lors de la sauvegarde : {0}" -f $_.Exception.Message),
-            'Erreur',
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Error
-        ) | Out-Null
+        $errButtons = [System.Windows.Forms.MessageBoxButtons]::OK
+        $errIcon = [System.Windows.Forms.MessageBoxIcon]::Error
+        $null = Invoke-CnsSharePointUiMessage -Text ("Erreur lors de la sauvegarde : {0}" -f $_.Exception.Message) `
+            -Caption 'Erreur' -Buttons $errButtons -Icon $errIcon
         return $false
     }
 }
@@ -1074,7 +1101,13 @@ function Resolve-CnsSharePointConnectError {
             Message = 'Les flux clients publics (device code) ne sont pas actives sur l''App Registration. Contactez votre IT pour refaire l''etape IT-2 (Autoriser les flux de clients publics = Oui).'
         }
     }
-    if ($msg -match '(?i)403|Forbidden|Access denied|unauthorized') {
+    if ($msg -match '(?i)401|Unauthorized') {
+        return @{
+            Status  = 'Unauthorized'
+            Message = 'Authentification refusee (401). Verifiez que l''heure du poste est correcte (ecart horloge) et reconnectez-vous.'
+        }
+    }
+    if ($msg -match '(?i)403|Forbidden|Access denied') {
         if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
             Write-Log '[SharePoint] Acces refuse (403)' 'WARN' @{
                 detail  = $msg
