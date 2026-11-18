@@ -133,6 +133,7 @@ function Write-AssistantRenameOnlyLog {
 # Styles apres UiText (Convert-ToUiText sur libelles boutons).
 . "$scriptPath\Common\Styles.ps1"
 . "$scriptPath\Core\Logger.ps1"
+. "$scriptPath\Core\License.ps1"
 Write-Log "[MAIN] Application start" "INFO" @{ scriptPath = $scriptPath; compiledExe = $script:IsCompiledExe }
 Write-AssistantStartupMark -Phase 'config_styles_logger'
 
@@ -200,6 +201,69 @@ if (-not $script:AssistantRenameOnly) {
 else {
     Write-AssistantRenameOnlyLog 'Skip Initialize-Database / ConfigManager'
     Write-AssistantStartupMark -Phase 'database_init_skipped'
+}
+
+# ============================================
+# 2b. VERIFICATION LICENCE (normal + RenameOnly)
+# ============================================
+function Show-AssistantLicenseMessage {
+    param([Parameter(Mandatory = $true)]$StatusObject)
+    $preferHost = ($true -eq $global:SuppressConsoleOutput)
+    if ($preferHost) {
+        Write-Host ('[Licence ASSISTANT] {0}' -f [string]$StatusObject.Message) -ForegroundColor Yellow
+        return
+    }
+    Show-LicenseAlert -StatusObject $StatusObject
+}
+
+$licenseStatus = Get-LicenseStatus
+Write-Log '[MAIN] Licence status' 'INFO' @{ status = [string]$licenseStatus.Status }
+
+switch ([string]$licenseStatus.Status) {
+    'Valid' {
+        $renewalAlert = Get-LicenseRenewalAlert -LicenseStatus $licenseStatus
+        if ($null -ne $renewalAlert -and -not (Test-LicenseAlertShownToday)) {
+            Show-AssistantLicenseMessage -StatusObject $renewalAlert
+            Set-LicenseAlertShownToday
+        }
+        Set-LicenseLastSeenUtc -UtcDateTime ([datetime]::UtcNow)
+        Write-AssistantStartupMark -Phase 'license_ok'
+    }
+    'Expired' {
+        Show-AssistantLicenseMessage -StatusObject ([pscustomobject]@{
+                Status  = 'Expired'
+                Message = 'Licence expiree. Contactez votre administrateur pour renouveler.'
+            })
+        exit 1
+    }
+    'Missing' {
+        Show-AssistantLicenseMessage -StatusObject ([pscustomobject]@{
+                Status  = 'Missing'
+                Message = 'Licence absente. Contactez votre administrateur pour obtenir une licence.'
+            })
+        exit 1
+    }
+    'Invalid' {
+        Show-AssistantLicenseMessage -StatusObject ([pscustomobject]@{
+                Status  = 'Invalid'
+                Message = 'Licence invalide ou corrompue. Contactez votre administrateur.'
+            })
+        exit 1
+    }
+    'Suspect' {
+        Show-AssistantLicenseMessage -StatusObject ([pscustomobject]@{
+                Status  = 'Suspect'
+                Message = 'Date systeme suspecte. Verifiez l''horloge de votre poste.'
+            })
+        exit 1
+    }
+    default {
+        Show-AssistantLicenseMessage -StatusObject ([pscustomobject]@{
+                Status  = 'Invalid'
+                Message = 'Licence invalide ou corrompue. Contactez votre administrateur.'
+            })
+        exit 1
+    }
 }
 
 # ============================================

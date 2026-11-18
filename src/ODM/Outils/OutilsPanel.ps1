@@ -4,6 +4,12 @@
 if (-not (Get-Command Get-PlanningRebuildSetting -ErrorAction SilentlyContinue)) {
     . (Join-Path $PSScriptRoot '..\..\Database\Database.ps1')
 }
+if (-not (Get-Command Get-LicenseStatus -ErrorAction SilentlyContinue)) {
+    $licenseScript = Join-Path $PSScriptRoot '..\..\Core\License.ps1'
+    if (Test-Path -LiteralPath $licenseScript) {
+        . $licenseScript
+    }
+}
 
 function Write-OutilsPanelLog {
     param([Parameter(Mandatory = $true)][string]$Message)
@@ -61,6 +67,47 @@ function Find-OutilsDescendantControlByName {
         if ($null -ne $found) { return $found }
     }
     return $null
+}
+
+function Update-OutilsLicenceStatusLabel {
+    param([Parameter(Mandatory = $true)][System.Windows.Forms.Label]$Label)
+    $Label.Font = [System.Drawing.Font]::new('Segoe UI', 9)
+    if (-not (Get-Command Get-LicenseStatus -ErrorAction SilentlyContinue)) {
+        $Label.Text = 'Module licence non disponible.'
+        $Label.ForeColor = [System.Drawing.Color]::DarkRed
+        return
+    }
+    $s = Get-LicenseStatus
+    switch ([string]$s.Status) {
+        'Missing' {
+            $Label.Text = 'Aucune licence installee. Contactez votre administrateur.'
+            $Label.ForeColor = [System.Drawing.Color]::DarkRed
+        }
+        'Valid' {
+            $exp = ([datetime]$s.ExpiresOn).ToUniversalTime().Date
+            $days = [int]($exp - [datetime]::UtcNow.Date).TotalDays
+            $Label.Text = ("Client : {0}  |  Expiration : {1:yyyy-MM-dd}  |  Jours restants : {2}  |  Statut : Valid" -f `
+                    [string]$s.Customer, $exp, $days)
+            if ($days -le 30) {
+                $Label.ForeColor = $script:CouleurOrange
+            }
+            else {
+                $Label.ForeColor = $script:CouleurVert
+            }
+        }
+        'Expired' {
+            $expTxt = if ($null -ne $s.ExpiresOn) {
+                ([datetime]$s.ExpiresOn).ToUniversalTime().ToString('yyyy-MM-dd')
+            }
+            else { '?' }
+            $Label.Text = ("Client : {0}  |  Expiration : {1}  |  Statut : Expired" -f [string]$s.Customer, $expTxt)
+            $Label.ForeColor = [System.Drawing.Color]::DarkRed
+        }
+        default {
+            $Label.Text = ("Statut licence : {0}. Contactez votre administrateur." -f [string]$s.Status)
+            $Label.ForeColor = [System.Drawing.Color]::DarkRed
+        }
+    }
 }
 
 function Show-OutilsPanel {
@@ -204,6 +251,95 @@ function Show-OutilsPanel {
     $grpSharePoint.Controls.Add($btnConfigureCentre)
     $panel.Controls.Add($grpSharePoint)
 
+    $grpLicence = [System.Windows.Forms.GroupBox]::new()
+    $grpLicence.Name = 'grpLicence'
+    $grpLicence.Text = 'Licence'
+    $grpLicence.Location = [System.Drawing.Point]::new(0, 220)
+    $grpLicence.Size = [System.Drawing.Size]::new(700, 120)
+    $grpLicence.Font = $script:PoliceTitre3
+
+    $lblLicenceStatus = [System.Windows.Forms.Label]::new()
+    $lblLicenceStatus.Name = 'lblLicenceStatus'
+    $lblLicenceStatus.Location = [System.Drawing.Point]::new(15, 25)
+    $lblLicenceStatus.Size = [System.Drawing.Size]::new(670, 40)
+    $lblLicenceStatus.AutoSize = $false
+    $grpLicence.Controls.Add($lblLicenceStatus)
+    Update-OutilsLicenceStatusLabel -Label $lblLicenceStatus
+
+    $btnImportLicence = [System.Windows.Forms.Button]::new()
+    $btnImportLicence.Name = 'btnImportLicence'
+    $btnImportLicence.Text = 'Importer la licence'
+    $btnImportLicence.Size = [System.Drawing.Size]::new(260, 40)
+    $btnImportLicence.Location = [System.Drawing.Point]::new(15, 70)
+    $btnImportLicence.BackColor = $script:CouleurOrange
+    $btnImportLicence.ForeColor = $script:CouleurBlanc
+    $btnImportLicence.FlatStyle = 'Flat'
+    $btnImportLicence.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnImportLicence.Font = $script:PoliceBouton
+    $btnImportLicence.Add_Click({
+        try {
+            if (-not (Get-Command Import-LicenseFile -ErrorAction SilentlyContinue)) {
+                throw 'Module Licence non charge'
+            }
+            $ofd = [System.Windows.Forms.OpenFileDialog]::new()
+            $ofd.Filter = 'Licence ASSISTANT (*.lic)|*.lic|Tous les fichiers (*.*)|*.*'
+            $ofd.Title = 'Selectionnez un fichier de licence'
+            if ($ofd.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
+
+            $ok = Import-LicenseFile -Path $ofd.FileName
+            if (-not $ok) {
+                [System.Windows.Forms.MessageBox]::Show(
+                    'Import echoue : fichier invalide ou signature incorrecte.',
+                    'Licence ASSISTANT',
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Error
+                ) | Out-Null
+                return
+            }
+
+            $statusLbl = $null
+            foreach ($ctrl in @($this.Parent.Controls)) {
+                if ($ctrl -is [System.Windows.Forms.Label] -and [string]$ctrl.Name -eq 'lblLicenceStatus') {
+                    $statusLbl = $ctrl
+                    break
+                }
+            }
+            if ($null -ne $statusLbl) {
+                Update-OutilsLicenceStatusLabel -Label $statusLbl
+            }
+
+            $restart = [System.Windows.Forms.MessageBox]::Show(
+                'Licence importee. Redemarrer l''application pour appliquer la nouvelle licence ?',
+                'Licence ASSISTANT',
+                [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                [System.Windows.Forms.MessageBoxIcon]::Information
+            )
+            if ($restart -eq [System.Windows.Forms.DialogResult]::Yes) {
+                if (Get-Command Restart-Application -ErrorAction SilentlyContinue) {
+                    Restart-Application
+                }
+                else {
+                    [System.Windows.Forms.MessageBox]::Show(
+                        'Veuillez redemarrer l''application manuellement.',
+                        'Redemarrage requis',
+                        [System.Windows.Forms.MessageBoxButtons]::OK,
+                        [System.Windows.Forms.MessageBoxIcon]::Information
+                    ) | Out-Null
+                }
+            }
+        }
+        catch {
+            [System.Windows.Forms.MessageBox]::Show(
+                ("Erreur import licence : {0}" -f $_.Exception.Message),
+                'Erreur',
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+        }
+    })
+    $grpLicence.Controls.Add($btnImportLicence)
+    $panel.Controls.Add($grpLicence)
+
     $showSuperviseurOutils = $false
     if ($showSuperviseurOutils) {
         $exportImportScript = Join-Path $PSScriptRoot '..\..\Database\ExportImport.ps1'
@@ -319,7 +455,7 @@ function Show-OutilsPanel {
         $panel.Controls.Add($grpSuperviseur)
     }
 
-    $grpVideoY = if ($showSuperviseurOutils) { 280 } else { 220 }
+    $grpVideoY = if ($showSuperviseurOutils) { 405 } else { 355 }
     $grpVideo = [System.Windows.Forms.GroupBox]::new()
     $grpVideo.Name = 'grpVideo'
     $grpVideo.Text = 'Video de demonstration'
