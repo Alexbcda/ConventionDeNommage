@@ -302,6 +302,8 @@ function Test-CnsBioDechetsLabelEligible {
     .NOTES
         Etape 1 Bio-dechets : detection seule — une page temporaire sera inseree en STEP 5.
         Une seule detection par page (appelant deduplique via HashSet RawPage).
+        Layout ODM wrapé (ex. OVELIA) : "Collecte de Bio" + matériel + "déchets" sur lignes
+        séparées → on aplatit les retours ligne puis on teste (a) OU (b).
     #>
     param(
         [AllowNull()]
@@ -309,9 +311,18 @@ function Test-CnsBioDechetsLabelEligible {
         [string]$Text
     )
     if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
-    $norm = ConvertTo-CnsMetierMatchNormalizedText -Text $Text
+    # Aplatir CRLF / espaces avant normalisation accents (évite faux négatifs wrap PDF).
+    $flat = [regex]::Replace([string]$Text, '[\r\n]+', ' ')
+    $flat = [regex]::Replace($flat, '\s+', ' ').Trim()
+    $norm = ConvertTo-CnsMetierMatchNormalizedText -Text $flat
     if ([string]::IsNullOrWhiteSpace($norm)) { return $false }
-    return [bool]($norm -match 'collecte\s+de\s+bio[\s\-]*dechets?')
+    # (a) Non-wrappé : "collecte de bio dechets" (comportement historique).
+    # (b) Wrappé ODM : jusqu'à 80 car. entre "bio" et "dechets" (ex. "bac 120l /1 kg"),
+    #     borné par \b pour ne pas coller un "bio" d'un client à un "dechets" lointain.
+    # Deux regex (plutôt qu'une seule trop large) = non-régression explicite + cas wrap.
+    if ($norm -match 'collecte\s+de\s+bio[\s\-]*dechets?') { return $true }
+    if ($norm -match 'collecte\s+de\s+bio\b.{0,80}?\bdechets?') { return $true }
+    return $false
 }
 
 function Test-CnsStep5FragSliceRequiresBioDechetsDocument {
