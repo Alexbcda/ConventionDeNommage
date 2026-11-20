@@ -32,3 +32,4 @@ Thumbs.db
 .assistant-license/
 secrets.*
 .env
+src/Logs/app.log
