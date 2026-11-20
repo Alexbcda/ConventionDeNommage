@@ -836,6 +836,41 @@ function Get-ClientNameFromLines {
     return Build-ClientNameFromAnchorWithTraversal -Lines $Lines -ClientId $ClientId -AnchorIndex $anchorLineIndex
 }
 
+function script:Get-ClientNameFallbackFromNameLines {
+    <#
+    .SYNOPSIS
+        Repli quand l'ancre N°+ClientId est absente/tronquee dans les lignes bbox.
+    .NOTES
+        Cas OVELIA : bbox donne "OVELIA 74 - LE CARRE JOSEPHINE -" + "N°45591"
+        alors que ClientID layout = 4559174 → Get-ClientNameFromBlock retourne vide.
+        On reprend la 1re ligne "marque - site" exploitable.
+    #>
+    param(
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [string[]]$Lines
+    )
+    if (-not $Lines -or @($Lines).Count -lt 1) { return $null }
+
+    foreach ($raw in @($Lines)) {
+        $line = Get-TrimmedOrNull ([string]$raw)
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        # Ignorer dates, URL, contact, adresse, N° seul (souvent tronqué en bbox).
+        if ($line -match '^\d{1,2}/\d{1,2}/\d{2,4}') { continue }
+        if ($line -match '(?i)^\s*https?://') { continue }
+        if ($line -match '(?i)^(contact|date\s+de\s+passage|prestation)') { continue }
+        if (IsAddressLine $line) { continue }
+        if ($line -match ('(?i)^N\s*' + $script:RxNumeroSignTokenOpt + '\s*\d+\s*$')) { continue }
+        # Exiger au moins une lettre (évite " /1 kg ", rangs, etc.).
+        if ($line -notmatch '\p{L}') { continue }
+        # Préférer un libellé point de collecte ("MARQUE - SITE" ou multi-mots).
+        $wordCount = @(($line -split '\s+') | Where-Object { $_ }).Count
+        if ($wordCount -lt 1) { continue }
+        return [regex]::Replace($line, '\s+', ' ').Trim()
+    }
+    return $null
+}
+
 function script:Get-ClientNameFromBlock {
     <#
     Nom client = lignes entières au-dessus de l'ancre + ancre (certificat de destruction).
@@ -1438,16 +1473,30 @@ function ConvertTo-PageEntity {
     }
 
     $nameSourceLines = $normalized
+    $usedClientNameLines = $false
     if ($ClientNameLines -and @($ClientNameLines).Count -gt 0) {
         $cnSanitized = @(Normalize-PdfNoiseText -Lines @($ClientNameLines))
         $cnNormalized = @(Get-NormalizedNonEmptyLines -Lines $cnSanitized)
         if ($cnNormalized.Count -gt 0) {
             $nameSourceLines = $cnNormalized
+            $usedClientNameLines = $true
         }
     }
     $nameSourceLines = @(Split-MonolithicClientNameLayoutLines -Lines @($nameSourceLines))
 
     $entity.ClientName = Get-ClientNameFromBlock -Lines $nameSourceLines -AnchorIndex -1 -ClientId $clientId -PageNumber $PageNumber -DebugClientBlocks:$DebugClientBlocks
+    # Bbox parfois tronque N° (ex. N°45591) alors que ClientID layout est complet (4559174) :
+    # l'ancre ne matche plus → ClientName vide → DAC H22/H23 vides (OVELIA 74).
+    if ([string]::IsNullOrWhiteSpace($entity.ClientName) -and $usedClientNameLines) {
+        $fallbackCn = script:Get-ClientNameFallbackFromNameLines -Lines $nameSourceLines
+        if (-not [string]::IsNullOrWhiteSpace($fallbackCn)) {
+            $entity.ClientName = $fallbackCn
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($entity.ClientName) -and $usedClientNameLines) {
+        $layoutNameLines = @(Split-MonolithicClientNameLayoutLines -Lines @($normalized))
+        $entity.ClientName = Get-ClientNameFromBlock -Lines $layoutNameLines -AnchorIndex -1 -ClientId $clientId -PageNumber $PageNumber -DebugClientBlocks:$DebugClientBlocks
+    }
     if (-not [string]::IsNullOrWhiteSpace($entity.ClientName)) {
         $entity.ClientName = [regex]::Replace([string]$entity.ClientName, '(?i)N\s*\?\s*(?=\d)', 'N°')
         $entity.ClientName = [regex]::Replace([string]$entity.ClientName, 'N\s*\uFFFD\s*(?=\d)', 'N°')

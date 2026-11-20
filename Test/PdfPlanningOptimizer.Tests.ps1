@@ -205,6 +205,32 @@ Describe 'PdfPlanningOptimizer - EntityExtractor multiligne (libelle / valeur li
         $e.Address['PostalCode'] | Should Be '73400'
     }
 
+    It 'ClientName : bbox OVELIA N° tronqué → repli marque-site (DAC H22/H23)' {
+        # Pipeline réel : ClientID vient du layout (4559174), ClientNameLines du bbox
+        # où N°4559174 est éclaté en "OVELIA 74 - …" + "N°45591" → ancre exacte absente.
+        $layout = @(
+            'N°4559174 - LE CARRE JOSEPHINE -',
+            'OVELIA',
+            'Rue Joseph Denarié',
+            '73190 Challes-les-Eaux',
+            'Date de passage : 18/11/2026',
+            'Collecte de Bio Bac 120L /1 kg',
+            'déchets',
+            '5803840-20787963'
+        )
+        $bboxCn = @(
+            'OVELIA 74 - LE CARRE JOSEPHINE -',
+            '11/18/26, 9:00 PM',
+            'N°45591',
+            'Rue Joseph Denarié',
+            '73190 Challes-les-Eaux 5803840'
+        )
+        $e = ConvertTo-PageEntity -PageNumber 48 -Lines $layout -ClientNameLines $bboxCn
+        $e.ClientID | Should Be '4559174'
+        $e.ClientName | Should Match '(?i)OVELIA'
+        $e.ClientName | Should Match '(?i)CARRE JOSEPHINE'
+    }
+
     It 'Prestations Collecte et Destruction avec code ODM ligne suivante (ODM réel)' {
         $lines = @(
             'Collecte de Papier',
