@@ -751,6 +751,24 @@ $null = Ensure-PackageGhostscriptLayout -PackageRoot $outputPath -RepoRoot $repo
 $Version | Out-File -FilePath (Join-Path $outputPath 'version.txt') -Encoding ascii -NoNewline
 Write-BuildSuccess "version.txt ($Version)"
 
+# BUILDINFO : tracabilite build (version, date UTC, commit court)
+$buildUtc = [datetime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss') + ' UTC'
+$gitCommit = 'n/a'
+try {
+    $gitOut = & git -C $repoRoot rev-parse --short HEAD 2>$null
+    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace([string]$gitOut)) {
+        $gitCommit = ([string]$gitOut).Trim()
+    }
+}
+catch { }
+$buildInfoPath = Join-Path $outputPath 'BUILDINFO.txt'
+@(
+    "Version: $Version"
+    "Date de build: $buildUtc"
+    "Commit Git: $gitCommit"
+) | Set-Content -LiteralPath $buildInfoPath -Encoding utf8
+Write-BuildSuccess ("BUILDINFO.txt (Version={0} Commit={1})" -f $Version, $gitCommit)
+
 Write-BuildStep 'Verification integrite du package'
 $null = Test-AssistantPackage -PackageRoot $outputPath -FailOnMissing
 

@@ -609,6 +609,24 @@ function Start-GUI {
                     $Tab.Tag = $true
                     script:Write-AssistantLazyLog ("Onglet Outils charge en {0}ms" -f $sw.ElapsedMilliseconds)
                 }
+                'TabAbout' {
+                    $aboutScript = Join-Path $root 'ODM\Outils\AboutPanel.ps1'
+                    if (-not (Test-Path -LiteralPath $aboutScript)) {
+                        throw ("AboutPanel.ps1 introuvable : {0}" -f $aboutScript)
+                    }
+                    if (-not (Get-Command Show-AboutPanel -ErrorAction SilentlyContinue)) {
+                        $promoted = Import-AssistantLazyScriptsToScriptScope -LiteralPath @($aboutScript)
+                        script:Write-AssistantLazyLog ("A propos : {0} fonction(s) promu(es) au scope script" -f @($promoted).Count)
+                    }
+                    $Tab.Controls.Clear()
+                    $aboutPanel = Show-AboutPanel
+                    if ($aboutPanel) {
+                        $aboutPanel.Dock = 'Fill'
+                        $Tab.Controls.Add($aboutPanel)
+                    }
+                    $Tab.Tag = $true
+                    script:Write-AssistantLazyLog ("Onglet A propos charge en {0}ms" -f $sw.ElapsedMilliseconds)
+                }
             }
         }
         catch {
@@ -706,6 +724,14 @@ function Start-GUI {
     $tabOutils.Tag = $false
     script:Add-AssistantLazyPlaceholder -Tab $tabOutils -Message 'Chargement des outils au premier affichage...'
     $tabControl.TabPages.Add($tabOutils)
+
+    $tabAbout = [System.Windows.Forms.TabPage]::new()
+    $tabAbout.Name = 'TabAbout'
+    $tabAbout.Text = 'À propos'
+    $tabAbout.BackColor = $script:CouleurGrisFond
+    $tabAbout.Tag = $false
+    script:Add-AssistantLazyPlaceholder -Tab $tabAbout -Message 'Chargement de l''onglet À propos...'
+    $tabControl.TabPages.Add($tabAbout)
 
     # Convention de nommage : absente du mode normal (RenameOnly uniquement).
 
