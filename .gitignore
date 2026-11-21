@@ -1,5 +1,9 @@
-# Binaires / packages
+# Binaires / packages / artefacts de build
 *.zip
+/ASSISTANT_v*.zip
+/package/
+/package_old_*/
+/build/
 package/
 output/
 deploy/
