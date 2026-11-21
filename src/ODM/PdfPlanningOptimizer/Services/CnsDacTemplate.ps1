@@ -428,13 +428,34 @@ function Resolve-CnsDacExutoireDeposit {
     .SYNOPSIS
         Date de depot H35 + cle exutoire : premier hit planning a partir de la date de collecte.
         Sans hit : date ODM, cle vide (pas de mapping centre).
+        ExutoireKeyOverride (ODM Seul) : si renseigne, ignore le scan planning.
     #>
     param(
         [Parameter(Mandatory = $true)][datetime]$VisitDate,
         [AllowNull()][AllowEmptyString()][string]$ServiceLabel = $null,
-        [AllowNull()]$ExcelData = $null
+        [AllowNull()]$ExcelData = $null,
+        [AllowNull()][AllowEmptyString()][string]$ExutoireKeyOverride = ''
     )
     $isAfternoon = script:Test-CnsDacServiceIsAfternoon -ServiceLabel $ServiceLabel
+
+    $override = if ($null -eq $ExutoireKeyOverride) { '' } else { ([string]$ExutoireKeyOverride).Trim() }
+    if (-not [string]::IsNullOrWhiteSpace($override)) {
+        $keyOverride = $override.ToLowerInvariant()
+        if ($script:CnsDacExutoireColumnByKey.ContainsKey($keyOverride) -or
+            $null -ne (script:Resolve-CnsDacExutoireKeyFromText -Text $override)) {
+            if (-not $script:CnsDacExutoireColumnByKey.ContainsKey($keyOverride)) {
+                $resolved = script:Resolve-CnsDacExutoireKeyFromText -Text $override
+                if ($null -ne $resolved) { $keyOverride = [string]$resolved }
+            }
+            return [pscustomobject]@{
+                DepositDate  = $VisitDate.Date
+                ExutoireKey  = $keyOverride
+                IsAfternoon  = $isAfternoon
+                PlanningHit  = $null
+            }
+        }
+    }
+
     $hit = Find-CnsDacExutoireDateInPlanning -ExcelData $ExcelData -FromDate $VisitDate -MaxDaysAhead 14
 
     [datetime]$depositDate = $VisitDate.Date
@@ -525,7 +546,8 @@ function New-CnsDacPdfFromExcelTemplate {
         [AllowNull()][AllowEmptyString()][string]$OutDirectory = $null,
         [AllowNull()][AllowEmptyString()][string]$ServiceLabel = $null,
         [AllowNull()]$SegmentMeta = $null,
-        [AllowNull()]$PageEntity = $null
+        [AllowNull()]$PageEntity = $null,
+        [AllowNull()][AllowEmptyString()][string]$ExutoireKeyOverride = ''
     )
 
     $result = New-Object System.Collections.Generic.List[string]
@@ -576,7 +598,8 @@ function New-CnsDacPdfFromExcelTemplate {
     try {
         $metaPkg = Open-ExcelPackage -Path $metaXlsx
         $centreInfo = Get-CnsDacCentreExploitationInfoFromPackage -Package $metaPkg -Centre $centre
-        $deposit = Resolve-CnsDacExutoireDeposit -VisitDate $VisitDate -ServiceLabel $ServiceLabel -ExcelData $ExcelData
+        $deposit = Resolve-CnsDacExutoireDeposit -VisitDate $VisitDate -ServiceLabel $ServiceLabel `
+            -ExcelData $ExcelData -ExutoireKeyOverride $ExutoireKeyOverride
         if (-not [string]::IsNullOrWhiteSpace([string]$deposit.ExutoireKey)) {
             $exutoireInfo = Get-CnsDacExutoireInfoFromPackage -Package $metaPkg -ExutoireKey ([string]$deposit.ExutoireKey)
         }

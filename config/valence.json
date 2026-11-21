@@ -3,6 +3,7 @@
   "name": "Valence",
   "sharePointApiUrl": "https://graph.microsoft.com/v1.0/sites/naevaelisealpes.sharepoint.com:/sites/EliseAlpesValence/drive/root:/Planning%20VALENCE%202026.xlsm:/content",
   "planningFileName": "Planning VALENCE 2026.xlsm",
+  "defaultExutoireKey": "rovalterre",
   "displayName": "Elise Alpes - Valence",
   "timezone": "Europe/Paris",
   "features": {

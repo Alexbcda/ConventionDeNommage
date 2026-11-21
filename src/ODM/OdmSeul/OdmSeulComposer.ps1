@@ -438,7 +438,8 @@ function Invoke-OdmSeulGeneration {
         [Parameter(Mandatory = $true)][string]$OdmPdfPath,
         [Parameter(Mandatory = $true)]$Options,
         [Parameter(Mandatory = $true)]$SegmentMeta,
-        [AllowNull()][scriptblock]$OnProgress = $null
+        [AllowNull()][scriptblock]$OnProgress = $null,
+        [AllowNull()][AllowEmptyString()][string]$ExutoireKey = ''
     )
 
     $result = [pscustomobject]@{
@@ -591,6 +592,13 @@ function Invoke-OdmSeulGeneration {
             if ($qty -lt 1) { $qty = 1 }
             $dacDir = Join-Path $tmpDir 'dac'
             $null = New-Item -ItemType Directory -Path $dacDir -Force
+            $exuKey = ''
+            try {
+                if (-not [string]::IsNullOrWhiteSpace($ExutoireKey)) {
+                    $exuKey = ([string]$ExutoireKey).Trim()
+                }
+            }
+            catch { }
             $dacPdfs = @(New-CnsDacPdfFromExcelTemplate `
                     -WorkOrderEntity $wo `
                     -TheoreticalQuantity $qty `
@@ -598,7 +606,8 @@ function Invoke-OdmSeulGeneration {
                     -VisitDate $dacVisit `
                     -OutDirectory $dacDir `
                     -SegmentMeta $seg `
-                    -PageEntity $pe)
+                    -PageEntity $pe `
+                    -ExutoireKeyOverride $exuKey)
             if ($dacPdfs.Count -lt 1) {
                 throw 'Échec génération DAC (aucun PDF produit).'
             }

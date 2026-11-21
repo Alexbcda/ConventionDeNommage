@@ -44,6 +44,52 @@ function Ensure-OdmSeulDatabaseCommands {
     return ((Get-Command Get-Agents -ErrorAction SilentlyContinue) -and (Get-Command Get-Vehicules -ErrorAction SilentlyContinue))
 }
 
+function Get-OdmSeulDefaultExutoireKey {
+    <#
+    .SYNOPSIS
+        Clé exutoire DAC par défaut selon le centre installé (defaultExutoireKey).
+        Fallback métier : murianette si centre inconnu / introuvable.
+    #>
+    $fallback = 'murianette'
+    try {
+        if (-not (Get-Command Get-CurrentCentre -ErrorAction SilentlyContinue)) {
+            $cfg = Join-Path $PSScriptRoot '..\..\Core\ConfigManager.ps1'
+            if (Test-Path -LiteralPath $cfg) { . $cfg }
+        }
+        if (-not (Get-Command Get-CurrentCentre -ErrorAction SilentlyContinue)) {
+            return $fallback
+        }
+        $centre = Get-CurrentCentre
+        if ($null -eq $centre) { return $fallback }
+
+        $key = ''
+        try {
+            if ($null -ne $centre.PSObject.Properties['defaultExutoireKey']) {
+                $key = [string]$centre.defaultExutoireKey
+            }
+        }
+        catch { $key = '' }
+
+        # Si centres.json n'a pas encore la propriété sur l'objet retourné, relire Get-CentreConfig
+        if ([string]::IsNullOrWhiteSpace($key) -and (Get-Command Get-CentreConfig -ErrorAction SilentlyContinue)) {
+            $cid = ''
+            try { $cid = [string]$centre.id } catch { }
+            if (-not [string]::IsNullOrWhiteSpace($cid)) {
+                $cfgCentre = Get-CentreConfig -CentreId $cid
+                if ($null -ne $cfgCentre -and $null -ne $cfgCentre.PSObject.Properties['defaultExutoireKey']) {
+                    $key = [string]$cfgCentre.defaultExutoireKey
+                }
+            }
+        }
+
+        $key = if ($null -eq $key) { '' } else { $key.Trim().ToLowerInvariant() }
+        $allowed = @('adfe', 'rovalterre', 'savoie', 'murianette')
+        if ($allowed -contains $key) { return $key }
+    }
+    catch { }
+    return $fallback
+}
+
 function Import-OdmSeulPs1ToScriptScope {
     <#
     .SYNOPSIS
@@ -301,6 +347,7 @@ function Show-OdmSeulGenerationInputDialog {
             VehiculeLabel     = ''
             VehiculeId        = $null
             HeurePriseService = ''
+            ExutoireKey       = ''
         }
     }
 
@@ -325,6 +372,8 @@ function Show-OdmSeulGenerationInputDialog {
     $vehiculeIds = New-Object System.Collections.Generic.List[object]
     $cboCollecteur = $null
     $cboVehicule = $null
+    $cboExutoire = $null
+    $exutoireKeys = New-Object System.Collections.Generic.List[string]
     $dtpHeure = $null
     $dtpDate = $null
 
@@ -431,6 +480,41 @@ function Show-OdmSeulGenerationInputDialog {
         $dtpDate.Value = [datetime]::Today
         $form.Controls.Add($dtpDate)
         $y += 40
+
+        $lblExu = [System.Windows.Forms.Label]::new()
+        $lblExu.Text = 'Site de traitement (Exutoire)'
+        $lblExu.Font = $fontNormal
+        $lblExu.ForeColor = $colorTexte
+        $lblExu.Location = [System.Drawing.Point]::new(16, $y)
+        $lblExu.Size = [System.Drawing.Size]::new(360, 24)
+        $form.Controls.Add($lblExu)
+        $y += 26
+
+        $cboExutoire = [System.Windows.Forms.ComboBox]::new()
+        $cboExutoire.DropDownStyle = 'DropDownList'
+        $cboExutoire.Font = $fontNormal
+        $cboExutoire.Location = [System.Drawing.Point]::new(16, $y)
+        $cboExutoire.Size = [System.Drawing.Size]::new(480, 28)
+        # Libellés alignés template DAC.xlsx (onglet Excutoires) ; clés = CnsDacTemplate.ps1
+        $exutoireChoices = @(
+            @{ Key = 'adfe'; Label = 'ADFE' },
+            @{ Key = 'rovalterre'; Label = 'ROVALTERRE' },
+            @{ Key = 'savoie'; Label = 'Savoie Déchets' },
+            @{ Key = 'murianette'; Label = 'Centre de compostage à Murianette' }
+        )
+        foreach ($ex in $exutoireChoices) {
+            [void]$cboExutoire.Items.Add([string]$ex.Label)
+            [void]$exutoireKeys.Add([string]$ex.Key)
+        }
+        $defaultExu = Get-OdmSeulDefaultExutoireKey
+        $selIdx = $exutoireKeys.IndexOf($defaultExu)
+        if ($selIdx -lt 0) {
+            $selIdx = $exutoireKeys.IndexOf('murianette')
+        }
+        if ($selIdx -lt 0) { $selIdx = 0 }
+        if ($cboExutoire.Items.Count -gt 0) { $cboExutoire.SelectedIndex = $selIdx }
+        $form.Controls.Add($cboExutoire)
+        $y += 40
     }
 
     $btnOk = [System.Windows.Forms.Button]::new()
@@ -464,6 +548,7 @@ function Show-OdmSeulGenerationInputDialog {
         VehiculeLabel     = ''
         VehiculeId        = $null
         HeurePriseService = ''
+        ExutoireKey       = ''
     }
 
     if ($NeedEntete) {
@@ -481,6 +566,10 @@ function Show-OdmSeulGenerationInputDialog {
     }
     if ($NeedDac -and $null -ne $dtpDate) {
         $out.DateDepot = [datetime]$dtpDate.Value.Date
+    }
+    if ($NeedDac -and $null -ne $cboExutoire -and $cboExutoire.SelectedIndex -ge 0 `
+            -and $cboExutoire.SelectedIndex -lt $exutoireKeys.Count) {
+        $out.ExutoireKey = [string]$exutoireKeys[$cboExutoire.SelectedIndex]
     }
 
     $form.Dispose()
@@ -807,6 +896,13 @@ function Show-OdmSeulPanel {
             }
         }
         catch { }
+        $exutoireKey = ''
+        try {
+            if ($needDac -and -not [string]::IsNullOrWhiteSpace([string]$inputs.ExutoireKey)) {
+                $exutoireKey = ([string]$inputs.ExutoireKey).Trim()
+            }
+        }
+        catch { }
 
         $segmentMeta = [pscustomobject]@{
             Collecteur               = ('{0} {1}' -f $collecteurPrenom, $collecteurNom).Trim()
@@ -821,6 +917,7 @@ function Show-OdmSeulPanel {
             VehiculeId               = $(if ($null -ne $inputs.VehiculeId) { $inputs.VehiculeId } else { $null })
             DateDepotDac             = $dateDepot
             HeurePriseService        = $heurePrise
+            ExutoireKey              = $exutoireKey
             ODMNumero                = ''
             ServiceLabel             = ''
             TourneeComplete          = $true
@@ -868,7 +965,8 @@ function Show-OdmSeulPanel {
 
         $genResult = $null
         try {
-            $genResult = & $c.CmdGenerate -OdmPdfPath ([string]$c.PdfPath) -Options $options -SegmentMeta $segmentMeta -OnProgress $onProgress
+            $genResult = & $c.CmdGenerate -OdmPdfPath ([string]$c.PdfPath) -Options $options -SegmentMeta $segmentMeta `
+                -OnProgress $onProgress -ExutoireKey $exutoireKey
         }
         catch {
             $genResult = [pscustomobject]@{
@@ -897,14 +995,68 @@ function Show-OdmSeulPanel {
         }
 
         if ($null -ne $genResult -and $genResult.Ok) {
-            $c.LblStatus.Text = 'Document généré et disponible dans le dossier Téléchargements.'
+            $fileName = ''
+            try {
+                if (-not [string]::IsNullOrWhiteSpace([string]$genResult.OutputPath)) {
+                    $fileName = [System.IO.Path]::GetFileName([string]$genResult.OutputPath)
+                }
+            }
+            catch { }
+            $successMsg = 'Document généré et disponible dans le dossier Téléchargements.'
+            if (-not [string]::IsNullOrWhiteSpace($fileName)) {
+                $successMsg = ("Document généré et disponible dans le dossier Téléchargements.`r`n`r`nFichier : {0}" -f $fileName)
+            }
+            $c.LblStatus.Text = $successMsg.Replace("`r`n`r`n", ' — ').Replace("`r`n", ' ')
             $c.LblStatus.ForeColor = $c.ColorTexte
             [System.Windows.Forms.MessageBox]::Show(
-                'Document généré et disponible dans le dossier Téléchargements.',
+                $successMsg,
                 'ODM Seul',
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Information
             ) | Out-Null
+
+            $outPdfPath = ''
+            try {
+                if (-not [string]::IsNullOrWhiteSpace([string]$genResult.OutputPath)) {
+                    $outPdfPath = [string]$genResult.OutputPath
+                }
+            }
+            catch { }
+
+            if (-not [string]::IsNullOrWhiteSpace($outPdfPath) -and (Test-Path -LiteralPath $outPdfPath -PathType Leaf)) {
+                # Explorateur : sélectionne le fichier dans Téléchargements
+                try {
+                    Start-Process -FilePath 'explorer.exe' -ArgumentList @('/select,', $outPdfPath) -ErrorAction SilentlyContinue
+                }
+                catch {
+                    try {
+                        if ($c.LblStatus -and -not $c.LblStatus.IsDisposed) {
+                            $c.LblStatus.Text = ($c.LblStatus.Text + ' (explorateur non ouvert)')
+                        }
+                    }
+                    catch { }
+                }
+
+                # Impression imprimante Windows par défaut (après libération fichier)
+                try {
+                    Start-Sleep -Milliseconds 1000
+                    Start-Process -FilePath $outPdfPath -Verb Print -ErrorAction Stop
+                }
+                catch {
+                    try {
+                        if ($c.LblStatus -and -not $c.LblStatus.IsDisposed) {
+                            $c.LblStatus.Text = ($c.LblStatus.Text + ' — Impression non lancée.')
+                        }
+                    }
+                    catch { }
+                    try {
+                        if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+                            Write-Log '[ODM Seul] Impression PDF échouée' 'WARN' @{ message = $_.Exception.Message; path = $outPdfPath }
+                        }
+                    }
+                    catch { }
+                }
+            }
         }
         else {
             $err = if ($null -ne $genResult -and -not [string]::IsNullOrWhiteSpace([string]$genResult.ErrorMessage)) {

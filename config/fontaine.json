@@ -3,6 +3,7 @@
   "name": "Fontaine",
   "sharePointApiUrl": "https://graph.microsoft.com/v1.0/sites/naevaelisealpes.sharepoint.com:/sites/EliseAlpesFontaine/drive/root:/Planning%20FONTAINE%202026.xlsm:/content",
   "planningFileName": "Planning FONTAINE 2026.xlsm",
+  "defaultExutoireKey": "rovalterre",
   "displayName": "Elise Alpes - Fontaine",
   "timezone": "Europe/Paris",
   "features": {
