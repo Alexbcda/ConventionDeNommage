@@ -53,3 +53,32 @@ Describe 'CnsDacTemplate - quantite DAC Bio dechets' {
         (Test-CnsBioDechetsDacExcludedFromLines -Lines $lines) | Should Be $true
     }
 }
+
+Describe 'Test-CnsBioDechetsLabelEligible - layout ODM wrap' {
+
+    BeforeAll {
+        $metierPath = Join-Path $PSScriptRoot '..\src\ODM\PdfPlanningOptimizer\Services\CnsPdfMetierPrestation.ps1' | Resolve-Path
+        . ([string]$metierPath)
+    }
+
+    It 'blob non-wrappé "collecte de bio dechets" → true (non-regression)' {
+        (Test-CnsBioDechetsLabelEligible -Text 'collecte de bio dechets') | Should Be $true
+    }
+
+    It 'blob OVELIA wrapé "collecte de bio bac 120l /1 kg dechets" → true' {
+        (Test-CnsBioDechetsLabelEligible -Text 'collecte de bio bac 120l /1 kg dechets') | Should Be $true
+    }
+
+    It 'blob "collecte de bio" sans dechets → false' {
+        (Test-CnsBioDechetsLabelEligible -Text 'collecte de bio') | Should Be $false
+    }
+
+    It 'blob "dechets" sans bio → false' {
+        (Test-CnsBioDechetsLabelEligible -Text 'dechets') | Should Be $false
+    }
+
+    It 'blob avec retours a la ligne → true apres normalisation' {
+        $blob = "collecte de bio`nbac 120l /1`ndechets"
+        (Test-CnsBioDechetsLabelEligible -Text $blob) | Should Be $true
+    }
+}

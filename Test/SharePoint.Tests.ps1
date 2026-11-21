@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Tests Pester — integration SharePoint / Microsoft Graph (manuel, hors pipeline principal).
@@ -10,8 +10,8 @@
     Invoke-Pester -Path .\Test\SharePoint.Tests.ps1
 
     Variables optionnelles :
-      CN_SHAREPOINT_SITE_URL      (defaut: naevaelisealpes.sharepoint.com:/sites/EliseAlpes)
-      CN_SHAREPOINT_PLANNING_FILE (defaut: Planning GRENOBLE 2026.xlsm)
+      CN_SHAREPOINT_SITE_URL      (defaut: naevaelisealpes.sharepoint.com:/sites/EliseAlpesFontaine)
+      CN_SHAREPOINT_PLANNING_FILE (defaut: Planning FONTAINE 2026.xlsm)
 #>
 
 [CmdletBinding()]
@@ -35,14 +35,14 @@ $script:DefaultSharePointSiteUrl = $(if (-not [string]::IsNullOrWhiteSpace($env:
         $env:CN_SHAREPOINT_SITE_URL.Trim()
     }
     else {
-        'naevaelisealpes.sharepoint.com:/sites/EliseAlpes'
+        'naevaelisealpes.sharepoint.com:/sites/EliseAlpesFontaine'
     })
 
 $script:DefaultSharePointPlanningFile = $(if (-not [string]::IsNullOrWhiteSpace($env:CN_SHAREPOINT_PLANNING_FILE)) {
         $env:CN_SHAREPOINT_PLANNING_FILE.Trim()
     }
     else {
-        'Planning GRENOBLE 2026.xlsm'
+        'Planning FONTAINE 2026.xlsm'
     })
 
 $script:SharePointTestsEnabled = (Test-Path -LiteralPath $script:SharePointModulePath) -and
@@ -64,8 +64,8 @@ Describe 'SharePoint Integration' {
         $exists | Should Be $true
     }
 
-    It 'Telecharge le fichier Planning GRENOBLE 2026.xlsm' -Pending:(-not $script:SharePointTestsEnabled) {
-        $dest = Join-Path $env:TEMP 'Planning_GRENOBLE_2026.xlsm'
+    It 'Telecharge le fichier Planning FONTAINE 2026.xlsm' -Pending:(-not $script:SharePointTestsEnabled) {
+        $dest = Join-Path $env:TEMP 'Planning_FONTAINE_2026.xlsm'
         $result = Get-SharePointFile -SiteUrl $script:DefaultSharePointSiteUrl `
             -FilePathOnSharePoint $script:DefaultSharePointPlanningFile `
             -DestinationPath $dest
@@ -75,7 +75,7 @@ Describe 'SharePoint Integration' {
     }
 
     It 'Test-SharePointConnection : test complet bout en bout' -Pending:(-not $script:SharePointTestsEnabled) {
-        $dest = Join-Path $env:TEMP ("Planning_GRENOBLE_2026_test_{0}.xlsm" -f ([Guid]::NewGuid().ToString('N')))
+        $dest = Join-Path $env:TEMP ("Planning_FONTAINE_2026_test_{0}.xlsm" -f ([Guid]::NewGuid().ToString('N')))
         try {
             $result = Test-SharePointConnection -SiteUrl $script:DefaultSharePointSiteUrl `
                 -FilePathOnSharePoint $script:DefaultSharePointPlanningFile `
@@ -118,6 +118,8 @@ Describe 'SharePoint Lot 2 - download par ID (feature flag)' {
         Mock Import-CnsSharePointGraphModule { }
         Mock Get-MgContext { return @{ Account = 'user@test' } }
         Mock Connect-SharePointGraph { return $true }
+        # Lot 2 historique : ne pas declencher Resolve (nouveaux appels Graph hors perimetre).
+        Mock Resolve-SharePointPlanningIds { return $null }
         Mock Set-AppConfig {
             param([string]$Key, [string]$Value)
             [void]$script:SetAppConfigCalls.Add($Key)
@@ -207,5 +209,223 @@ Describe 'SharePoint Lot 2 - download par ID (feature flag)' {
         $url = 'https://graph.microsoft.com/v1.0/sites/host:/sites/X/drive/root:/Planning.xlsm:/content'
         $null = Get-SharePointPlanningFile -Url $url -LocalPath $script:Lot2Dest
         ($script:SetAppConfigCalls -contains 'SharePointApiUrl') | Should Be $false
+    }
+}
+
+Describe 'SharePoint Resolve-SharePointPlanningIds' {
+    It 'GET metadata sans /content ; persiste DriveId/ItemId' {
+        $script:MetaUri = $null
+        $script:SavedDrive = $null
+        $script:SavedItem = $null
+        Mock Import-CnsSharePointGraphModule { }
+        Mock Get-MgContext { return @{ Account = 'user@test' } }
+        Mock Connect-SharePointGraph { return $true }
+        Mock Invoke-MgGraphRequest {
+            param($Method, $Uri, $OutputFilePath)
+            $script:MetaUri = [string]$Uri
+            return [pscustomobject]@{
+                id              = 'item-xyz'
+                name            = 'Planning FONTAINE 2026.xlsm'
+                parentReference = [pscustomobject]@{ driveId = 'drive-abc' }
+            }
+        }
+        Mock Set-SharePointStableIds {
+            param($DriveId, $ItemId, $CentreId)
+            $script:SavedDrive = $DriveId
+            $script:SavedItem = $ItemId
+        }
+
+        $url = 'https://graph.microsoft.com/v1.0/sites/host:/sites/EliseAlpesFontaine/drive/root:/Planning%20FONTAINE%202026.xlsm:/content'
+        $r = Resolve-SharePointPlanningIds -Url $url -CentreId 'fontaine'
+        $r.DriveId | Should Be 'drive-abc'
+        $r.ItemId | Should Be 'item-xyz'
+        ($script:MetaUri -match '(?i)/content/?$') | Should Be $false
+        ($script:MetaUri -match '(?i)EliseAlpesFontaine') | Should Be $true
+        ($script:MetaUri -match '(?i)Planning') | Should Be $true
+        $script:SavedDrive | Should Be 'drive-abc'
+        $script:SavedItem | Should Be 'item-xyz'
+    }
+}
+
+Describe 'SharePoint Graph App Registration' {
+    It 'scopes = Sites.Selected + offline_access (sans Files.Read.All)' {
+        ($script:CnsSharePointGraphScopes -contains 'Sites.Selected') | Should Be $true
+        ($script:CnsSharePointGraphScopes -contains 'Files.Read.All') | Should Be $false
+        ($script:CnsSharePointGraphScopes -contains 'offline_access') | Should Be $true
+        ($script:CnsSharePointGraphScopes -contains 'Sites.Read.All') | Should Be $false
+    }
+
+    It 'Connect-MgGraph recoit -ClientId si GraphClientId configure' {
+        $script:CapturedClientId = $null
+        Mock Get-GraphClientId { return '11111111-2222-3333-4444-555555555555' }
+        Mock Show-CnsSharePointDeviceCodeDialog { }
+        Mock Connect-MgGraph {
+            param(
+                $ClientId,
+                $Scopes,
+                $UseDeviceAuthentication,
+                $UseWebAuthentication,
+                $NoWelcome,
+                $ErrorAction
+            )
+            $script:CapturedClientId = $ClientId
+        }
+
+        Invoke-CnsSharePointGraphConnectInteractive
+
+        $script:CapturedClientId | Should Be '11111111-2222-3333-4444-555555555555'
+    }
+
+    It 'refuse Connect-MgGraph si GraphClientId absent' {
+        $script:ConnectCalled = $false
+        Mock Get-GraphClientId { return $null }
+        Mock Connect-MgGraph { $script:ConnectCalled = $true }
+
+        { Invoke-CnsSharePointGraphConnectInteractive } | Should Throw 'Client ID ASSISTANT non configure'
+        $script:ConnectCalled | Should Be $false
+    }
+
+    It 'Set-GraphClientId rejette une valeur vide' {
+        Mock Set-AppConfig { throw 'Set-AppConfig ne doit pas etre appele' }
+        { Set-GraphClientId -ClientId '' } | Should Throw 'valeur vide'
+        { Set-GraphClientId -ClientId '   ' } | Should Throw 'valeur vide'
+    }
+
+    It 'Set-GraphClientId accepte un GUID valide' {
+        $script:SavedGraphClientId = $null
+        Mock Set-AppConfig {
+            param($Key, $Value)
+            if ($Key -eq 'GraphClientId') { $script:SavedGraphClientId = $Value }
+        }
+        $guid = '11111111-2222-3333-4444-555555555555'
+        $r = Set-GraphClientId -ClientId "  $guid  "
+        $r | Should Be $guid
+        $script:SavedGraphClientId | Should Be $guid
+    }
+}
+
+Describe 'SharePoint Resolve-CnsSharePointConnectError AADSTS' {
+    It 'AADSTS65001 retourne ConsentMissing' {
+        $r = Resolve-CnsSharePointConnectError -ErrorMessage 'AADSTS65001: The user or administrator has not consented'
+        $r.Status | Should Be 'ConsentMissing'
+        $r.Message | Should Match 'IT-3'
+    }
+
+    It 'AADSTS7000218 retourne PublicClientFlowsDisabled' {
+        $r = Resolve-CnsSharePointConnectError -ErrorMessage 'AADSTS7000218: The request body must contain client_secret'
+        $r.Status | Should Be 'PublicClientFlowsDisabled'
+        $r.Message | Should Match 'IT-2'
+    }
+
+    It '403 reste Denied (non-regression)' {
+        $r = Resolve-CnsSharePointConnectError -ErrorMessage '403 Forbidden Access denied'
+        $r.Status | Should Be 'Denied'
+    }
+
+    It '401 Unauthorized retourne Unauthorized' {
+        $r = Resolve-CnsSharePointConnectError -ErrorMessage '401 Unauthorized'
+        $r.Status | Should Be 'Unauthorized'
+        $r.Message | Should Match '401'
+    }
+
+    It '403 Forbidden reste Denied apres retrait unauthorized' {
+        $r = Resolve-CnsSharePointConnectError -ErrorMessage '403 Forbidden'
+        $r.Status | Should Be 'Denied'
+    }
+}
+
+Describe 'Show-ChangeUrlDialog validation URL fichier' {
+    BeforeEach {
+        $script:SaveCalled = $false
+        $script:MessageBoxCaptions = [System.Collections.Generic.List[string]]::new()
+        $script:CnsSharePointMessageBoxMock = {
+            param($Text, $Caption, $Buttons, $Icon)
+            [void]$script:MessageBoxCaptions.Add([string]$Caption)
+            return [System.Windows.Forms.DialogResult]::OK
+        }
+        Mock Get-SharePointPlanningUrl {
+            return 'https://graph.microsoft.com/v1.0/sites/host:/sites/EliseAlpesFontaine/drive/root:/OLD.xlsm:/content'
+        }
+        Mock Get-SharePointBrowserUrlFromGraph { return 'https://host/sites/EliseAlpesFontaine' }
+        Mock Save-SharePointApiUrlConfig {
+            param($ApiUrl)
+            $script:SaveCalled = $true
+            $script:SavedApiUrl = $ApiUrl
+        }
+    }
+
+    AfterEach {
+        $script:CnsSharePointMessageBoxMock = $null
+    }
+
+    It 'accepte une URL Graph fichier (/drive/root:/...:/content)' {
+        $fileUrl = 'https://graph.microsoft.com/v1.0/sites/host:/sites/EliseAlpesFontaine/drive/root:/Planning%20FONTAINE%202026.xlsm:/content'
+        Mock Show-SharePointUrlConfigDialog { return $fileUrl }
+
+        $ok = Show-ChangeUrlDialog
+        $ok | Should Be $true
+        $script:SaveCalled | Should Be $true
+        $script:SavedApiUrl | Should Be $fileUrl
+    }
+
+    It 'accepte une URL navigateur .xlsm' {
+        $browserFileUrl = 'https://naevaelisealpes.sharepoint.com/sites/EliseAlpesFontaine/Shared%20Documents/Planning%20FONTAINE%202026.xlsm'
+        Mock Show-SharePointUrlConfigDialog { return $browserFileUrl }
+
+        $ok = Show-ChangeUrlDialog
+        $ok | Should Be $true
+        $script:SaveCalled | Should Be $true
+        $script:SavedApiUrl | Should Be $browserFileUrl
+    }
+
+    It 'refuse une URL de site SharePoint' {
+        $siteUrl = 'https://naevaelisealpes.sharepoint.com/sites/EliseAlpesFontaine'
+        Mock Show-SharePointUrlConfigDialog { return $siteUrl }
+
+        $ok = Show-ChangeUrlDialog
+        $ok | Should Be $false
+        $script:SaveCalled | Should Be $false
+        ($script:MessageBoxCaptions -contains 'URL de fichier requise') | Should Be $true
+    }
+}
+
+Describe 'Show-FirstLaunchConfig validation URL fichier' {
+    BeforeEach {
+        $script:SaveCalled = $false
+        $script:MessageBoxCaptions = [System.Collections.Generic.List[string]]::new()
+        $script:CnsSharePointMessageBoxMock = {
+            param($Text, $Caption, $Buttons, $Icon)
+            [void]$script:MessageBoxCaptions.Add([string]$Caption)
+            return [System.Windows.Forms.DialogResult]::OK
+        }
+        Mock Save-SharePointApiUrlConfig {
+            param($ApiUrl)
+            $script:SaveCalled = $true
+            $script:SavedApiUrl = $ApiUrl
+        }
+    }
+
+    AfterEach {
+        $script:CnsSharePointMessageBoxMock = $null
+    }
+
+    It 'refuse une URL de site SharePoint' {
+        $siteUrl = 'https://naevaelisealpes.sharepoint.com/sites/EliseAlpesFontaine'
+        Mock Show-SharePointUrlConfigDialog { return $siteUrl }
+
+        $ok = Show-FirstLaunchConfig
+        $ok | Should Be $false
+        $script:SaveCalled | Should Be $false
+        ($script:MessageBoxCaptions -contains 'URL de fichier requise') | Should Be $true
+    }
+
+    It 'accepte une URL fichier .xlsm' {
+        $fileUrl = 'https://naevaelisealpes.sharepoint.com/sites/EliseAlpesFontaine/Shared%20Documents/Planning%20FONTAINE%202026.xlsm'
+        Mock Show-SharePointUrlConfigDialog { return $fileUrl }
+
+        $ok = Show-FirstLaunchConfig
+        $ok | Should Be $true
+        $script:SaveCalled | Should Be $true
+        $script:SavedApiUrl | Should Be $fileUrl
     }
 }

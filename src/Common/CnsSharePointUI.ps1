@@ -54,6 +54,48 @@ function Get-SharePointUiStateDefinition {
                 )
             }
         }
+        'ClientIdMissing' {
+            return @{
+                Icon           = '🔴'
+                Message        = 'Client ID ASSISTANT non configure — contactez le developpeur (DEV-1)'
+                ForeColor      = [System.Drawing.Color]::Red
+                StatusDotColor = [System.Drawing.Color]::Red
+                DegradedMode   = $true
+                Buttons        = @()
+            }
+        }
+        'ConsentMissing' {
+            return @{
+                Icon           = '🔴'
+                Message        = 'Consentement admin Graph manquant — contactez l''IT (etape IT-3)'
+                ForeColor      = [System.Drawing.Color]::Red
+                StatusDotColor = [System.Drawing.Color]::Red
+                DegradedMode   = $true
+                Buttons        = @()
+            }
+        }
+        'PublicClientFlowsDisabled' {
+            return @{
+                Icon           = '🔴'
+                Message        = 'Flux clients publics desactives — contactez l''IT (etape IT-2)'
+                ForeColor      = [System.Drawing.Color]::Red
+                StatusDotColor = [System.Drawing.Color]::Red
+                DegradedMode   = $true
+                Buttons        = @()
+            }
+        }
+        'Unauthorized' {
+            return @{
+                Icon           = '🔴'
+                Message        = 'Authentification refusee (401) — verifiez l''horloge et reconnectez-vous'
+                ForeColor      = [System.Drawing.Color]::Red
+                StatusDotColor = [System.Drawing.Color]::Red
+                DegradedMode   = $true
+                Buttons        = @(
+                    @{ Id = 'Login'; Text = 'Reconnecter'; Glyph = '🔐' }
+                )
+            }
+        }
         'Denied' {
             return @{
                 Icon           = '🔴'
@@ -441,9 +483,9 @@ function Update-SharePointUI {
             $connectBtn.Text = '🔐 Connexion'
             $connectBtn.Tag = 'Connect'
             $connectBtn.Size = [System.Drawing.Size]::new($connectBtnWidth, $connectBtnHeight)
-            $connectBtnEnabled = $status -in @('Expired', 'Offline', 'Denied', 'Error', 'WamBlocked') -or $isLocalMode
+            $connectBtnEnabled = $status -in @('Expired', 'Offline', 'Denied', 'Error', 'WamBlocked', 'ClientIdMissing', 'ConsentMissing', 'PublicClientFlowsDisabled', 'Unauthorized') -or $isLocalMode
             $connectBtn.Enabled = $connectBtnEnabled
-            $showConnectBtn = $isLocalMode -or ($status -in @('Expired', 'Offline', 'Denied', 'Error', 'WamBlocked'))
+            $showConnectBtn = $isLocalMode -or ($status -in @('Expired', 'Offline', 'Denied', 'Error', 'WamBlocked', 'ClientIdMissing', 'ConsentMissing', 'PublicClientFlowsDisabled', 'Unauthorized'))
         }
 
         $connectBtn.Visible = $showConnectBtn

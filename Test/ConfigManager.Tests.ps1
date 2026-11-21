@@ -1,4 +1,4 @@
-Describe 'ConfigManager - gestion centre' {
+﻿Describe 'ConfigManager - gestion centre' {
 
     BeforeAll {
         $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -198,5 +198,65 @@ Describe 'ConfigManager - SharePoint stable IDs (Lot 1)' {
         $store['SharePointApiUrl'] | Should Be 'https://graph.microsoft.com/v1.0/sites/keep-me'
         $store.ContainsKey('CentreId') | Should Be $false
         $store.ContainsKey('CentreName') | Should Be $false
+    }
+
+    It 'IDs scopes : fontaine et argonay distincts' {
+        $store = @{ CentreId = 'fontaine' }
+        Mock Set-AppConfig {
+            param([string]$Key, [string]$Value)
+            $store[$Key] = $Value
+        }
+        Mock Get-AppConfig {
+            param([string]$Key)
+            if ($store.ContainsKey($Key)) { return $store[$Key] }
+            return $null
+        }
+
+        Set-SharePointStableIds -CentreId 'fontaine' -DriveId 'd-f' -ItemId 'i-f'
+        Set-SharePointStableIds -CentreId 'argonay' -DriveId 'd-a' -ItemId 'i-a'
+
+        $store['SharePointDriveId.fontaine'] | Should Be 'd-f'
+        $store['SharePointItemId.fontaine'] | Should Be 'i-f'
+        $store['SharePointDriveId.argonay'] | Should Be 'd-a'
+        $store['SharePointItemId.argonay'] | Should Be 'i-a'
+
+        (Get-SharePointStableIds -CentreId 'fontaine').DriveId | Should Be 'd-f'
+        (Get-SharePointStableIds -CentreId 'fontaine').ItemId | Should Be 'i-f'
+        (Get-SharePointStableIds -CentreId 'argonay').DriveId | Should Be 'd-a'
+        (Get-SharePointStableIds -CentreId 'argonay').ItemId | Should Be 'i-a'
+    }
+
+    It 'Set-CurrentCentre purge les cles globales legacy' {
+        $store = @{
+            SharePointDriveId = 'legacy-drive'
+            SharePointItemId  = 'legacy-item'
+        }
+        Mock Set-AppConfig {
+            param([string]$Key, [string]$Value)
+            $store[$Key] = $Value
+        }
+        Mock Get-AppConfig {
+            param([string]$Key)
+            if ($store.ContainsKey($Key)) { return $store[$Key] }
+            return $null
+        }
+        Mock Get-CentreConfig {
+            param([string]$CentreId)
+            if ($CentreId -eq 'fontaine') {
+                return [pscustomobject]@{
+                    id               = 'fontaine'
+                    name             = 'Fontaine'
+                    sharePointApiUrl = 'https://graph.microsoft.com/fontaine'
+                    planningFileName = 'Planning FONTAINE 2026.xlsm'
+                }
+            }
+            return $null
+        }
+
+        (Set-CurrentCentre -CentreId 'fontaine') | Should Be $true
+        $store['SharePointDriveId'] | Should Be ''
+        $store['SharePointItemId'] | Should Be ''
+        $store['CentreId'] | Should Be 'fontaine'
+        $store['SharePointApiUrl'] | Should Be 'https://graph.microsoft.com/fontaine'
     }
 }

@@ -13,13 +13,115 @@ if (-not (Get-Command Write-Log -ErrorAction SilentlyContinue)) {
     }
 }
 
-# Lot 1 — stockage uniquement, pas encore utilise par la connexion.
-$script:SharePointIdConfigKeys = @(
+# Lot 1 / multi-centre — cles stables SharePoint (globales legacy + scopes .{centreId}).
+$script:SharePointIdConfigKeyBases = @(
     'SharePointDriveId'
     'SharePointItemId'
     'SharePointLastValidatedAt'
     'SharePointSourceUrl'
 )
+
+function Get-SharePointStableIdsCentreKey {
+    param([AllowNull()][AllowEmptyString()][string]$CentreId)
+    if ([string]::IsNullOrWhiteSpace($CentreId)) { return $null }
+    return $CentreId.Trim().ToLowerInvariant()
+}
+
+function Resolve-SharePointStableIdsCentreId {
+    param([AllowNull()][AllowEmptyString()][string]$CentreId)
+    $cid = Get-SharePointStableIdsCentreKey -CentreId $CentreId
+    if (-not [string]::IsNullOrWhiteSpace($cid) -and $cid -ne 'custom') { return $cid }
+    if (Get-Command Get-AppConfig -ErrorAction SilentlyContinue) {
+        $cid = Get-SharePointStableIdsCentreKey -CentreId (Get-AppConfig -Key 'CentreId')
+        if (-not [string]::IsNullOrWhiteSpace($cid) -and $cid -ne 'custom') { return $cid }
+    }
+    if (Get-Command Get-CurrentCentre -ErrorAction SilentlyContinue) {
+        $c = Get-CurrentCentre
+        if ($null -ne $c -and -not [string]::IsNullOrWhiteSpace([string]$c.id) -and [string]$c.id -ne 'custom') {
+            return (Get-SharePointStableIdsCentreKey -CentreId ([string]$c.id))
+        }
+    }
+    return $null
+}
+
+function Get-SharePointStableIdAppConfigKey {
+    <#
+    .SYNOPSIS
+        Cle AppConfig pour un ID SharePoint : SharePointDriveId.{centre} ou legacy globale.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('SharePointDriveId', 'SharePointItemId', 'SharePointLastValidatedAt', 'SharePointSourceUrl')]
+        [string]$BaseKey,
+        [AllowNull()][AllowEmptyString()][string]$CentreId
+    )
+    $cid = Resolve-SharePointStableIdsCentreId -CentreId $CentreId
+    if ([string]::IsNullOrWhiteSpace($cid)) { return $BaseKey }
+    return ('{0}.{1}' -f $BaseKey, $cid)
+}
+
+function Clear-SharePointLegacyGlobalStableIdKeys {
+    <#
+    .SYNOPSIS
+        Vide les anciennes cles globales (pre-multi-centre) pour eviter un ID orphelin au switch.
+    #>
+    if (-not (Get-Command Set-AppConfig -ErrorAction SilentlyContinue)) { return }
+    foreach ($base in @($script:SharePointIdConfigKeyBases)) {
+        Set-AppConfig -Key $base -Value ''
+    }
+}
+
+function Get-GraphClientId {
+    <#
+    .SYNOPSIS
+        Lit le ClientId Entra (App Registration ASSISTANT) depuis AppConfig.
+    .OUTPUTS
+        [string] ClientId, ou $null si absent/vide.
+    #>
+    if (-not (Get-Command Get-AppConfig -ErrorAction SilentlyContinue)) {
+        return $null
+    }
+    $id = Get-AppConfig -Key 'GraphClientId'
+    if ([string]::IsNullOrWhiteSpace($id)) { return $null }
+    return $id.Trim()
+}
+
+function Format-GraphClientIdMasked {
+    <#
+    .SYNOPSIS
+        Masque un Client ID pour affichage UI (4 premiers + 4 derniers caracteres).
+    #>
+    param([AllowNull()][AllowEmptyString()][string]$ClientId)
+    if ([string]::IsNullOrWhiteSpace($ClientId)) { return '' }
+    $id = $ClientId.Trim()
+    if ($id.Length -lt 8) { return '****' }
+    return ('{0}...{1}' -f $id.Substring(0, 4), $id.Substring($id.Length - 4))
+}
+
+function Set-GraphClientId {
+    <#
+    .SYNOPSIS
+        Enregistre le ClientId Entra (App Registration ASSISTANT) dans AppConfig.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$ClientId
+    )
+    if ([string]::IsNullOrWhiteSpace($ClientId)) {
+        throw 'Client ID ASSISTANT invalide : valeur vide.'
+    }
+    $trimmed = $ClientId.Trim()
+    $parsed = [guid]::Empty
+    if (-not [guid]::TryParse($trimmed, [ref]$parsed)) {
+        throw 'Client ID ASSISTANT invalide : format GUID attendu.'
+    }
+    if (-not (Get-Command Set-AppConfig -ErrorAction SilentlyContinue)) {
+        throw 'Set-AppConfig indisponible — impossible d''enregistrer GraphClientId.'
+    }
+    Set-AppConfig -Key 'GraphClientId' -Value $trimmed
+    return $trimmed
+}
 
 function Get-CnsUnrecognizedCentreDisplayName {
     return 'Centre non reconnu'
@@ -106,11 +208,13 @@ function Test-CentreAppConfigurationComplete {
 function Get-SharePointStableIds {
     <#
     .SYNOPSIS
-        Lit les identifiants SharePoint stables (Lot 1 — stockage seul).
+        Lit les identifiants SharePoint stables (scopes par centre si CentreId connu).
     .OUTPUTS
-        [pscustomobject] DriveId, ItemId, PlanningFileName, LastValidatedAt, SourceUrl
-        (valeur $null si cle absente).
+        [pscustomobject] DriveId, ItemId, PlanningFileName, LastValidatedAt, SourceUrl, CentreId
+        (valeur $null si cle absente). Sans centre resolu : cles globales legacy.
     #>
+    param([AllowNull()][AllowEmptyString()][string]$CentreId)
+
     if (-not (Get-Command Get-AppConfig -ErrorAction SilentlyContinue)) {
         return [pscustomobject]@{
             DriveId          = $null
@@ -118,14 +222,16 @@ function Get-SharePointStableIds {
             PlanningFileName = $null
             LastValidatedAt  = $null
             SourceUrl        = $null
+            CentreId         = $null
         }
     }
 
-    $driveId = Get-AppConfig -Key 'SharePointDriveId'
-    $itemId = Get-AppConfig -Key 'SharePointItemId'
+    $resolvedCentre = Resolve-SharePointStableIdsCentreId -CentreId $CentreId
+    $driveId = Get-AppConfig -Key (Get-SharePointStableIdAppConfigKey -BaseKey 'SharePointDriveId' -CentreId $CentreId)
+    $itemId = Get-AppConfig -Key (Get-SharePointStableIdAppConfigKey -BaseKey 'SharePointItemId' -CentreId $CentreId)
     $planningFileName = Get-AppConfig -Key 'PlanningFileName'
-    $lastValidatedAt = Get-AppConfig -Key 'SharePointLastValidatedAt'
-    $sourceUrl = Get-AppConfig -Key 'SharePointSourceUrl'
+    $lastValidatedAt = Get-AppConfig -Key (Get-SharePointStableIdAppConfigKey -BaseKey 'SharePointLastValidatedAt' -CentreId $CentreId)
+    $sourceUrl = Get-AppConfig -Key (Get-SharePointStableIdAppConfigKey -BaseKey 'SharePointSourceUrl' -CentreId $CentreId)
 
     return [pscustomobject]@{
         DriveId          = $(if ([string]::IsNullOrWhiteSpace($driveId)) { $null } else { [string]$driveId })
@@ -133,23 +239,26 @@ function Get-SharePointStableIds {
         PlanningFileName = $(if ([string]::IsNullOrWhiteSpace($planningFileName)) { $null } else { [string]$planningFileName })
         LastValidatedAt  = $(if ([string]::IsNullOrWhiteSpace($lastValidatedAt)) { $null } else { [string]$lastValidatedAt })
         SourceUrl        = $(if ([string]::IsNullOrWhiteSpace($sourceUrl)) { $null } else { [string]$sourceUrl })
+        CentreId         = $resolvedCentre
     }
 }
 
 function Set-SharePointStableIds {
     <#
     .SYNOPSIS
-        Ecrit les identifiants SharePoint stables (Lot 1 — stockage seul).
+        Ecrit les identifiants SharePoint stables (scopes par centre si CentreId connu).
     .NOTES
         Ne modifie pas SharePointApiUrl, CentreId, CentreName.
         Seuls les parametres explicitement fournis sont ecrits.
+        Sans centre resolu : cles globales legacy (retrocompatibilite Lot 1).
     #>
     param(
         [AllowNull()][string]$DriveId,
         [AllowNull()][string]$ItemId,
         [AllowNull()][string]$PlanningFileName,
         [AllowNull()][string]$LastValidatedAt,
-        [AllowNull()][string]$SourceUrl
+        [AllowNull()][string]$SourceUrl,
+        [AllowNull()][AllowEmptyString()][string]$CentreId
     )
 
     if (-not (Get-Command Set-AppConfig -ErrorAction SilentlyContinue)) {
@@ -157,19 +266,19 @@ function Set-SharePointStableIds {
     }
 
     if ($PSBoundParameters.ContainsKey('DriveId')) {
-        Set-AppConfig -Key 'SharePointDriveId' -Value $DriveId
+        Set-AppConfig -Key (Get-SharePointStableIdAppConfigKey -BaseKey 'SharePointDriveId' -CentreId $CentreId) -Value $DriveId
     }
     if ($PSBoundParameters.ContainsKey('ItemId')) {
-        Set-AppConfig -Key 'SharePointItemId' -Value $ItemId
+        Set-AppConfig -Key (Get-SharePointStableIdAppConfigKey -BaseKey 'SharePointItemId' -CentreId $CentreId) -Value $ItemId
     }
     if ($PSBoundParameters.ContainsKey('PlanningFileName')) {
         Set-AppConfig -Key 'PlanningFileName' -Value $PlanningFileName
     }
     if ($PSBoundParameters.ContainsKey('LastValidatedAt')) {
-        Set-AppConfig -Key 'SharePointLastValidatedAt' -Value $LastValidatedAt
+        Set-AppConfig -Key (Get-SharePointStableIdAppConfigKey -BaseKey 'SharePointLastValidatedAt' -CentreId $CentreId) -Value $LastValidatedAt
     }
     if ($PSBoundParameters.ContainsKey('SourceUrl')) {
-        Set-AppConfig -Key 'SharePointSourceUrl' -Value $SourceUrl
+        Set-AppConfig -Key (Get-SharePointStableIdAppConfigKey -BaseKey 'SharePointSourceUrl' -CentreId $CentreId) -Value $SourceUrl
     }
 }
 
@@ -247,6 +356,10 @@ function Set-CurrentCentre {
     if (-not [string]::IsNullOrWhiteSpace([string]$centre.planningFileName)) {
         Set-AppConfig -Key 'PlanningFileName' -Value ([string]$centre.planningFileName)
     }
+
+    # IDs scopes isoles par centre : ne pas effacer SharePointDriveId.{nouveauCentre}.
+    # Purge uniquement les anciennes cles globales orphelines.
+    Clear-SharePointLegacyGlobalStableIdKeys
 
     $checkId = Get-AppConfig -Key 'CentreId'
     $checkName = Get-AppConfig -Key 'CentreName'

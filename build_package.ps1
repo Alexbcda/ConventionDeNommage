@@ -1,12 +1,26 @@
-# build_package.ps1 - Preparation du package ASSISTANT (version script, sans exe)
+﻿# build_package.ps1 - Preparation du package ASSISTANT (version script, sans exe)
 # Execution : .\build_package.ps1 [-Version "1.0.8"] [-OutputDir "output"] [-Clean]
 
 param(
-    [string]$Version = '1.0.0',
+    [string]$Version = '',
     [string]$OutputDir = 'package',
     [string]$SrcRoot = '',
     [switch]$Clean
 )
+
+# Resolution de la version : -Version explicite > version.txt racine > 1.0.0
+# ($repoRoot n'est defini qu'en corps de script ~L539 ; $PSScriptRoot = racine repo ici.)
+# Test manuel : sans -Version, lit version.txt ; avec -Version "x.y.z", force x.y.z ;
+# sans version.txt et sans -Version → 1.0.0. Pas de test Pester (build trop lourd).
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $rootVersionFile = Join-Path $PSScriptRoot 'version.txt'
+    if (Test-Path -LiteralPath $rootVersionFile) {
+        $Version = (Get-Content -LiteralPath $rootVersionFile -Raw).Trim()
+    }
+    if ([string]::IsNullOrWhiteSpace($Version)) {
+        $Version = '1.0.0'
+    }
+}
 
 $ErrorActionPreference = 'Stop'
 
@@ -736,6 +750,24 @@ $null = Ensure-PackageGhostscriptLayout -PackageRoot $outputPath -RepoRoot $repo
 
 $Version | Out-File -FilePath (Join-Path $outputPath 'version.txt') -Encoding ascii -NoNewline
 Write-BuildSuccess "version.txt ($Version)"
+
+# BUILDINFO : tracabilite build (version, date UTC, commit court)
+$buildUtc = [datetime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss') + ' UTC'
+$gitCommit = 'n/a'
+try {
+    $gitOut = & git -C $repoRoot rev-parse --short HEAD 2>$null
+    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace([string]$gitOut)) {
+        $gitCommit = ([string]$gitOut).Trim()
+    }
+}
+catch { }
+$buildInfoPath = Join-Path $outputPath 'BUILDINFO.txt'
+@(
+    "Version: $Version"
+    "Date de build: $buildUtc"
+    "Commit Git: $gitCommit"
+) | Set-Content -LiteralPath $buildInfoPath -Encoding utf8
+Write-BuildSuccess ("BUILDINFO.txt (Version={0} Commit={1})" -f $Version, $gitCommit)
 
 Write-BuildStep 'Verification integrite du package'
 $null = Test-AssistantPackage -PackageRoot $outputPath -FailOnMissing

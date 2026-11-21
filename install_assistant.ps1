@@ -696,7 +696,7 @@ if (-not (Test-Path -LiteralPath $InstallDir)) {
 }
 
 Write-InstallStep 'Copie des fichiers...' 'Yellow'
-$itemsFromContent = @('src', 'Data', 'lib', 'runtime', 'config', 'templates', 'version.txt')
+$itemsFromContent = @('src', 'Data', 'lib', 'runtime', 'config', 'templates', 'version.txt', 'BUILDINFO.txt')
 foreach ($item in $itemsFromContent) {
     $source = Join-Path $contentRoot $item
     if (-not (Test-Path -LiteralPath $source)) { continue }
