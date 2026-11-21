@@ -590,6 +590,32 @@ function Start-GUI {
                     $Tab.Tag = $true
                     script:Write-AssistantLazyLog ("Onglet Planning charge en {0}ms" -f $sw.ElapsedMilliseconds)
                 }
+                'TabOdmSeul' {
+                    # Dot-source + promotion script: via Import-AssistantLazyScriptsToScriptScope
+                    # (équivalent . $path puis Set-Item function:script:* — requis pour les handlers WinForms).
+                    $odmSeulScript = Join-Path $root 'ODM\OdmSeul\OdmSeulPanel.ps1'
+                    if (-not (Test-Path -LiteralPath $odmSeulScript)) {
+                        throw ("OdmSeulPanel.ps1 introuvable : {0}" -f $odmSeulScript)
+                    }
+                    if (-not (Get-Command Show-OdmSeulPanel -ErrorAction SilentlyContinue)) {
+                        $promoted = Import-AssistantLazyScriptsToScriptScope -LiteralPath @($odmSeulScript)
+                        script:Write-AssistantLazyLog ("ODM Seul : {0} fonction(s) promu(es) au scope script" -f @($promoted).Count)
+                    }
+                    if (-not (Get-Command Show-OdmSeulPanel -ErrorAction SilentlyContinue)) {
+                        throw 'Show-OdmSeulPanel introuvable apres dotsource OdmSeulPanel.ps1'
+                    }
+                    if (-not (Get-Command Invoke-OdmSeulReadAndDetect -ErrorAction SilentlyContinue)) {
+                        throw 'Invoke-OdmSeulReadAndDetect introuvable apres dotsource OdmSeulPanel.ps1'
+                    }
+                    $Tab.Controls.Clear()
+                    $odmSeulPanel = Show-OdmSeulPanel
+                    if ($odmSeulPanel) {
+                        $odmSeulPanel.Dock = 'Fill'
+                        $Tab.Controls.Add($odmSeulPanel)
+                    }
+                    $Tab.Tag = $true
+                    script:Write-AssistantLazyLog ("Onglet ODM Seul charge en {0}ms" -f $sw.ElapsedMilliseconds)
+                }
                 'TabOutils' {
                     $outilsScript = Join-Path $root 'ODM\Outils\OutilsPanel.ps1'
                     if (-not (Test-Path -LiteralPath $outilsScript)) {
@@ -700,6 +726,14 @@ function Start-GUI {
     $tabPlanning.Tag = $false
     script:Add-AssistantLazyPlaceholder -Tab $tabPlanning -Message 'Chargement de l''edition planning au premier affichage...'
     $tabControl.TabPages.Add($tabPlanning)
+
+    $tabOdmSeul = [System.Windows.Forms.TabPage]::new()
+    $tabOdmSeul.Name = 'TabOdmSeul'
+    $tabOdmSeul.Text = 'ODM Seul'
+    $tabOdmSeul.BackColor = $script:CouleurGrisFond
+    $tabOdmSeul.Tag = $false
+    script:Add-AssistantLazyPlaceholder -Tab $tabOdmSeul -Message 'Chargement de ODM Seul au premier affichage...'
+    $tabControl.TabPages.Add($tabOdmSeul)
 
     $tabAgents = [System.Windows.Forms.TabPage]::new()
     $tabAgents.Name = 'TabAgents'
